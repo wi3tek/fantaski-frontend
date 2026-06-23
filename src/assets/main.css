@@ -35,3 +35,76 @@ a:visited, a:active {
     background-color: #f8fafc;
 
 }
+
+/* =========================================
+   GLOBALNY CUSTOM TOOLTIP
+   ========================================= */
+[data-tooltip] {
+    position: relative;
+    cursor: pointer; /* Zmiana: usunięto 'help' (znak zapytania), ustawiono 'pointer' (rączkę) */
+}
+
+/* KRYTYCZNA ZMIANA: Wyciągnięcie nagłówka i dymku absolutnie na sam wierzch po najechaniu! */
+[data-tooltip]:hover,
+th:hover {
+    z-index: 999999 !important;
+}
+
+/* Główne okienko z tekstem */
+[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    background-color: #0f172a;
+    color: #ffffff;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: normal;
+    text-transform: none;
+    white-space: pre-wrap;
+    min-width: 280px;
+    max-width: 350px;
+    text-align: left;
+    z-index: 999999 !important; /* Gwarancja bycia na wierzchu */
+    line-height: 1.4;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+}
+
+/* Mała strzałka celująca w dół (Ogonek dymku) */
+[data-tooltip]::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(0px);
+    border-width: 6px;
+    border-style: solid;
+    border-color: #0f172a transparent transparent transparent;
+    z-index: 999999 !important;
+
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+}
+
+/* Aktywacja animacji po najechaniu myszką */
+[data-tooltip]:hover::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(-8px);
+}
+
+[data-tooltip]:hover::before {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(4px);
+}
