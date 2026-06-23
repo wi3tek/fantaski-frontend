@@ -1,0 +1,37 @@
+/* 1. Zerowanie marginesów i ustawienie poprawnego liczenia wielkości (box-sizing) */
+html, body, #app {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    background-color: #f8fafc;
+    font-family: sans-serif;
+}
+
+*, *:before, *:after {
+    box-sizing: inherit;
+}
+
+/* 2. GLOBALNY RESET DLA LINKÓW - od teraz każdy RouterLink/link w aplikacji
+      domyślnie wygląda jak zwykły tekst i nie robi się fioletowy! */
+a, router-link {
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+/* Stan odwiedzony i aktywny też ma nie zmieniać koloru */
+a:visited, a:active {
+    color: inherit;
+}
+
+.mini-flag {
+    width: 30px;
+    height: 20px;
+    vertical-align: middle;
+    border-radius: 2px;
+    border: 1px black solid;
+    background-color: #f8fafc;
+
+}

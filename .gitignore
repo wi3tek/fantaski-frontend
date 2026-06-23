@@ -1,0 +1,62 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+.DS_Store
+dist
+dist-ssr
+coverage
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+*.tsbuildinfo
+
+.eslintcache
+
+# Cypress
+/cypress/videos/
+/cypress/screenshots/
+
+# Vitest
+__screenshots__/
+
+# Vite
+*.timestamp-*-*.mjs
+.vscode
+
+
+# Zależności
+node_modules/
+
+# Pliki środowisk edytorów (IDE)
+.idea/
+.vscode/
+
+# Pliki wynikowe (Vite)
+dist/
+dist-ssr/
+
+
+Thumbs.db
+
+# Pliki tymczasowe testów (jeśli kiedyś dodasz)
+coverage/
+
+# Dynamicznie generowane dane
+public/data/
+public/jumpers.json
