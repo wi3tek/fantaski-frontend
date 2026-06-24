@@ -96,7 +96,7 @@ onUnmounted(() => {
 }
 
 .header-container {
-  max-width: 1200px;
+  max-width: 1300px; /* Limit szerokości paska nawigacji */
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
@@ -180,11 +180,13 @@ onUnmounted(() => {
   color: #38bdf8;
 }
 
+/* --- POCHWAŁA RESPONSYWNOŚCI: KLASA ZREFATOROWANA --- */
 .app-content {
   flex: 1;
-  width: 160vh;
-  margin: 0 auto;
-  padding: 20px;
+  width: 100%; /* Elastyczne 100% szerokości dla urządzeń mobilnych */
+  max-width: 1400px; /* 💎 NAJLEPSZA PRAKTYKA: Zablokowanie szerokości w idealnej linii z nagłówkiem */
+  margin: 0 auto; /* Automatyczne, idealne centrowanie kontenera na dużych ekranach */
+  padding: 24px 20px; /* Zwiększony delikatnie pionowy padding dla lepszego oddechu (whitespace) */
   box-sizing: border-box;
 }
 
@@ -192,7 +194,7 @@ onUnmounted(() => {
   background-color: #0f172a;
   color: #94a3b8;
   text-align: center;
-  padding: 0;
+  padding: 15px 0; /* Dodano delikatny wewnętrzny margines, by tekst stopki nie leżał na krawędziach */
   width: 100%;
 }
 
