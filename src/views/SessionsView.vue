@@ -67,7 +67,7 @@ const fisToIso: Record<string, string> = {
 
 const fetchCountries = async () => {
   try {
-    const res = await fetch('http://127.0.0.1:8000/admin/countries')
+    const res = await fetch('http://127.0.0.1:8000/athletes/countries')
     if (res.ok) {
       const data: Country[] = await res.json()
       // Przekształcamy tablicę w obiekt dla szybkiego dostępu

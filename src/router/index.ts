@@ -7,6 +7,7 @@ import AdminView from '@/views/AdminView.vue'
 import StandingsView from '@/views/StandingsView.vue'
 import SessionsView from '@/views/SessionsView.vue'
 import SessionDetailsView from '@/views/SessionDetailsView.vue'
+import HillsView from '@/views/HillsView.vue'
 // Zakładam, że stworzysz taki plik w widokach dla nowej klasyfikacji
 
 const router = createRouter({
@@ -40,6 +41,11 @@ const router = createRouter({
       path: '/admin',
       name: 'admin',
       component: AdminView,
+    },
+    {
+      path: '/hills',
+      name: 'hills',
+      component: HillsView,
     },
     {
       path: '/sessions',

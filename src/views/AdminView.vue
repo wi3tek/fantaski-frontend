@@ -7,7 +7,7 @@ const activeTab = ref('scraper')
 // --- Stan Konfiguracji ---
 const availableCategories = ref<Record<string, any>>({})
 const availableSeasons = computed(() => {
-  const currentYear = new Date().getFullYear() + 1
+  const currentYear = new Date().getFullYear() + 2
   const years = []
   for (let i = 0; i <= 30; i++) {
     years.push((currentYear - i).toString())
@@ -43,6 +43,7 @@ const athleteReviews = ref<any[]>([])
 const sessionReviews = ref<any[]>([])
 const isLoadingReviews = ref(false)
 const isApprovingAll = ref(false)
+const isRejectingAll = ref(false)
 
 const expandedSession = ref<string | null>(null)
 const expandedAthlete = ref<number | null>(null)
@@ -50,6 +51,7 @@ const expandedAthlete = ref<number | null>(null)
 // Stan dla scrapowania PDF
 const isPdfScraping = ref(false)
 const pdfScrapeResult = ref<any>(null)
+const pdfSeason = ref<string>(new Date().getFullYear().toString())
 
 // --- Stan dla DEBUGGERA PDF ---
 const checkerForm = ref({ url: '', codex: '', race_id: '' })
@@ -216,8 +218,8 @@ const runPdfScraper = async () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // Jeśli Twoja aplikacja wymaga autoryzacji, dodaj: ...getHeaders()
       },
+      body: JSON.stringify({ season: pdfSeason.value || null }),
     })
     const data = await res.json()
     if (res.ok) {
@@ -342,6 +344,30 @@ const handleApproveAllSessions = async () => {
   }
 }
 
+const handleRejectAllSessions = async () => {
+  if (
+    !confirm(
+      `UWAGA: Czy na pewno chcesz ODRZUCIĆ I USUNĄĆ wszystkie (${sessionReviews.value.length}) oczekujące sesje z kwarantanny?`
+    )
+  )
+    return
+  isRejectingAll.value = true
+  try {
+    const res = await fetch('http://127.0.0.1:8000/admin/reviews/sessions/reject-all', {
+      method: 'POST',
+      headers: getHeaders(),
+    })
+    if (res.ok) {
+      sessionReviews.value = []
+      expandedSession.value = null
+    }
+  } catch (e) {
+    console.error(e)
+  } finally {
+    isRejectingAll.value = false
+  }
+}
+
 watch(activeTab, (newVal) => {
   if (newVal === 'review') fetchReviews()
 })
@@ -360,6 +386,7 @@ onMounted(() => {
     <SkiLoader v-if="isAthletesScraping">Weryfikacja bazy skoczków z FIS...</SkiLoader>
     <SkiLoader v-if="isLoadingReviews">Wczytywanie kwarantanny...</SkiLoader>
     <SkiLoader v-if="isApprovingAll">Masowe zatwierdzanie...</SkiLoader>
+    <SkiLoader v-if="isRejectingAll">Odrzucanie wszystkich sesji...</SkiLoader>
     <SkiLoader v-if="isPdfScraping">Pobieranie i czytanie dokumentów PDF z FIS...</SkiLoader>
 
     <div
@@ -476,6 +503,15 @@ onMounted(() => {
         chronologicznymi sesjami (TRAINING / TRIAL).
       </p>
 
+      <div class="filter-row" style="margin-bottom: 20px">
+        <div class="filter-section" style="max-width: 300px">
+          <h4>Sezon</h4>
+          <select v-model="pdfSeason" class="form-select">
+            <option v-for="year in availableSeasons" :key="year" :value="year">{{ year }}</option>
+          </select>
+        </div>
+      </div>
+
       <button
         @click="runPdfScraper"
         :disabled="isPdfScraping"
@@ -490,13 +526,13 @@ onMounted(() => {
         <p>
           <strong>Przesłano do Kwarantanny (Nowe lub Zmienione sesje):</strong>
           <span style="color: #eab308; font-weight: bold; font-size: 1.2em">
-            {{ pdfScrapeResult.saved_sessions_count }}
+            {{ pdfScrapeResult.saved_to_review }}
           </span>
         </p>
         <p>
           <strong>Pominięto (Identyczne sesje - brak zmian):</strong>
           <span style="color: #64748b; font-weight: bold; font-size: 1em">
-            {{ pdfScrapeResult.unchanged_count }}
+            {{ pdfScrapeResult.unchanged_files }}
           </span>
         </p>
 
@@ -512,7 +548,7 @@ onMounted(() => {
           <p style="font-weight: bold; margin-bottom: 10px">Wykryte typy dokumentów w systemie:</p>
           <ul style="display: flex; flex-wrap: wrap; gap: 10px; padding: 0; list-style: none">
             <li
-              v-for="type in pdfScrapeResult.distinct_doc_types"
+              v-for="type in pdfScrapeResult.distinct_doc_types_in_batch"
               :key="type"
               style="
                 background: #f1f5f9;
@@ -743,13 +779,22 @@ onMounted(() => {
             <p>
               <strong>Do weryfikacji: {{ sessionReviews.length }}</strong>
             </p>
-            <button
-              @click="handleApproveAllSessions"
-              class="btn-primary"
-              style="background: #22c55e"
-            >
-              ✅ Akceptuj Wszystkie
-            </button>
+            <div style="display: flex; gap: 10px">
+              <button
+                @click="handleApproveAllSessions"
+                class="btn-primary"
+                style="background: #22c55e"
+              >
+                ✅ Akceptuj Wszystkie
+              </button>
+              <button
+                @click="handleRejectAllSessions"
+                class="btn-primary"
+                style="background: #ef4444"
+              >
+                ❌ Odrzuć Wszystkie
+              </button>
+            </div>
           </div>
 
           <table class="review-table">
@@ -757,7 +802,7 @@ onMounted(() => {
               <tr>
                 <th>Codex</th>
                 <th>Konkurs</th>
-                <th>Miejsce</th>
+                <th>Miejsce / Sezon / Data</th>
                 <th style="text-align: right">Akcje</th>
               </tr>
             </thead>
@@ -765,9 +810,32 @@ onMounted(() => {
               <tr>
                 <td>{{ item.codex }}</td>
                 <td>
-                  <strong>{{ item.new_data.title }}</strong>
+                  <strong>{{ item.new_data.title || item.new_data.session_type }}</strong>
                 </td>
-                <td>{{ item.new_data.event_place }}</td>
+                <td>
+                  <div style="display: flex; align-items: center; gap: 6px">
+                    <strong>{{ item.new_data.event_place || '-' }}</strong>
+                    <span
+                      v-if="item.new_data.season"
+                      style="
+                        background: #e0f2fe;
+                        color: #0369a1;
+                        padding: 2px 6px;
+                        border-radius: 4px;
+                        font-weight: bold;
+                        font-size: 0.85em;
+                      "
+                    >
+                      {{ item.new_data.season }}
+                    </span>
+                  </div>
+                  <div
+                    v-if="item.new_data.date"
+                    style="color: #64748b; font-size: 0.85em; margin-top: 3px"
+                  >
+                    📅 {{ item.new_data.date }} {{ item.new_data.time || '' }}
+                  </div>
+                </td>
                 <td style="text-align: right; min-width: 150px">
                   <button
                     @click="toggleSessionDiff(item.codex)"

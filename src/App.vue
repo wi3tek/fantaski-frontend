@@ -55,6 +55,8 @@ onUnmounted(() => {
             </div>
           </div>
 
+          <RouterLink to="/hills" @click="closeNavigation">Baza skoczni</RouterLink>
+
           <RouterLink to="/admin" class="admin-link" @click="closeNavigation">
             ⚙️ Ustawienia
           </RouterLink>

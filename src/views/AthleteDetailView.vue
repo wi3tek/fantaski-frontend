@@ -85,6 +85,10 @@ onMounted(async () => {
               <span class="label">Klub</span>
               <span class="value">{{ athlete.club || '-' }}</span>
             </div>
+            <div class="data-item" v-if="athlete.price">
+              <span class="label">Cena ESM</span>
+              <span class="value price-value">{{ athlete.price.toFixed(2) }}</span>
+            </div>
           </div>
 
           <div class="external-link">
@@ -260,4 +264,5 @@ onMounted(async () => {
   border-radius: 8px;
   font-style: italic;
 }
+.price-value { color: #16a34a; font-weight: bold; font-size: 1.2em; }
 </style>
