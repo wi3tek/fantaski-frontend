@@ -47,6 +47,33 @@ const isApprovingAll = ref(false)
 const expandedSession = ref<string | null>(null)
 const expandedAthlete = ref<number | null>(null)
 
+// Stan dla scrapowania PDF
+const isPdfScraping = ref(false)
+const pdfScrapeResult = ref<any>(null)
+
+// --- Stan dla DEBUGGERA PDF ---
+const checkerForm = ref({ url: '', codex: '', race_id: '' })
+const isCheckingPdf = ref(false)
+const checkerResult = ref<any>(null)
+
+const runPdfChecker = async () => {
+  if (!checkerForm.value.url) return alert('Podaj URL!')
+  isCheckingPdf.value = true
+  checkerResult.value = null
+  try {
+    const res = await fetch('http://127.0.0.1:8000/admin/refresh-trainings-checker', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(checkerForm.value),
+    })
+    checkerResult.value = await res.json()
+  } catch (e) {
+    console.error(e)
+  } finally {
+    isCheckingPdf.value = false
+  }
+}
+
 const toggleSessionDiff = (codex: string) => {
   expandedSession.value = expandedSession.value === codex ? null : codex
 }
@@ -181,6 +208,31 @@ const runScraper = async () => {
   }
 }
 
+const runPdfScraper = async () => {
+  isPdfScraping.value = true
+  pdfScrapeResult.value = null
+  try {
+    const res = await fetch('http://127.0.0.1:8000/admin/refresh-trainings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // Jeśli Twoja aplikacja wymaga autoryzacji, dodaj: ...getHeaders()
+      },
+    })
+    const data = await res.json()
+    if (res.ok) {
+      pdfScrapeResult.value = data
+    } else {
+      alert('Błąd serwera: ' + (data.detail || 'Nieznany błąd'))
+    }
+  } catch (e) {
+    console.error(e)
+    alert('Błąd połączenia z backendem.')
+  } finally {
+    isPdfScraping.value = false
+  }
+}
+
 const refreshAthletes = async () => {
   isAthletesScraping.value = true
   athletesScrapeResult.value = null
@@ -308,6 +360,7 @@ onMounted(() => {
     <SkiLoader v-if="isAthletesScraping">Weryfikacja bazy skoczków z FIS...</SkiLoader>
     <SkiLoader v-if="isLoadingReviews">Wczytywanie kwarantanny...</SkiLoader>
     <SkiLoader v-if="isApprovingAll">Masowe zatwierdzanie...</SkiLoader>
+    <SkiLoader v-if="isPdfScraping">Pobieranie i czytanie dokumentów PDF z FIS...</SkiLoader>
 
     <div
       v-if="showCategoryDropdown || showSeasonDropdown"
@@ -410,7 +463,149 @@ onMounted(() => {
           </li>
         </ul>
       </div>
+      <div v-if="scrapeResult" class="results-box">
+        <h4>Raport z wykonania:</h4>
+      </div>
+
+      <hr style="margin: 40px 0; border: 1px solid #e2e8f0" />
+
+      <h3>Pobieranie Wyników Treningów & Serii Próbnych (PDF)</h3>
+      <p style="color: #64748b; margin-bottom: 20px">
+        Skrypt przeszukuje bazę danych w poszukiwaniu załączników PDF z oficjalnymi treningami lub
+        seriami próbnymi, pobiera je, wyciąga surowy tekst i zasila system niezależnymi,
+        chronologicznymi sesjami (TRAINING / TRIAL).
+      </p>
+
+      <button
+        @click="runPdfScraper"
+        :disabled="isPdfScraping"
+        class="btn-primary"
+        style="background-color: #8b5cf6"
+      >
+        📄 Przeprowadź Ekstrakcję Treningów (PDF)
+      </button>
+
+      <div v-if="pdfScrapeResult" class="results-box" style="margin-top: 20px">
+        <h4>Raport z generowania z PDF:</h4>
+        <p>
+          <strong>Przesłano do Kwarantanny (Nowe lub Zmienione sesje):</strong>
+          <span style="color: #eab308; font-weight: bold; font-size: 1.2em">
+            {{ pdfScrapeResult.saved_sessions_count }}
+          </span>
+        </p>
+        <p>
+          <strong>Pominięto (Identyczne sesje - brak zmian):</strong>
+          <span style="color: #64748b; font-weight: bold; font-size: 1em">
+            {{ pdfScrapeResult.unchanged_count }}
+          </span>
+        </p>
+
+        <div
+          style="
+            margin-top: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px dashed #cbd5e1;
+          "
+        >
+          <p style="font-weight: bold; margin-bottom: 10px">Wykryte typy dokumentów w systemie:</p>
+          <ul style="display: flex; flex-wrap: wrap; gap: 10px; padding: 0; list-style: none">
+            <li
+              v-for="type in pdfScrapeResult.distinct_doc_types"
+              :key="type"
+              style="
+                background: #f1f5f9;
+                padding: 4px 10px;
+                border-radius: 12px;
+                font-size: 0.85em;
+                border: 1px solid #cbd5e1;
+              "
+            >
+              {{ type }}
+            </li>
+          </ul>
+        </div>
+      </div>
+      <hr style="margin: 40px 0; border: 1px solid #e2e8f0" />
+
+      <h3 style="color: #dc2626">🛠️ Debugger Algorytmu (Wklej PDF który zawiódł)</h3>
+      <p style="color: #64748b; margin-bottom: 20px">
+        Narzędzie testowe pozwalające zrzucić "myślenie" parsera dla konkretnego pliku. Pokaże co
+        skrypt odciął, ile rozpoznał nazwisk i jakie liczby wyciągnął.
+      </p>
+
+      <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap">
+        <input
+          type="text"
+          v-model="checkerForm.url"
+          placeholder="Wklej pełny adres URL PDF z FIS..."
+          style="
+            flex: 3;
+            min-width: 300px;
+            padding: 12px;
+            border-radius: 4px;
+            border: 1px solid #cbd5e1;
+          "
+        />
+        <input
+          type="text"
+          v-model="checkerForm.codex"
+          placeholder="Codex (np. 3185)"
+          style="flex: 1; padding: 12px; border-radius: 4px; border: 1px solid #cbd5e1"
+        />
+        <input
+          type="text"
+          v-model="checkerForm.race_id"
+          placeholder="Race ID"
+          style="flex: 1; padding: 12px; border-radius: 4px; border: 1px solid #cbd5e1"
+        />
+        <button
+          @click="runPdfChecker"
+          :disabled="isCheckingPdf"
+          class="btn-primary"
+          style="background-color: #dc2626"
+        >
+          {{ isCheckingPdf ? 'Skanowanie...' : '🔍 Analizuj Plik' }}
+        </button>
+      </div>
+
+      <div
+        v-if="checkerResult"
+        class="results-box"
+        style="background: #1e293b; color: #f8fafc; overflow-x: auto"
+      >
+        <h4 style="color: #38bdf8; margin-top: 0">Log Systemowy (Zrozumienie Pliku):</h4>
+        <ul style="color: #94a3b8; font-family: monospace; font-size: 0.9em">
+          <li v-for="(log, i) in checkerResult.debug_log" :key="i">>> {{ log }}</li>
+        </ul>
+
+        <div v-if="checkerResult.parsed_results" style="margin-top: 20px">
+          <h4 style="color: #22c55e">
+            Zidentyfikowano Zawodników: {{ checkerResult.athletes_found }}
+          </h4>
+          <div
+            v-for="ath in checkerResult.parsed_results"
+            :key="ath.name"
+            style="border-left: 2px solid #38bdf8; padding-left: 10px; margin-bottom: 15px"
+          >
+            <strong style="color: white">{{ ath.name }}</strong
+            ><br />
+            <span style="color: #fef08a; font-size: 0.85em"
+              >Liczby Zmiennoprzecinkowe: {{ ath.floats_found }}</span
+            ><br />
+            <span style="color: #94a3b8; font-size: 0.8em; font-style: italic"
+              >Chunk Tekstu: {{ ath.raw_text }}</span
+            >
+          </div>
+        </div>
+
+        <div v-if="checkerResult.error" style="color: #ef4444; margin-top: 20px">
+          <strong>BŁĄD:</strong> {{ checkerResult.error }}
+        </div>
+      </div>
     </div>
+    <div v-if="activeTab === 'athletes'" class="tab-content"></div>
 
     <div v-if="activeTab === 'athletes'" class="tab-content">
       <h3>Zarządzanie Bazą Skoczków</h3>
