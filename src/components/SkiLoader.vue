@@ -87,15 +87,16 @@
 <style scoped>
 .loader-overlay {
   position: fixed;
-  top: 0;
+  top: 60px;
   left: 0;
   width: 100vw;
-  height: 100vh;
+  height: calc(100vh - 60px);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.8);
-  z-index: 9999;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(2px);
+  z-index: 900;
 }
 
 .loader-content {

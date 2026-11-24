@@ -32,7 +32,7 @@ onMounted(async () => {
         <RouterLink to="/athletes" class="btn-back">← Wróć do listy</RouterLink>
 
         <RouterLink
-          :to="{ path: '/stats', query: { fis_code: athlete.fis_code } }"
+          :to="{ path: '/stats', query: { fis_code: athlete.fis_code, name: athlete.full_name } }"
           class="btn-stats"
         >
           📊 Zobacz historię skoków
@@ -77,17 +77,15 @@ onMounted(async () => {
             </div>
             <div class="data-item">
               <span class="label">Kraj</span>
-              <span class="value"
-                ><strong>{{ athlete.country_code }}</strong></span
-              >
+              <span class="value">{{ athlete.country_code }}</span>
             </div>
             <div class="data-item">
               <span class="label">Klub</span>
               <span class="value">{{ athlete.club || '-' }}</span>
             </div>
-            <div class="data-item" v-if="athlete.price">
+            <div class="data-item" v-if="athlete.price != null">
               <span class="label">Cena ESM</span>
-              <span class="value price-value">{{ athlete.price.toFixed(2) }}</span>
+              <span class="value price-value">{{ Number(athlete.price).toFixed(1) }}</span>
             </div>
           </div>
 
@@ -110,9 +108,9 @@ onMounted(async () => {
 <style scoped>
 .page {
   background: white;
-  padding: 30px;
+  padding: 20px 24px;
   border-radius: 8px;
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 /* Header z nawigacją */
@@ -120,45 +118,60 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 25px;
-  border-bottom: 2px solid #f1f5f9;
-  padding-bottom: 15px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 12px;
 }
 .btn-back {
-  display: inline-block;
-  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  padding: 6px 14px;
   background: #f8fafc;
   border: 1px solid #cbd5e1;
   color: #475569;
   border-radius: 4px;
-  font-weight: bold;
+  font-weight: 500;
+  font-size: 0.85em;
   text-decoration: none;
+  transition: all 0.2s;
 }
 .btn-back:hover {
   background: #e2e8f0;
+  color: #0f172a;
 }
 .btn-stats {
-  display: inline-block;
-  padding: 8px 16px;
-  background: #38bdf8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  padding: 6px 14px;
+  background: #0284c7;
   color: white;
   border-radius: 4px;
-  font-weight: bold;
+  font-weight: 500;
+  font-size: 0.85em;
   text-decoration: none;
-  box-shadow: 0 2px 4px rgba(56, 189, 248, 0.3);
+  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.3);
   transition: background 0.2s;
 }
 .btn-stats:hover {
-  background: #0284c7;
+  background: #0369a1;
 }
 
 /* Karta Profilowa */
 .profile-card {
   display: flex;
-  gap: 40px;
+  gap: 28px;
   align-items: flex-start;
 }
 @media (max-width: 768px) {
+  .page {
+    padding: 14px;
+  }
   .profile-card {
     flex-direction: column;
     align-items: center;
@@ -170,24 +183,24 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 15px;
+  gap: 10px;
 }
 .profile-pic {
-  width: 160px;
-  height: 160px;
+  width: 125px;
+  height: 125px;
   object-fit: cover;
   border-radius: 50%;
-  border: 5px solid #e2e8f0;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border: 4px solid #e0f2fe;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 /* Odznaki statusu */
 .status-labels span {
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 0.85em;
-  font-weight: bold;
-  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.78em;
+  font-weight: 500;
+  letter-spacing: 0.4px;
 }
 .label-active {
   background: #dcfce7;
@@ -202,54 +215,60 @@ onMounted(async () => {
 
 /* Sekcja Danych */
 .info h2 {
-  margin: 0 0 20px 0;
+  margin: 0 0 14px 0;
   color: #0f172a;
-  font-size: 2.2em;
+  font-size: 1.55em;
+  font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 10px;
 }
 .mini-flag {
-  width: 36px;
-  height: 24px;
-  border-radius: 3px;
+  width: 30px;
+  height: 20px;
+  border-radius: 2px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .data-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  gap: 12px;
   background: #f8fafc;
-  padding: 20px;
-  border-radius: 8px;
+  padding: 14px 16px;
+  border-radius: 6px;
   border: 1px solid #e2e8f0;
   width: 100%;
-  max-width: 500px;
+  max-width: 480px;
 }
 .data-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 .data-item .label {
-  font-size: 0.8em;
+  font-size: 0.75em;
   color: #64748b;
   text-transform: uppercase;
-  font-weight: bold;
+  font-weight: 500;
+  letter-spacing: 0.4px;
 }
 .data-item .value {
-  font-size: 1.1em;
+  font-size: 0.95em;
   color: #1e293b;
 }
 
 .external-link {
-  margin-top: 25px;
+  margin-top: 18px;
 }
 .fis-btn {
-  color: #0ea5e9;
-  font-weight: bold;
+  color: #0284c7;
+  font-weight: 500;
+  font-size: 0.88em;
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .fis-btn:hover {
   text-decoration: underline;
@@ -258,11 +277,12 @@ onMounted(async () => {
 
 .no-results {
   text-align: center;
-  padding: 40px;
+  padding: 30px;
   color: #64748b;
   background: #f8fafc;
-  border-radius: 8px;
+  border-radius: 6px;
   font-style: italic;
+  font-size: 0.9em;
 }
-.price-value { color: #16a34a; font-weight: bold; font-size: 1.2em; }
+.price-value { color: #16a34a; font-weight: 700; font-size: 1.1em; }
 </style>

@@ -239,7 +239,7 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
                 </button>
                 <div class="th-content">
                     <span v-if="athlete.price" class="badge price-header-badge">{{
-                        athlete.price
+                        Number(athlete.price).toFixed(1)
                       }}</span>
                   <span class="athlete-name" :title="athlete.name">{{ athlete.name }}</span>
                 </div>
@@ -347,7 +347,7 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
 
               <div class="m-ath-info">
                 <button @click="excludeAthlete(athlete.name)" class="m-btn-close" title="Usuń">✖</button>
-                <span v-if="athlete.price" class="badge price-header-badge">{{ athlete.price }}</span>
+                <span v-if="athlete.price" class="badge price-header-badge">{{ Number(athlete.price).toFixed(1) }}</span>
                 <span class="m-ath-name">{{ athlete.name }}</span>
               </div>
 

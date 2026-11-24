@@ -215,7 +215,8 @@ onMounted(() => {
     <SkiLoader v-if="loading">Ładowanie bazy skoczni...</SkiLoader>
 
     <div v-else>
-      <table class="results-table" v-if="filteredHills.length > 0">
+      <div class="table-responsive" v-if="filteredHills.length > 0">
+        <table class="results-table">
         <thead>
           <tr>
             <th>ID / Miejscowość</th>
@@ -369,6 +370,7 @@ onMounted(() => {
           </template>
         </tbody>
       </table>
+      </div>
 
       <div v-else class="no-results">
         Brak skoczni spełniających kryteria.
@@ -473,37 +475,39 @@ onMounted(() => {
 <style scoped>
 .page {
   background: white;
-  padding: 30px;
+  padding: 20px 24px;
   border-radius: 8px;
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 .header-row {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 20px;
-  border-bottom: 2px solid #f1f5f9;
-  padding-bottom: 15px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 12px;
 }
 
 .header-row h2 {
-  margin: 0 0 6px 0;
+  margin: 0 0 4px 0;
   color: #0f172a;
-  font-size: 1.9em;
+  font-size: 1.45em;
+  font-weight: 800;
 }
 
 .subtitle {
   margin: 0;
   color: #64748b;
-  font-size: 0.95em;
+  font-size: 0.88em;
 }
 
 .alert {
-  padding: 12px 18px;
+  padding: 10px 14px;
   border-radius: 6px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   font-weight: 500;
+  font-size: 0.88em;
 }
 .alert.success {
   background: #dcfce7;
@@ -520,25 +524,26 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  gap: 15px;
+  margin-bottom: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .search-input {
   flex: 1;
   max-width: 450px;
-  padding: 10px 14px;
+  padding: 6px 12px;
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 0.95em;
+  border-radius: 4px;
+  font-size: 0.88em;
 }
 
 .count-badge {
   background: #f1f5f9;
-  padding: 6px 12px;
+  padding: 4px 10px;
   border-radius: 12px;
   color: #475569;
-  font-size: 0.9em;
+  font-size: 0.8em;
   font-weight: bold;
 }
 
@@ -546,19 +551,21 @@ onMounted(() => {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
+  font-size: 0.88em;
 }
 
 .results-table th,
 .results-table td {
-  padding: 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid #e2e8f0;
 }
 
 .results-table th {
   background-color: #f1f5f9;
   color: #475569;
-  font-size: 0.85em;
+  font-size: 0.75em;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .hill-id-dim {
@@ -646,17 +653,22 @@ onMounted(() => {
 }
 
 .btn-primary {
-  background: #0ea5e9;
+  background: #0284c7;
   color: white;
-  padding: 10px 20px;
+  padding: 8px 16px;
   border: none;
   border-radius: 6px;
-  font-weight: bold;
+  font-weight: 500;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
   transition: background 0.2s;
 }
 .btn-primary:hover {
-  background: #0284c7;
+  background: #0369a1;
 }
 
 .btn-action {
@@ -667,6 +679,9 @@ onMounted(() => {
   cursor: pointer;
   margin-left: 6px;
   font-size: 1em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.2s;
 }
 .btn-action.edit:hover {
@@ -728,18 +743,20 @@ onMounted(() => {
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 .form-group label {
-  font-size: 0.85em;
-  font-weight: bold;
+  font-size: 0.78em;
+  font-weight: 500;
   color: #475569;
+  height: 16px;
+  line-height: 16px;
 }
 .form-input {
   padding: 8px 12px;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
-  font-size: 0.95em;
+  font-size: 0.9em;
 }
 .modal-actions {
   display: flex;
@@ -754,7 +771,12 @@ onMounted(() => {
   padding: 8px 16px;
   border-radius: 4px;
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 .btn-cancel:hover {
   background: #e2e8f0;

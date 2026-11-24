@@ -8,6 +8,7 @@ import StandingsView from '@/views/StandingsView.vue'
 import SessionsView from '@/views/SessionsView.vue'
 import SessionDetailsView from '@/views/SessionDetailsView.vue'
 import HillsView from '@/views/HillsView.vue'
+import PredictionsView from '@/views/PredictionsView.vue'
 // Zakładam, że stworzysz taki plik w widokach dla nowej klasyfikacji
 
 const router = createRouter({
@@ -56,6 +57,11 @@ const router = createRouter({
       path: '/sessions/:id',
       name: 'session-detail',
       component: SessionDetailsView,
+    },
+    {
+      path: '/predictions',
+      name: 'predictions',
+      component: PredictionsView,
     },
   ],
 })

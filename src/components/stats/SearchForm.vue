@@ -204,7 +204,7 @@ const submitSearch = () => {
           title="Włącza filtrowanie po cenie z Fantasy i pobiera z automatu wszystkich zawodników z przedziału."
         >
           <input v-model="localPriceMode" type="checkbox" />
-          <span style="font-weight: bold">🎯 Analiza cen zawodników</span>
+          <span style="font-weight: 500">🎯 Analiza cen zawodników</span>
         </label>
       </div>
 
@@ -212,7 +212,7 @@ const submitSearch = () => {
         <div class="slider-group">
           <div class="slider-header">
             <label>Minimalna cena (od):</label>
-            <span class="price-badge">{{ localPriceMin }}</span>
+            <span class="price-badge">{{ Number(localPriceMin).toFixed(1) }}</span>
           </div>
           <input
             type="range"
@@ -227,7 +227,7 @@ const submitSearch = () => {
         <div class="slider-group">
           <div class="slider-header">
             <label>Maksymalna cena (do):</label>
-            <span class="price-badge">{{ localPriceMax }}</span>
+            <span class="price-badge">{{ Number(localPriceMax).toFixed(1) }}</span>
           </div>
           <input
             type="range"
@@ -270,7 +270,7 @@ const submitSearch = () => {
               >
                 {{ item.name }}
                 <span v-if="'price' in item" class="badge price-autocomplete-badge">{{
-                  item.price
+                  Number(item.price).toFixed(1)
                 }}</span>
               </li>
             </ul>
@@ -424,9 +424,9 @@ const submitSearch = () => {
 .multi-select-container label {
   margin-bottom: 8px;
   display: block;
-  font-size: 0.9em;
+  font-size: 0.85em;
   color: #475569;
-  font-weight: bold;
+  font-weight: 500;
 }
 .chips-box {
   display: flex;
@@ -439,15 +439,16 @@ const submitSearch = () => {
   align-items: center;
 }
 .chip {
-  background: #38bdf8;
+  background: #0284c7;
   color: white;
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-radius: 16px;
   font-size: 0.85em;
-  font-weight: bold;
-  display: flex;
+  font-weight: 500;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
 }
 .chip button {
   background: none;
@@ -537,10 +538,19 @@ const submitSearch = () => {
   flex-wrap: wrap;
   width: 100%;
 }
+.filter-group label {
+  display: block;
+  height: 18px;
+  line-height: 18px;
+  font-size: 0.82em;
+  font-weight: 500;
+  color: #475569;
+  margin-bottom: 4px;
+}
 .set-picker label {
   font-size: 0.85rem;
   color: #475569;
-  font-weight: 600;
+  font-weight: 500;
   margin-right: 5px;
 }
 .set-picker select {
@@ -557,8 +567,12 @@ const submitSearch = () => {
   padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 500;
   font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
   transition: all 0.2s;
 }
 .btn-save-set:hover {
@@ -577,13 +591,17 @@ const submitSearch = () => {
   border-radius: 6px;
 }
 .btn-confirm-save {
-  background: #8b5cf6;
+  background: #0284c7;
   color: white;
   border: none;
   padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.85rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
 }
 .btn-cancel-save {
   background: #e2e8f0;
@@ -593,6 +611,10 @@ const submitSearch = () => {
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.85rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
 }
 .checkbox-list-container {
   display: flex;
@@ -647,12 +669,16 @@ const submitSearch = () => {
   background: white;
   color: #64748b;
   border: 1px solid #cbd5e1;
-  padding: 14px 24px;
-  border-radius: 4px;
-  font-size: 1.1em;
-  font-weight: bold;
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   white-space: nowrap;
 }
 

@@ -265,7 +265,7 @@ const getTrendPath = (athleteName: string) => {
                 <template v-if="stat.hasData">
                   <td>
                     <span v-if="stat.price" class="badge price-autocomplete-badge">{{
-                      stat.price
+                      Number(stat.price).toFixed(1)
                     }}</span>
                   </td>
                   <td>
@@ -286,23 +286,23 @@ const getTrendPath = (athleteName: string) => {
                     >
                   </td>
                   <td>
-                    <span :class="['stat-badge', stat.hitRate30 > 75 ? 'good' : 'neutral']"
-                      >{{ stat.hitRate30.toFixed(1) }}%</span
+                    <span :class="['stat-badge', (stat.hitRate30 ?? 0) > 75 ? 'good' : 'neutral']"
+                      >{{ (stat.hitRate30 ?? 0).toFixed(1) }}%</span
                     >
                   </td>
                   <td>
-                    <span :class="['stat-badge', stat.hitRate20 > 50 ? 'good' : 'neutral']"
-                      >{{ stat.hitRate20.toFixed(1) }}%</span
+                    <span :class="['stat-badge', (stat.hitRate20 ?? 0) > 50 ? 'good' : 'neutral']"
+                      >{{ (stat.hitRate20 ?? 0).toFixed(1) }}%</span
                     >
                   </td>
                   <td>
-                    <span :class="['stat-badge', stat.hitRate10 > 30 ? 'good' : 'neutral']"
-                      >{{ stat.hitRate10.toFixed(1) }}%</span
+                    <span :class="['stat-badge', (stat.hitRate10 ?? 0) > 30 ? 'good' : 'neutral']"
+                      >{{ (stat.hitRate10 ?? 0).toFixed(1) }}%</span
                     >
                   </td>
                   <td>
-                    <span :class="['stat-badge', stat.hitRate3 > 15 ? 'good' : 'neutral']"
-                      >{{ stat.hitRate3.toFixed(1) }}%</span
+                    <span :class="['stat-badge', (stat.hitRate3 ?? 0) > 15 ? 'good' : 'neutral']"
+                      >{{ (stat.hitRate3 ?? 0).toFixed(1) }}%</span
                     >
                   </td>
                   <td>
@@ -314,7 +314,7 @@ const getTrendPath = (athleteName: string) => {
                     <span
                       :class="[
                         'stat-badge',
-                        stat.stdDev !== null && stat.stdDev < 5 ? 'good' : 'neutral',
+                        stat.stdDev != null && stat.stdDev < 5 ? 'good' : 'neutral',
                       ]"
                       >{{ stat.stdDev?.toFixed(1) }}</span
                     >
@@ -477,7 +477,7 @@ const getTrendPath = (athleteName: string) => {
                   class="scatter-foreign"
                   :style="{ opacity: hoveredAthlete?.name === ath.name ? 0 : 1 }"
                 >
-                  <div class="scatter-dot-text">{{ ath.name }} ({{ ath.price }})</div>
+                  <div class="scatter-dot-text">{{ ath.name }} ({{ Number(ath.price).toFixed(1) }})</div>
                 </foreignObject>
               </g>
             </g>
@@ -490,7 +490,7 @@ const getTrendPath = (athleteName: string) => {
               <circle r="12" fill="#0ea5e9" stroke="white" stroke-width="2" />
               <foreignObject x="-100" y="-35" width="200" height="35" class="scatter-foreign">
                 <div class="scatter-dot-text active-tooltip">
-                  {{ hoveredAthlete.name }} ({{ hoveredAthlete.price }})
+                  {{ hoveredAthlete.name }} ({{ Number(hoveredAthlete.price).toFixed(1) }})
                 </div>
               </foreignObject>
             </g>

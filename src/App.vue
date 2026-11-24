@@ -13,7 +13,6 @@ const closeDropdown = (e: Event) => {
   }
 }
 
-// NOWA FUNKCJA - rozwiązuje problem z formaterem i błędem w <template>
 const closeNavigation = () => {
   isMenuOpen.value = false
   isStatsDropdownOpen.value = false
@@ -32,11 +31,20 @@ onUnmounted(() => {
   <div class="app-layout">
     <header class="app-header">
       <div class="header-container">
-        <RouterLink to="/" @click="closeNavigation">
-          <div class="logo">DATA<strong>SKI</strong></div>
+        <RouterLink to="/" @click="closeNavigation" class="brand-link">
+          <div class="logo">
+            <span class="logo-ski-icon">🎿</span>
+            <span class="logo-text">DATA<strong>SKI</strong></span>
+            <span class="logo-badge">FIS ANALYTICS</span>
+          </div>
         </RouterLink>
 
-        <button class="menu-toggle" @click.stop="isMenuOpen = !isMenuOpen">
+        <button
+          class="menu-toggle"
+          @click.stop="isMenuOpen = !isMenuOpen"
+          aria-label="Menu"
+          :class="{ active: isMenuOpen }"
+        >
           <span></span><span></span><span></span>
         </button>
 
@@ -57,6 +65,10 @@ onUnmounted(() => {
 
           <RouterLink to="/hills" @click="closeNavigation">Baza skoczni</RouterLink>
 
+          <RouterLink to="/predictions" @click="closeNavigation" class="predictions-nav-link">
+            🔮 Przewidywania
+          </RouterLink>
+
           <RouterLink to="/admin" class="admin-link" @click="closeNavigation">
             ⚙️ Ustawienia
           </RouterLink>
@@ -72,7 +84,7 @@ onUnmounted(() => {
     </main>
 
     <footer class="app-footer">
-      <p>&copy; 2026 DataSKI</p>
+      <p>DataSKI &bull; Centrum Analityczne Skoków Narciarskich FIS &bull; 2026</p>
     </footer>
   </div>
 </template>
@@ -82,23 +94,25 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  font-family: sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   background-color: #f8fafc;
+  color: #0f172a;
 }
 
-/* --- STICKY HEADER --- */
+/* --- STICKY HEADER (NOWOCZESNY, ALPEJSKI) --- */
 .app-header {
   position: sticky;
   top: 0;
-  z-index: 1000;
-  background-color: #1e293b;
+  z-index: 10000;
+  background-color: #0f172a;
+  border-bottom: 1px solid #1e293b;
   color: white;
-  padding: 15px 0;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  padding: 10px 0;
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.25);
 }
 
 .header-container {
-  max-width: 1300px; /* Limit szerokości paska nawigacji */
+  max-width: 1350px;
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
@@ -106,24 +120,85 @@ onUnmounted(() => {
   padding: 0 20px;
 }
 
-.logo strong {
+.brand-link {
+  text-decoration: none;
+  color: white;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.15em;
+  letter-spacing: 0.5px;
+}
+
+.logo-ski-icon {
+  font-size: 1.2em;
+}
+
+.logo-text strong {
   color: #38bdf8;
+}
+
+.logo-badge {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #38bdf8;
+  font-size: 0.6em;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 1px;
 }
 
 .nav-links {
   display: flex;
-  gap: 20px;
+  gap: 18px;
   align-items: center;
 }
 
 .nav-links a {
-  color: #cbd5e1;
+  color: #94a3b8;
   text-decoration: none;
-  transition: color 0.2s;
+  font-size: 0.88em;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .nav-links a:hover {
   color: white;
+  background-color: #1e293b;
+}
+
+.nav-links a.router-link-active {
+  color: #38bdf8;
+  background-color: rgba(56, 189, 248, 0.12);
+}
+
+.admin-link {
+  color: #cbd5e1 !important;
+}
+
+.login-btn {
+  background: #0284c7;
+  color: white !important;
+  font-weight: 500;
+  padding: 5px 12px !important;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+.login-btn:hover {
+  background: #0369a1 !important;
 }
 
 /* --- DROPDOWN MENU --- */
@@ -134,22 +209,26 @@ onUnmounted(() => {
 .dropdown-btn {
   background: none;
   border: none;
-  color: #cbd5e1;
-  font-size: 1em;
+  color: #94a3b8;
+  font-size: 0.88em;
+  font-weight: 500;
   cursor: pointer;
-  padding: 0;
-  display: flex;
+  padding: 6px 10px;
+  border-radius: 6px;
+  display: inline-flex;
   align-items: center;
   gap: 5px;
-  transition: color 0.2s;
+  white-space: nowrap;
+  transition: all 0.2s;
 }
 
 .dropdown-btn:hover {
   color: white;
+  background-color: #1e293b;
 }
 
 .arrow {
-  font-size: 0.7em;
+  font-size: 0.65em;
   transition: transform 0.2s;
 }
 .arrow.up {
@@ -158,23 +237,24 @@ onUnmounted(() => {
 
 .dropdown-menu {
   position: absolute;
-  top: 150%;
-  left: 50%;
-  transform: translateX(-50%);
+  top: calc(100% + 8px);
+  left: 0;
   background-color: #0f172a;
   border: 1px solid #334155;
   border-radius: 6px;
-  padding: 10px 0;
+  padding: 6px 0;
   display: flex;
   flex-direction: column;
-  min-width: 180px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+  min-width: 170px;
+  box-shadow: 0 10px 20px -3px rgba(0, 0, 0, 0.5);
+  z-index: 10001;
 }
 
 .dropdown-menu a {
-  padding: 10px 20px;
-  color: #e2e8f0;
+  padding: 8px 14px;
+  color: #cbd5e1;
   display: block;
+  font-size: 0.85em;
 }
 
 .dropdown-menu a:hover {
@@ -182,38 +262,45 @@ onUnmounted(() => {
   color: #38bdf8;
 }
 
-/* --- POCHWAŁA RESPONSYWNOŚCI: KLASA ZREFATOROWANA --- */
+/* --- KONTENER GŁÓWNY --- */
 .app-content {
   flex: 1;
-  width: 100%; /* Elastyczne 100% szerokości dla urządzeń mobilnych */
-  max-width: 1400px; /* 💎 NAJLEPSZA PRAKTYKA: Zablokowanie szerokości w idealnej linii z nagłówkiem */
-  margin: 0 auto; /* Automatyczne, idealne centrowanie kontenera na dużych ekranach */
-  padding: 24px 20px; /* Zwiększony delikatnie pionowy padding dla lepszego oddechu (whitespace) */
+  width: 100%;
+  max-width: 1350px;
+  margin: 0 auto;
+  padding: 16px 20px;
   box-sizing: border-box;
 }
 
 .app-footer {
   background-color: #0f172a;
-  color: #94a3b8;
+  border-top: 1px solid #1e293b;
+  color: #64748b;
   text-align: center;
-  padding: 15px 0; /* Dodano delikatny wewnętrzny margines, by tekst stopki nie leżał na krawędziach */
+  padding: 14px 20px;
+  font-size: 0.8em;
   width: 100%;
 }
 
 .menu-toggle {
   display: none;
   flex-direction: column;
-  gap: 4px;
+  justify-content: space-around;
+  width: 24px;
+  height: 20px;
   background: none;
   border: none;
   cursor: pointer;
+  padding: 0;
 }
 
 .menu-toggle span {
   display: block;
-  width: 22px;
+  width: 100%;
   height: 2px;
-  background-color: white;
+  background-color: #cbd5e1;
+  border-radius: 2px;
+  transition: all 0.2s;
 }
 
 .menu-overlay {
@@ -222,7 +309,8 @@ onUnmounted(() => {
   left: 0;
   width: 100vw;
   height: 100vh;
-  z-index: 5;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9999;
 }
 
 @media (max-width: 768px) {
@@ -233,23 +321,30 @@ onUnmounted(() => {
     display: none;
     flex-direction: column;
     position: absolute;
-    top: 55px;
+    top: 52px;
     left: 0;
     width: 100%;
-    background-color: #1e293b;
-    padding: 20px;
+    background-color: #0f172a;
+    border-bottom: 1px solid #334155;
+    padding: 14px 20px;
     box-sizing: border-box;
+    gap: 8px;
+    align-items: stretch;
   }
   .nav-links.open {
     display: flex;
+    z-index: 10002;
   }
   .dropdown-menu {
     position: static;
     transform: none;
-    background-color: transparent;
-    border: none;
+    background-color: #1e293b;
+    border: 1px solid #334155;
     box-shadow: none;
-    padding-left: 20px;
+    margin-top: 4px;
+  }
+  .app-content {
+    padding: 10px 12px;
   }
 }
 </style>

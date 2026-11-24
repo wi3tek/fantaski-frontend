@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, watch } from 'vue'
+import { ref, shallowRef, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SkiLoader from '@/components/SkiLoader.vue'
 import ResultsTable from '@/components/stats/ResultsTable.vue'
@@ -40,32 +40,62 @@ const excludedNames = ref<string[]>([])
 const loading = ref(false)
 
 // --- LOGIKA URL ---
-const syncStateFromUrl = () => {
-  const q = route.query
-  if (q.names)
-    selectedNames.value = Array.isArray(q.names) ? (q.names as string[]) : [q.names as string]
-  searchForm.value.place = (q.place as string) || ''
-  searchForm.value.hill_type = (q.hill_type as string) || ''
-  searchForm.value.category = q.category
-    ? Array.isArray(q.category)
-      ? (q.category as string[])
-      : [q.category as string]
-    : []
-  searchForm.value.session_type = (q.session_type as string) || ''
-  searchForm.value.date_from = (q.date_from as string) || ''
-  searchForm.value.date_to = (q.date_to as string) || ''
-  searchForm.value.limit = q.limit ? parseInt(q.limit as string) : 10
-  if (q.priceMode === 'true') {
-    priceMode.value = true
-    if (q.priceMin) priceMin.value = parseFloat(q.priceMin as string)
-    if (q.priceMax) priceMax.value = parseFloat(q.priceMax as string)
+const isSyncingFromUrl = ref(false)
+
+const syncStateFromUrl = async () => {
+  isSyncingFromUrl.value = true
+  try {
+    const q = route.query
+    if (q.names) {
+      selectedNames.value = Array.isArray(q.names) ? (q.names as string[]) : [q.names as string]
+    } else if (q.name) {
+      selectedNames.value = [q.name as string]
+    } else if (q.fis_code) {
+      const code = Number(q.fis_code)
+      const found = athletesWithPrices.value.find((a) => a.fis_code === code)
+      if (found) {
+        selectedNames.value = [found.name]
+      } else {
+        try {
+          const res = await fetch(`http://127.0.0.1:8000/athletes/find?fis_code=${code}`)
+          if (res.ok) {
+            const data = await res.json()
+            if (data?.full_name) {
+              selectedNames.value = [data.full_name]
+            }
+          }
+        } catch (e) {
+          console.error('Błąd pobierania danych skoczka po fis_code:', e)
+        }
+      }
+    }
+    searchForm.value.place = (q.place as string) || ''
+    searchForm.value.hill_type = (q.hill_type as string) || ''
+    searchForm.value.category = q.category
+      ? Array.isArray(q.category)
+        ? (q.category as string[])
+        : [q.category as string]
+      : []
+    searchForm.value.session_type = (q.session_type as string) || ''
+    searchForm.value.date_from = (q.date_from as string) || ''
+    searchForm.value.date_to = (q.date_to as string) || ''
+    searchForm.value.limit = q.limit ? parseInt(q.limit as string) : 10
+    if (q.priceMode === 'true') {
+      priceMode.value = true
+      if (q.priceMin) priceMin.value = parseFloat(q.priceMin as string)
+      if (q.priceMax) priceMax.value = parseFloat(q.priceMax as string)
+    }
+    if (q.onlyCommon === 'true') onlyCommon.value = true
+    if (q.hideEmptyAthletes === 'true') hideEmptyAthletes.value = true
+    if (q.highlightTopN) highlightTopN.value = parseInt(q.highlightTopN as string)
+  } finally {
+    await nextTick()
+    isSyncingFromUrl.value = false
   }
-  if (q.onlyCommon === 'true') onlyCommon.value = true
-  if (q.hideEmptyAthletes === 'true') hideEmptyAthletes.value = true
-  if (q.highlightTopN) highlightTopN.value = parseInt(q.highlightTopN as string)
 }
 
 const updateUrlQueryParams = () => {
+  if (isSyncingFromUrl.value) return
   const queryParams: Record<string, any> = { ...searchForm.value }
   Object.keys(queryParams).forEach((key) => {
     if (
@@ -100,6 +130,26 @@ watch(
   ],
   updateUrlQueryParams,
   { deep: true },
+)
+
+// Reagowanie na bezpośrednie nawigacje z parametrami zawodnika (np. z AthleteDetailView lub AthletesView)
+watch(
+  () => [route.query.fis_code, route.query.name],
+  async ([newFis, newName], [oldFis, oldName]) => {
+    if (newFis !== oldFis || newName !== oldName) {
+      if (newFis || newName) {
+        await syncStateFromUrl()
+        if (selectedNames.value.length > 0) {
+          const payload = Object.fromEntries(
+            Object.entries(searchForm.value).filter(([_, v]) =>
+              Array.isArray(v) ? v.length > 0 : v !== '' && v !== null,
+            ),
+          )
+          performSearch(payload, selectedNames.value)
+        }
+      }
+    }
+  },
 )
 
 // --- FETCH WYNIKÓW ---
@@ -193,7 +243,7 @@ onMounted(async () => {
   if (pricesRes?.ok) athletesWithPrices.value = await pricesRes.json()
   if (namesRes?.ok) availableNames.value = await namesRes.json()
 
-  syncStateFromUrl()
+  await syncStateFromUrl()
 
   if (selectedNames.value.length > 0 || priceMode.value) {
     const payload = Object.fromEntries(
