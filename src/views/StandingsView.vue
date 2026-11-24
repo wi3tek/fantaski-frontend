@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
+import { api } from '@/api/client'
 
 interface StandingAthlete {
   rank: number
@@ -49,26 +50,16 @@ const availableSeasons = computed(() => {
 const loadStandings = async () => {
   isLoading.value = true
   try {
-    const res = await fetch('http://127.0.0.1:8000/stats/standings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        season: selectedSeason.value,
-        category: selectedCategory.value,
-      }),
+    const data = await api.post('/stats/standings', {
+      season: selectedSeason.value,
+      category: selectedCategory.value,
     })
-
-    if (res.ok) {
-      const data = await res.json()
-      standings.value = data.standings || []
-      totalEvents.value = data.total_events || 0
-    } else {
-      console.error('Błąd serwera przy pobieraniu klasyfikacji')
-      standings.value = []
-      totalEvents.value = 0
-    }
+    standings.value = data.standings || []
+    totalEvents.value = data.total_events || 0
   } catch (e) {
-    console.error('Błąd sieci:', e)
+    console.error('Błąd pobierania klasyfikacji:', e)
+    standings.value = []
+    totalEvents.value = 0
   } finally {
     isLoading.value = false
   }

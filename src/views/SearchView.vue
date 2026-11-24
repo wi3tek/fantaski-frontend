@@ -5,7 +5,10 @@ import SkiLoader from '@/components/SkiLoader.vue'
 import ResultsTable from '@/components/stats/ResultsTable.vue'
 import SearchForm from '@/components/stats/SearchForm.vue'
 import AnalyticsPanel from '@/components/stats/AnalyticsPanel.vue'
+import { api } from '@/api/client'
+import { useAuth } from '@/stores/auth'
 
+const auth = useAuth()
 const route = useRoute()
 const router = useRouter()
 
@@ -57,12 +60,9 @@ const syncStateFromUrl = async () => {
         selectedNames.value = [found.name]
       } else {
         try {
-          const res = await fetch(`http://127.0.0.1:8000/athletes/find?fis_code=${code}`)
-          if (res.ok) {
-            const data = await res.json()
-            if (data?.full_name) {
-              selectedNames.value = [data.full_name]
-            }
+          const data = await api.get(`/athletes/find?fis_code=${code}`)
+          if (data?.full_name) {
+            selectedNames.value = [data.full_name]
           }
         } catch (e) {
           console.error('Błąd pobierania danych skoczka po fis_code:', e)
@@ -154,19 +154,20 @@ watch(
 
 // --- FETCH WYNIKÓW ---
 const performSearch = async (payload: any, finalNames: string[]) => {
+  if (auth.isLite.value && finalNames.length > 2) {
+    alert('Konto FantaSKI LITE pozwala na jednoczesne porównanie maksymalnie 2 zawodników.\nPrzejdź na pakiet PRO, aby analizować nielimitowaną liczbę skoczków.')
+    return
+  }
+
   searchedNames.value = finalNames
   excludedNames.value = []
   loading.value = true
   results.value = []
 
   try {
-    const res = await fetch('http://127.0.0.1:8000/stats/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (res.ok) results.value = await res.json()
-  } catch (e) {
+    results.value = await api.post('/stats/search', payload)
+  } catch (e: any) {
+    alert(e.message || 'Wystąpił błąd podczas pobierania danych.')
     console.error('Błąd sieci', e)
   } finally {
     loading.value = false
@@ -226,13 +227,12 @@ const groupedRows = computed(() => {
 
 // --- INICJALIZACJA ---
 onMounted(async () => {
-  const [dictsRes, pricesRes, namesRes] = await Promise.all([
-    fetch('http://127.0.0.1:8000/stats/form-data').catch(() => null),
-    fetch('http://127.0.0.1:8000/stats/athletes/with-prices').catch(() => null),
-    fetch('http://127.0.0.1:8000/athletes/names').catch(() => null),
+  const [data, prices, names] = await Promise.all([
+    api.get('/stats/form-data', { cacheTtlMs: 300000 }).catch(() => null),
+    api.get('/stats/athletes/with-prices', { cacheTtlMs: 60000 }).catch(() => null),
+    api.get('/athletes/names', { cacheTtlMs: 300000 }).catch(() => null),
   ])
-  if (dictsRes?.ok) {
-    const data = await dictsRes.json()
+  if (data) {
     dictionaries.value = {
       places: data.places || [],
       hills: data.hill_types || {},
@@ -240,8 +240,8 @@ onMounted(async () => {
       sessions: data.sessions || {},
     }
   }
-  if (pricesRes?.ok) athletesWithPrices.value = await pricesRes.json()
-  if (namesRes?.ok) availableNames.value = await namesRes.json()
+  if (prices) athletesWithPrices.value = prices
+  if (names) availableNames.value = names
 
   await syncStateFromUrl()
 
@@ -259,7 +259,11 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <h2>Ekspert System & Analiza (ESM)</h2>
+    <h2>Porównywarka &amp; Analiza Skoczków {{ auth.isLite.value ? '(FantaSKI LITE)' : '(FantaSKI PRO)' }}</h2>
+
+    <div v-if="auth.isLite.value" class="lite-notice-banner">
+      <span>ℹ️ <strong>Pakiet FantaSKI LITE:</strong> Możesz porównywać do 2 zawodników jednocześnie. Aby analizować całą stawkę lub większe grupy, przejdź na <strong>FantaSKI PRO</strong>.</span>
+    </div>
 
     <SearchForm
       v-model:searchForm="searchForm"
@@ -312,6 +316,18 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 25px;
+}
+
+.lite-notice-banner {
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  color: #1e40af;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 0.9em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .no-results {

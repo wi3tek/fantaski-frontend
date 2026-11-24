@@ -60,3 +60,7 @@ coverage/
 # Dynamicznie generowane dane
 public/data/
 public/jumpers.json
+.env
+.env.*.local
+.env.local
+.env.example

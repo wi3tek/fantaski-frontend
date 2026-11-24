@@ -172,7 +172,7 @@ const getTrendPath = (athleteName: string) => {
                 Zawodnik {{ sortKey === 'name' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th class="sortable-th" @click="sortBy('price')">
-                Cena ESM {{ sortKey === 'price' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                Cena Fantasy {{ sortKey === 'price' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th class="sortable-th" @click="sortBy('jumpCount')">
                 Skoki {{ sortKey === 'jumpCount' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
@@ -194,7 +194,7 @@ const getTrendPath = (athleteName: string) => {
                 Współczynnik ROI {{ sortKey === 'roi' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
                 <span
                   class="info-icon"
-                  data-tooltip="(Średnie Miejsce × Cena ESM). Im NIŻSZY wynik, tym tańszy i lepiej skaczący zawodnik."
+                  data-tooltip="(Średnie Miejsce × Cena Fantasy). Im NIŻSZY wynik, tym tańszy i lepiej skaczący zawodnik."
                   >&#9432;</span
                 >
               </th>

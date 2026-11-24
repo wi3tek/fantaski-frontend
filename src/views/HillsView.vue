@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
+import { api, clearApiCache } from '@/api/client'
+import { useAuth } from '@/stores/auth'
+
+const auth = useAuth()
 
 interface Hill {
   hill_id: string
@@ -32,12 +36,8 @@ const newHillForm = ref<Partial<Hill>>({
 const fetchHills = async () => {
   loading.value = true
   try {
-    const res = await fetch('http://127.0.0.1:8000/hills/list')
-    if (res.ok) {
-      hills.value = await res.json()
-    } else {
-      showMessage('error', 'Nie udało się pobrać listy skoczni.')
-    }
+    const data = await api.get('/hills/list', { cacheTtlMs: 60000 })
+    hills.value = data
   } catch (e) {
     console.error('Błąd pobierania skoczni:', e)
     showMessage('error', 'Błąd połączenia z serwerem.')
@@ -82,25 +82,17 @@ const saveEdit = async (hillId: string) => {
       record_holder: editForm.value.record_holder || null,
     }
 
-    const res = await fetch(`http://127.0.0.1:8000/hills/${encodeURIComponent(hillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-
-    if (res.ok) {
-      const idx = hills.value.findIndex((h) => h.hill_id === hillId)
-      if (idx !== -1) {
-        hills.value[idx] = { ...hills.value[idx], ...payload, hill_id: hillId }
-      }
-      editingHillId.value = null
-      showMessage('success', `Zaktualizowano dane skoczni ${hillId}.`)
-    } else {
-      showMessage('error', 'Wystąpił błąd podczas zapisywania zmian.')
+    await api.put(`/hills/${encodeURIComponent(hillId)}`, payload)
+    const idx = hills.value.findIndex((h) => h.hill_id === hillId)
+    if (idx !== -1) {
+      hills.value[idx] = { ...hills.value[idx], ...payload, hill_id: hillId }
     }
-  } catch (e) {
+    editingHillId.value = null
+    clearApiCache('/hills/list')
+    showMessage('success', `Zaktualizowano dane skoczni ${hillId}.`)
+  } catch (e: any) {
     console.error(e)
-    showMessage('error', 'Błąd połączenia z serwerem.')
+    showMessage('error', e.message || 'Błąd połączenia z serwerem.')
   } finally {
     isSaving.value = false
   }
@@ -110,18 +102,13 @@ const deleteHill = async (hillId: string) => {
   if (!confirm(`Czy na pewno chcesz usunąć skocznię ${hillId}?`)) return
 
   try {
-    const res = await fetch(`http://127.0.0.1:8000/hills/${encodeURIComponent(hillId)}`, {
-      method: 'DELETE',
-    })
-    if (res.ok) {
-      hills.value = hills.value.filter((h) => h.hill_id !== hillId)
-      showMessage('success', `Usunięto skocznię ${hillId}.`)
-    } else {
-      showMessage('error', 'Nie udało się usunąć skoczni.')
-    }
-  } catch (e) {
+    await api.delete(`/hills/${encodeURIComponent(hillId)}`)
+    hills.value = hills.value.filter((h) => h.hill_id !== hillId)
+    clearApiCache('/hills/list')
+    showMessage('success', `Usunięto skocznię ${hillId}.`)
+  } catch (e: any) {
     console.error(e)
-    showMessage('error', 'Błąd połączenia z serwerem.')
+    showMessage('error', e.message || 'Błąd połączenia z serwerem.')
   }
 }
 
@@ -150,23 +137,15 @@ const saveNewHill = async () => {
       record_holder: newHillForm.value.record_holder || null,
     }
 
-    const res = await fetch(`http://127.0.0.1:8000/hills/${encodeURIComponent(hillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-
-    if (res.ok) {
-      hills.value.unshift({ ...payload, hill_id: hillId })
-      showAddModal.value = false
-      newHillForm.value = { unit: 'HS', type: 'LARGE' }
-      showMessage('success', `Dodano nową skocznię ${hillId}.`)
-    } else {
-      showMessage('error', 'Błąd podczas dodawania skoczni.')
-    }
-  } catch (e) {
+    await api.put(`/hills/${encodeURIComponent(hillId)}`, payload)
+    hills.value.unshift({ ...payload, hill_id: hillId })
+    showAddModal.value = false
+    newHillForm.value = { unit: 'HS', type: 'LARGE' }
+    clearApiCache('/hills/list')
+    showMessage('success', `Dodano nową skocznię ${hillId}.`)
+  } catch (e: any) {
     console.error(e)
-    showMessage('error', 'Błąd połączenia z serwerem.')
+    showMessage('error', e.message || 'Błąd połączenia z serwerem.')
   } finally {
     isSaving.value = false
   }
@@ -191,7 +170,7 @@ onMounted(() => {
         <h2>🏔️ Baza Skoczni Narciarskich</h2>
         <p class="subtitle">Zarządzanie parametrami skoczni (HS, punkt K, rozmiar, typ) zapisanymi w MongoDB.</p>
       </div>
-      <button @click="showAddModal = true" class="btn-primary">
+      <button v-if="auth.isAdmin.value" @click="showAddModal = true" class="btn-primary">
         + Dodaj nową skocznię
       </button>
     </div>
@@ -225,7 +204,7 @@ onMounted(() => {
             <th style="width: 100px">Punkt K</th>
             <th style="width: 130px">Typ skoczni</th>
             <th>Rekord</th>
-            <th style="width: 160px; text-align: right">Akcje</th>
+            <th v-if="auth.isAdmin.value" style="width: 160px; text-align: right">Akcje</th>
           </tr>
         </thead>
         <tbody>
@@ -350,7 +329,7 @@ onMounted(() => {
                 </div>
                 <span v-else class="text-dim">-</span>
               </td>
-              <td style="text-align: right">
+              <td v-if="auth.isAdmin.value" style="text-align: right">
                 <button
                   @click="startEdit(hill)"
                   class="btn-action edit"

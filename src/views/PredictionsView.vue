@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
+import { api } from '@/api/client'
 
 interface Hill {
   hill_id: string
@@ -198,13 +199,11 @@ const selectedAthletesDetails = computed(() => {
 // Pobranie listy skoczni
 const fetchHills = async () => {
   try {
-    const res = await fetch('http://127.0.0.1:8000/hills/list')
-    if (res.ok) {
-      hills.value = await res.json()
-      hills.value.sort((a, b) => (a.place || '').localeCompare(b.place || ''))
-      if (!hills.value.some(h => h.hill_id === selectedHillId.value) && hills.value.length > 0 && hills.value[0]) {
-        selectedHillId.value = hills.value[0].hill_id
-      }
+    const data = await api.get('/hills/list', { cacheTtlMs: 60000 })
+    hills.value = data
+    hills.value.sort((a, b) => (a.place || '').localeCompare(b.place || ''))
+    if (!hills.value.some(h => h.hill_id === selectedHillId.value) && hills.value.length > 0 && hills.value[0]) {
+      selectedHillId.value = hills.value[0].hill_id
     }
   } catch (e) {
     console.error('Błąd pobierania skoczni:', e)
@@ -214,14 +213,12 @@ const fetchHills = async () => {
 // Pobranie listy dostępnych skoczków (z domyślnym filtrem price != null)
 const fetchAvailableAthletes = async () => {
   try {
-    const res = await fetch('http://127.0.0.1:8000/prediction/available-athletes')
-    if (res.ok) {
-      availableAthletes.value = await res.json()
-      // NOWOŚĆ: Domyślnie załaduj dokładnie skoczków z wyceną (price != null)
-      selectedFisCodes.value = availableAthletes.value
-        .filter(a => a.has_price)
-        .map(a => String(a.fis_code))
-    }
+    const data = await api.get('/prediction/available-athletes')
+    availableAthletes.value = data
+    // Domyślnie załaduj dokładnie skoczków z wyceną (price != null)
+    selectedFisCodes.value = availableAthletes.value
+      .filter(a => a.has_price)
+      .map(a => String(a.fis_code))
   } catch (e) {
     console.error('Błąd pobierania skoczków:', e)
   }
@@ -270,11 +267,8 @@ const applyAthletePreset = (preset: 'priced' | 'top30' | 'pol' | 'clear') => {
 // Pobranie informacji o modelu
 const fetchModelInfo = async () => {
   try {
-    const res = await fetch('http://127.0.0.1:8000/prediction/model-info')
-    if (res.ok) {
-      const data = await res.json()
-      modelMeta.value = data.metadata
-    }
+    const data = await api.get('/prediction/model-info')
+    modelMeta.value = data.metadata
   } catch (e) {
     console.error('Błąd pobierania info o modelu:', e)
   }
@@ -286,26 +280,20 @@ const fetchWeatherForecast = async () => {
   weatherMessage.value = null
   try {
     const place = currentHill.value.place
-    const url = `http://127.0.0.1:8000/prediction/weather?place=${encodeURIComponent(place)}&date=${selectedDate.value}&time=${selectedTime.value}`
-    const res = await fetch(url)
-    if (res.ok) {
-      const data = await res.json()
-      weather.value = {
-        temperature: data.temperature,
-        wind_speed: data.wind_speed,
-        wind_direction: data.wind_direction,
-        wind_gusts: data.wind_gusts,
-        surface_pressure: data.surface_pressure,
-        relative_humidity: data.relative_humidity,
-        precipitation: data.precipitation,
-        headwind_component: data.headwind_component,
-        source: data.source,
-        is_forecast: data.is_forecast
-      }
-      weatherMessage.value = `Pobrano dane pogodowe dla: ${place} (${data.source})`
-    } else {
-      weatherMessage.value = 'Nie udało się pobrać pogody, zastosowano wartości domyślne.'
+    const data = await api.get(`/prediction/weather?place=${encodeURIComponent(place)}&date=${selectedDate.value}&time=${selectedTime.value}`)
+    weather.value = {
+      temperature: data.temperature,
+      wind_speed: data.wind_speed,
+      wind_direction: data.wind_direction,
+      wind_gusts: data.wind_gusts,
+      surface_pressure: data.surface_pressure,
+      relative_humidity: data.relative_humidity,
+      precipitation: data.precipitation,
+      headwind_component: data.headwind_component,
+      source: data.source,
+      is_forecast: data.is_forecast
     }
+    weatherMessage.value = `Pobrano dane pogodowe dla: ${place} (${data.source})`
   } catch (e) {
     console.error('Błąd pobierania pogody:', e)
     weatherMessage.value = 'Błąd połączenia z API pogodowym.'
@@ -336,23 +324,11 @@ const runPrediction = async () => {
       num_simulations: 100
     }
 
-    const res = await fetch('http://127.0.0.1:8000/prediction/predict', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-
-    if (res.ok) {
-      const data = await res.json()
-      predictions.value = data.predictions
-      detectedWeekendSessions.value = data.weekend_sessions_detected || []
-    } else {
-      const err = await res.json()
-      errorMsg.value = err.detail || 'Wystąpił błąd podczas generowania predykcji.'
-    }
-  } catch (e) {
-    console.error('Błąd generowania predykcji:', e)
-    errorMsg.value = 'Brak połączenia z serwerem analitycznym.'
+    const data = await api.post('/prediction/predict', payload)
+    predictions.value = data.predictions
+    detectedWeekendSessions.value = data.weekend_sessions_detected || []
+  } catch (err: any) {
+    errorMsg.value = err.message || 'Wystąpił błąd podczas generowania predykcji.'
   } finally {
     isPredicting.value = false
   }

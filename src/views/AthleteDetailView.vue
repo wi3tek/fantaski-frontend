@@ -2,7 +2,10 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import SkiLoader from '@/components/SkiLoader.vue'
+import { API_BASE_URL } from '@/api/client'
+import { useAuth } from '@/stores/auth'
 
+const auth = useAuth()
 const route = useRoute()
 const athlete = ref<any>(null)
 const loading = ref(true)
@@ -10,7 +13,10 @@ const loading = ref(true)
 onMounted(async () => {
   const fisCode = route.params.fis_code
   try {
-    const res = await fetch(`http://127.0.0.1:8000/athletes/find?fis_code=${fisCode}`)
+    const token = localStorage.getItem('token')
+    const res = await fetch(`${API_BASE_URL}/athletes/find?fis_code=${fisCode}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
     if (res.ok) {
       athlete.value = await res.json()
     }
@@ -83,8 +89,8 @@ onMounted(async () => {
               <span class="label">Klub</span>
               <span class="value">{{ athlete.club || '-' }}</span>
             </div>
-            <div class="data-item" v-if="athlete.price != null">
-              <span class="label">Cena ESM</span>
+            <div class="data-item" v-if="auth.isPro.value && athlete.price != null">
+              <span class="label">Wycena Fantasy</span>
               <span class="value price-value">{{ Number(athlete.price).toFixed(1) }}</span>
             </div>
           </div>

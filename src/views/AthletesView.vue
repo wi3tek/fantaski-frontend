@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
+import { api } from '@/api/client'
+import { useAuth } from '@/stores/auth'
+
+const auth = useAuth()
 
 interface Athlete {
   fis_code: string
@@ -96,11 +100,11 @@ watch(countryInput, () => {
   activeCountryIndex.value = -1
 })
 
-// Pobieranie słownika krajów
+// Pobieranie słownika krajów (z in-memory cache)
 const fetchCountries = async () => {
   try {
-    const res = await fetch('http://127.0.0.1:8000/athletes/countries')
-    if (res.ok) countries.value = await res.json()
+    const data = await api.get('/athletes/countries', { cacheTtlMs: 300000 })
+    countries.value = data
   } catch (e) {
     console.error('Błąd pobierania krajów', e)
   }
@@ -116,19 +120,11 @@ const fetchAthletes = async (append = false) => {
   }
 
   try {
-    const res = await fetch('http://127.0.0.1:8000/athletes/list', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(filters.value)
-    })
-
-    if (res.ok) {
-      const data = await res.json()
-      if (append) {
-        athletes.value = [...athletes.value, ...data]
-      } else {
-        athletes.value = data
-      }
+    const data = await api.post('/athletes/list', filters.value)
+    if (append) {
+      athletes.value = [...athletes.value, ...data]
+    } else {
+      athletes.value = data
     }
   } catch (e) {
     console.error('Błąd pobierania bazy skoczków', e)
@@ -187,21 +183,26 @@ const calculateAge = (birthdate: string | null): string | number => {
 }
 
 const fetchPrices = async () => {
+  if (!auth.isPro.value) return
   try {
-    const res = await fetch('http://127.0.0.1:8000/stats/athletes/with-prices')
-    if (res.ok) {
-      const data: { name: string; fis_code: number; price: number }[] = await res.json()
-      const map: Record<string, number> = {}
-      for (const item of data) {
-        if (item.fis_code != null) map[String(item.fis_code)] = item.price
-        if (item.name) map[item.name.toLowerCase().trim()] = item.price
-      }
-      pricesMap.value = map
+    const data: { name: string; fis_code: number; price: number }[] = await api.get(
+      '/stats/athletes/with-prices',
+      { cacheTtlMs: 60000 }
+    )
+    const map: Record<string, number> = {}
+    for (const item of data) {
+      if (item.fis_code != null) map[String(item.fis_code)] = item.price
+      if (item.name) map[item.name.toLowerCase().trim()] = item.price
     }
+    pricesMap.value = map
   } catch (e) {
-    // cichy fallback w przypadku braku połączenia
+    // cichy fallback w przypadku braku uprawnień lub błędu
   }
 }
+
+watch(() => auth.isPro.value, (isPro) => {
+  if (isPro) fetchPrices()
+})
 
 const getAthletePrice = (athlete: Athlete): number | null => {
   if (athlete.price != null) return athlete.price
@@ -312,7 +313,7 @@ onMounted(() => {
             <th @click="toggleSort('full_name')" class="sortable col-name">
               Imię i Nazwisko <span class="sort-icon">{{ sortIcon('full_name') }}</span>
             </th>
-            <th class="col-price">Cena ESM</th>
+            <th v-if="auth.isPro.value" class="col-price">Cena Fantasy</th>
             <th @click="toggleSort('birthdate')" class="sortable col-age" title="Sortowanie po wieku">
               Wiek <span class="sort-icon">{{ sortIconAge() }}</span>
             </th>
@@ -344,7 +345,7 @@ onMounted(() => {
               <span v-if="athlete.status !== 'Active'" class="status-dot inactive" title="Koniec kariery"></span>
               <span v-else class="status-dot active" title="Aktywny"></span>
             </td>
-            <td class="col-price">
+            <td v-if="auth.isPro.value" class="col-price">
               <span v-if="getAthletePrice(athlete) != null" class="price-chip">
                 {{ getAthletePrice(athlete)!.toFixed(1) }}
               </span>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
+import { API_BASE_URL } from '@/api/client'
 
 const activeTab = ref('scraper')
 
@@ -76,9 +77,9 @@ const runPdfChecker = async () => {
   isCheckingPdf.value = true
   checkerResult.value = null
   try {
-    const res = await fetch('http://127.0.0.1:8000/admin/refresh-trainings-checker', {
+    const res = await fetch(`${API_BASE_URL}/admin/refresh-trainings-checker`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders(),
       body: JSON.stringify(checkerForm.value),
     })
     checkerResult.value = await res.json()
@@ -183,12 +184,64 @@ const getDiff = (oldObj: any, newObj: any) => {
 // ========================================================
 
 const getHeaders = () => {
-  return { 'Content-Type': 'application/json' }
+  const token = localStorage.getItem('token')
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  }
+}
+
+// --- Stan Zarządzania Użytkownikami ---
+const usersList = ref<any[]>([])
+const isLoadingUsers = ref(false)
+const updatingUserId = ref<string | null>(null)
+const userSuccessMessage = ref('')
+const userErrorMessage = ref('')
+
+const loadUsers = async () => {
+  isLoadingUsers.value = true
+  userErrorMessage.value = ''
+  try {
+    const res = await fetch(`${API_BASE_URL}/auth/users`, { headers: getHeaders() })
+    if (!res.ok) throw new Error(`Błąd pobierania (${res.status})`)
+    usersList.value = await res.json()
+  } catch (e: any) {
+    userErrorMessage.value = e.message || 'Nie udało się pobrać listy użytkowników'
+  } finally {
+    isLoadingUsers.value = false
+  }
+}
+
+const changeUserRole = async (targetUser: any, newRole: string) => {
+  if (targetUser.role === newRole) return
+  updatingUserId.value = targetUser.id
+  userErrorMessage.value = ''
+  userSuccessMessage.value = ''
+  try {
+    const res = await fetch(`${API_BASE_URL}/auth/users/${targetUser.id}/role`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ role: newRole }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.detail || 'Błąd aktualizacji roli')
+    }
+    targetUser.role = newRole
+    userSuccessMessage.value = `Pomyślnie zmieniono rolę użytkownika ${targetUser.email} na ${newRole}.`
+    setTimeout(() => {
+      userSuccessMessage.value = ''
+    }, 4000)
+  } catch (e: any) {
+    userErrorMessage.value = e.message || 'Błąd zmiany roli'
+  } finally {
+    updatingUserId.value = null
+  }
 }
 
 const loadConfig = async () => {
   try {
-    const res = await fetch('http://127.0.0.1:8000/admin/config', { headers: getHeaders() })
+    const res = await fetch(`${API_BASE_URL}/admin/config`, { headers: getHeaders() })
     if (res.ok) {
       const data = await res.json()
       availableCategories.value = data.categories || {}
@@ -204,7 +257,7 @@ const runScraper = async () => {
   isScraping.value = true
   scrapeResult.value = null
   try {
-    const res = await fetch('http://127.0.0.1:8000/admin/refresh-results', {
+    const res = await fetch(`${API_BASE_URL}/admin/refresh-results`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({
@@ -227,11 +280,9 @@ const runPdfScraper = async () => {
   isPdfScraping.value = true
   pdfScrapeResult.value = null
   try {
-    const res = await fetch('http://127.0.0.1:8000/admin/refresh-trainings', {
+    const res = await fetch(`${API_BASE_URL}/admin/refresh-trainings`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getHeaders(),
       body: JSON.stringify({ season: pdfSeason.value || null }),
     })
     const data = await res.json()
@@ -254,7 +305,7 @@ const refreshAthletes = async () => {
   try {
     // Wysyłamy flagę w Body jako stringified JSON
     const body = JSON.stringify({ onlyPriceUpdate: onlyPriceUpdate.value })
-    const res = await fetch('http://127.0.0.1:8000/admin/refresh-athletes', {
+    const res = await fetch(`${API_BASE_URL}/admin/refresh-athletes`, {
       method: 'POST',
       headers: getHeaders(),
       body,
@@ -275,7 +326,7 @@ const fetchReviews = async () => {
   expandedAthlete.value = null
   try {
     const endpoint = reviewTab.value === 'athletes' ? 'athletes' : 'sessions'
-    const res = await fetch(`http://127.0.0.1:8000/admin/reviews/${endpoint}`, {
+    const res = await fetch(`${API_BASE_URL}/admin/reviews/${endpoint}`, {
       headers: getHeaders(),
     })
     if (res.ok) {
@@ -291,7 +342,7 @@ const fetchReviews = async () => {
 
 const handleAthleteReview = async (fisCode: number, action: 'approve' | 'reject') => {
   try {
-    const res = await fetch(`http://127.0.0.1:8000/admin/reviews/athletes/${fisCode}/${action}`, {
+    const res = await fetch(`${API_BASE_URL}/admin/reviews/athletes/${fisCode}/${action}`, {
       method: 'POST',
       headers: getHeaders(),
     })
@@ -308,7 +359,7 @@ const handleApproveAllAthletes = async () => {
   if (!confirm(`Zatwierdzić wszystkie (${athleteReviews.value.length}) zmiany u skoczków?`)) return
   isApprovingAll.value = true
   try {
-    const res = await fetch('http://127.0.0.1:8000/admin/reviews/athletes/approve-all', {
+    const res = await fetch(`${API_BASE_URL}/admin/reviews/athletes/approve-all`, {
       method: 'POST',
       headers: getHeaders(),
     })
@@ -325,7 +376,7 @@ const handleApproveAllAthletes = async () => {
 
 const handleSessionReview = async (codex: string, action: 'approve' | 'reject') => {
   try {
-    const res = await fetch(`http://127.0.0.1:8000/admin/reviews/sessions/${codex}/${action}`, {
+    const res = await fetch(`${API_BASE_URL}/admin/reviews/sessions/${codex}/${action}`, {
       method: 'POST',
       headers: getHeaders(),
     })
@@ -342,7 +393,7 @@ const handleApproveAllSessions = async () => {
   if (!confirm(`Zatwierdzić wszystkie (${sessionReviews.value.length}) zmiany w sesjach?`)) return
   isApprovingAll.value = true
   try {
-    const res = await fetch('http://127.0.0.1:8000/admin/reviews/sessions/approve-all', {
+    const res = await fetch(`${API_BASE_URL}/admin/reviews/sessions/approve-all`, {
       method: 'POST',
       headers: getHeaders(),
     })
@@ -366,7 +417,7 @@ const handleRejectAllSessions = async () => {
     return
   isRejectingAll.value = true
   try {
-    const res = await fetch('http://127.0.0.1:8000/admin/reviews/sessions/reject-all', {
+    const res = await fetch(`${API_BASE_URL}/admin/reviews/sessions/reject-all`, {
       method: 'POST',
       headers: getHeaders(),
     })
@@ -383,6 +434,7 @@ const handleRejectAllSessions = async () => {
 
 watch(activeTab, (newVal) => {
   if (newVal === 'review') fetchReviews()
+  if (newVal === 'users') loadUsers()
 })
 watch(reviewTab, () => {
   fetchReviews()
@@ -427,6 +479,9 @@ onMounted(() => {
       <button :class="{ active: activeTab === 'review' }" @click="activeTab = 'review'">
         <span>🛡️</span> Kwarantanna
         <span v-if="totalPendingReviews > 0" class="badge-counter">{{ totalPendingReviews }}</span>
+      </button>
+      <button :class="{ active: activeTab === 'users' }" @click="activeTab = 'users'">
+        <span>👥</span> Użytkownicy & Role
       </button>
     </div>
 
@@ -664,7 +719,7 @@ onMounted(() => {
           <div>
             <h3>Zarządzanie Bazą Skoczków</h3>
             <p class="subtitle">
-              Pobierz najnowszą listę zawodników z FIS lub zaktualizuj ceny z Fantasy ESM.
+              Pobierz najnowszą listę zawodników z FIS lub zaktualizuj ceny Fantasy.
             </p>
           </div>
         </div>
@@ -672,7 +727,7 @@ onMounted(() => {
         <div class="options-container">
           <label class="toggle-label">
             <input v-model="onlyPriceUpdate" type="checkbox" />
-            <span>Szybka aktualizacja cen z ESM (omija pełne scrapowanie FIS)</span>
+            <span>Szybka aktualizacja cen Fantasy (omija pełne scrapowanie FIS)</span>
           </label>
         </div>
 
@@ -887,6 +942,88 @@ onMounted(() => {
           </table>
         </div>
         <p v-else class="empty-state">Brak wyników oczekujących na weryfikację. 🎿</p>
+      </div>
+    </div>
+
+    <!-- TAB 5: ZARZĄDZANIE UŻYTKOWNIKAMI I ROLAMI -->
+    <div v-if="activeTab === 'users'" class="tab-content">
+      <div class="admin-card">
+        <div class="admin-card-header flex-between">
+          <div>
+            <h3>Zarządzanie Użytkownikami i Uprawnieniami</h3>
+            <p class="subtitle">Przeglądaj zarejestrowanych użytkowników i zarządzaj dostępem do FantaSKI PRO.</p>
+          </div>
+          <button class="btn btn-secondary" @click="loadUsers" :disabled="isLoadingUsers">
+            🔄 Odśwież listę
+          </button>
+        </div>
+
+        <div v-if="userSuccessMessage" class="alert-success-box">
+          ✅ {{ userSuccessMessage }}
+        </div>
+        <div v-if="userErrorMessage" class="alert-error-box">
+          ❌ {{ userErrorMessage }}
+        </div>
+
+        <div v-if="isLoadingUsers" class="loading-state">
+          Wczytywanie listy użytkowników...
+        </div>
+
+        <div v-else-if="usersList.length > 0" class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Użytkownik</th>
+                <th>Adres e-mail</th>
+                <th>Data rejestracji</th>
+                <th>Ostatnie logowanie</th>
+                <th>Aktualna rola</th>
+                <th>Zmień uprawnienia</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="u in usersList" :key="u.id">
+                <td>
+                  <div class="user-row-cell">
+                    <img v-if="u.picture" :src="u.picture" class="user-row-avatar" alt="Avatar" />
+                    <span v-else class="user-row-fallback">👤</span>
+                    <strong>{{ u.name }}</strong>
+                  </div>
+                </td>
+                <td><code>{{ u.email }}</code></td>
+                <td>{{ u.created_at ? new Date(u.created_at).toLocaleDateString() : '-' }}</td>
+                <td>{{ u.last_login ? new Date(u.last_login).toLocaleString() : '-' }}</td>
+                <td>
+                  <span
+                    class="role-badge"
+                    :class="{
+                      'role-admin': u.role === 'ADMIN',
+                      'role-pro': u.role === 'USER_PRO',
+                      'role-lite': u.role === 'USER_LITE',
+                      'role-user': u.role === 'USER',
+                    }"
+                  >
+                    {{ u.role === 'ADMIN' ? 'ADMIN' : (u.role === 'USER_PRO' ? 'PRO' : (u.role === 'USER_LITE' ? 'LITE' : 'STANDARD')) }}
+                  </span>
+                </td>
+                <td>
+                  <select
+                    class="form-select role-select"
+                    :value="u.role"
+                    :disabled="updatingUserId === u.id"
+                    @change="changeUserRole(u, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="USER">Konto standardowe (Darmowe)</option>
+                    <option value="USER_LITE">FantaSKI LITE (Porównywarka do 2 skoczków)</option>
+                    <option value="USER_PRO">FantaSKI PRO (Pełna analityka & Predykcje)</option>
+                    <option value="ADMIN">Administrator</option>
+                  </select>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="empty-state">Brak zarejestrowanych użytkowników w bazie danych.</p>
       </div>
     </div>
   </div>
@@ -1408,6 +1545,86 @@ onMounted(() => {
 }
 .diff-line.unchanged {
   opacity: 0.65;
+  font-style: italic;
+}
+
+/* UŻYTKOWNICY I ROLE */
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.user-row-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.user-row-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.user-row-fallback {
+  font-size: 1.3em;
+}
+.role-badge {
+  font-size: 0.72em;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  display: inline-block;
+}
+.role-admin {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #f87171;
+}
+.role-pro {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fbbf24;
+}
+.role-lite {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
+.role-user {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+.role-select {
+  padding: 6px 10px;
+  font-size: 0.85em;
+  font-weight: 500;
+  border-radius: 6px;
+  max-width: 260px;
+}
+.alert-success-box {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  color: #166534;
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 0.9em;
+}
+.alert-error-box {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 0.9em;
+}
+.loading-state {
+  text-align: center;
+  padding: 30px;
+  color: #64748b;
   font-style: italic;
 }
 </style>

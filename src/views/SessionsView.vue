@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
 import { RouterLink } from 'vue-router'
+import { api } from '@/api/client'
 
 interface SessionLight {
   _id: string
@@ -68,17 +69,14 @@ const fisToIso: Record<string, string> = {
 
 const fetchCountries = async () => {
   try {
-    const res = await fetch('http://127.0.0.1:8000/athletes/countries')
-    if (res.ok) {
-      const data: Country[] = await res.json()
-      countries.value = data.reduce(
-        (acc, curr) => {
-          acc[curr.code] = curr.name
-          return acc
-        },
-        {} as Record<string, string>,
-      )
-    }
+    const data: Country[] = await api.get('/athletes/countries', { cacheTtlMs: 300000 })
+    countries.value = data.reduce(
+      (acc, curr) => {
+        acc[curr.code] = curr.name
+        return acc
+      },
+      {} as Record<string, string>,
+    )
   } catch (e) {
     console.error('Błąd pobierania krajów:', e)
   }
@@ -94,25 +92,15 @@ const fetchSessions = async (append = false) => {
   }
 
   try {
-    const res = await fetch('http://127.0.0.1:8000/stats/sessions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(filters.value),
-    })
-
-    if (res.ok) {
-      const data: SessionLight[] = await res.json()
-      if (append) {
-        sessions.value = [...sessions.value, ...data]
-      } else {
-        sessions.value = data
-      }
+    const data: SessionLight[] = await api.post('/stats/sessions', filters.value)
+    if (append) {
+      sessions.value = [...sessions.value, ...data]
     } else {
-      errorMessage.value = `Błąd serwera (${res.status}): Nie udało się pobrać listy sesji.`
+      sessions.value = data
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error('Błąd pobierania sesji:', e)
-    errorMessage.value = 'Błąd połączenia z serwerem. Upewnij się, że backend jest uruchomiony.'
+    errorMessage.value = e.message || 'Błąd połączenia z serwerem. Upewnij się, że backend jest uruchomiony.'
   } finally {
     loading.value = false
     loadingMore.value = false

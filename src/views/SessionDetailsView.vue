@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SkiLoader from '@/components/SkiLoader.vue'
+import { api } from '@/api/client'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,16 +31,16 @@ const pricesMap = ref<Record<string, number>>({})
 
 const fetchPrices = async () => {
   try {
-    const res = await fetch('http://127.0.0.1:8000/stats/athletes/with-prices')
-    if (res.ok) {
-      const data: { name: string; fis_code: number; price: number }[] = await res.json()
-      const map: Record<string, number> = {}
-      for (const item of data) {
-        if (item.fis_code != null) map[String(item.fis_code)] = item.price
-        if (item.name) map[item.name.toLowerCase().trim()] = item.price
-      }
-      pricesMap.value = map
+    const data: { name: string; fis_code: number; price: number }[] = await api.get(
+      '/stats/athletes/with-prices',
+      { cacheTtlMs: 60000 }
+    )
+    const map: Record<string, number> = {}
+    for (const item of data) {
+      if (item.fis_code != null) map[String(item.fis_code)] = item.price
+      if (item.name) map[item.name.toLowerCase().trim()] = item.price
     }
+    pricesMap.value = map
   } catch (e) {
     // cichy fallback offline
   }
@@ -216,15 +217,11 @@ const saveRenamePackage = (pkgId: string) => {
 
 const fetchDetails = async () => {
   try {
-    const res = await fetch(`http://127.0.0.1:8000/stats/sessions/${sessionId}`)
-    if (res.ok) {
-      session.value = await res.json()
-    } else {
-      alert('Nie znaleziono sesji.')
-      router.push('/sessions')
-    }
+    session.value = await api.get(`/stats/sessions/${sessionId}`)
   } catch (e) {
     console.error('Błąd:', e)
+    alert('Nie znaleziono sesji.')
+    router.push('/sessions')
   } finally {
     loading.value = false
   }

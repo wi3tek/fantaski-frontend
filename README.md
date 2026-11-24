@@ -1,42 +1,21 @@
-# fantaski-datastore
+# FantaSKI - frontend
 
-This template should help get you started developing with Vue 3 in Vite.
+Nowoczesna aplikacja webowa Vue 3 (Vite + TypeScript) dla platformy **FantaSKI** — bazy wyników, klasyfikacji, narzędzi analitycznych Fantasy oraz predykcji skoków narciarskich.
 
-## Recommended IDE Setup
+## Funkcjonalności
+- Przeglądanie bazy skoczków, sesji i skoczni
+- Klasyfikacje generalne Pucharu Świata i pozostałych cykli FIS
+- Narzędzia FantaSKI PRO: zaawansowana porównywarka Head-to-Head, wyceny Fantasy oraz predykcje AI
+- Logowanie przez Google Identity Services (OAuth2)
+- Panel administracyjny ze scraperem i kwarantanną danych
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Recommended Browser Setup
-
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
+## Uruchomienie lokalne
+```bash
 npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
 npm run dev
 ```
 
-### Type-Check, Compile and Minify for Production
-
-```sh
+## Budowanie produkcyjne
+```bash
 npm run build
 ```
