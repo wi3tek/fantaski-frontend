@@ -398,15 +398,42 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
     <div
       v-else
       class="card"
-      style="text-align: center; color: #64748b; padding: 40px; font-style: italic"
+      style="text-align: center; color: #64748b; padding: 36px 20px"
     >
-      Brak zawodów spełniających kryteria <strong>filtrów widoku</strong>.<br />
-      Odznacz opcję <em>"Wyświetlaj tylko wspólne zawody"</em> lub przywróć ukrytych skoczków.
+      <div style="font-size: 2.5rem; margin-bottom: 10px">🔍</div>
+      <p style="margin: 0 0 14px 0; font-size: 0.95rem; line-height: 1.5">
+        Brak zawodów spełniających kryteria <strong>filtrów widoku</strong>.<br />
+        Wybrani skoczkowie mogli nie startować razem w tej samej serii lub włączono filtr wspólnych zawodów.
+      </p>
+      <div v-if="localOnlyCommon">
+        <button
+          type="button"
+          class="btn-reset-common"
+          @click="localOnlyCommon = false"
+        >
+          ✕ Wyłącz filtr "Tylko wspólne zawody"
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.btn-reset-common {
+  background: #0284c7;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-reset-common:hover {
+  background: #0369a1;
+}
 /* Klasy kontrolujące widoczność RWD */
 .desktop-only { display: flex; }
 .mobile-only { display: none; }

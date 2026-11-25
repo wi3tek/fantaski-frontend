@@ -7,8 +7,10 @@ import SearchForm from '@/components/stats/SearchForm.vue'
 import AnalyticsPanel from '@/components/stats/AnalyticsPanel.vue'
 import { api } from '@/api/client'
 import { useAuth } from '@/stores/auth'
+import { useNotice } from '@/stores/notice'
 
 const auth = useAuth()
+const notice = useNotice()
 const route = useRoute()
 const router = useRouter()
 
@@ -155,7 +157,11 @@ watch(
 // --- FETCH WYNIKÓW ---
 const performSearch = async (payload: any, finalNames: string[]) => {
   if (auth.isLite.value && finalNames.length > 2) {
-    alert('Konto FantaSKI LITE pozwala na jednoczesne porównanie maksymalnie 2 zawodników.\nPrzejdź na pakiet PRO, aby analizować nielimitowaną liczbę skoczków.')
+    notice.showNotice({
+      title: 'Limit pakietu FantaSKI LITE',
+      message: 'Konto FantaSKI LITE pozwala na jednoczesne porównanie maksymalnie 2 zawodników. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków.',
+      badge: 'LIMIT LITE: 2',
+    })
     return
   }
 
@@ -167,7 +173,11 @@ const performSearch = async (payload: any, finalNames: string[]) => {
   try {
     results.value = await api.post('/stats/search', payload)
   } catch (e: any) {
-    alert(e.message || 'Wystąpił błąd podczas pobierania danych.')
+    notice.showNotice({
+      title: 'Błąd pobierania danych',
+      message: e.message || 'Wystąpił nieoczekiwany błąd podczas pobierania danych z serwera.',
+      badge: 'BŁĄD',
+    })
     console.error('Błąd sieci', e)
   } finally {
     loading.value = false
@@ -224,6 +234,35 @@ const groupedRows = computed(() => {
   })
   return rows.sort((a, b) => new Date(b.meta.date).getTime() - new Date(a.meta.date).getTime())
 })
+
+// --- AKCJE SZYBKIEGO RESETU / SUGIESTII ---
+const resetToWorldCup = () => {
+  searchForm.value = {
+    place: '',
+    hill_type: '',
+    category: ['WC'],
+    session_type: '',
+    date_from: '',
+    date_to: '',
+    limit: 20,
+  }
+  const payload = { category: ['WC'], limit: 20 }
+  performSearch(payload, selectedNames.value)
+}
+
+const clearAllCriteriaAndRetry = () => {
+  searchForm.value = {
+    place: '',
+    hill_type: '',
+    category: [],
+    session_type: '',
+    date_from: '',
+    date_to: '',
+    limit: 10,
+  }
+  const payload = { limit: 10 }
+  performSearch(payload, selectedNames.value)
+}
 
 // --- INICJALIZACJA ---
 onMounted(async () => {
@@ -294,14 +333,28 @@ onMounted(async () => {
       <AnalyticsPanel
         :groupedRows="groupedRows"
         :filteredVisibleAthletes="filteredVisibleAthletes"
+        :currentHillType="searchForm.hill_type"
       />
     </div>
 
+    <!-- POMOCNY STAN PUSTY (HELPFUL EMPTY STATE) -->
     <div
       v-else-if="!loading && results.length === 0 && searchedNames.length > 0"
-      class="no-results card"
+      class="card empty-state-card"
     >
-      Brak wyników do wyświetlenia. Zmień filtry w KROKU 1.
+      <div class="empty-icon">🏔️</div>
+      <h3>Brak wyników dla wybranych kryteriów</h3>
+      <p class="empty-desc">
+        Baza danych nie odnalazła skoków dla wskazanych filtrów. Możliwe, że wybrani skoczkowie nie startowali w wytypowanych zawodach lub ustawiono zbyt wąskie kryteria.
+      </p>
+      <div class="empty-actions">
+        <button type="button" class="btn-preset-action" @click="resetToWorldCup">
+          🏆 Pokaż cały Puchar Świata
+        </button>
+        <button type="button" class="btn-reset-action" @click="clearAllCriteriaAndRetry">
+          🔄 Zresetuj kryteria wyszukiwania
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -330,15 +383,78 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.no-results {
+.empty-state-card {
   text-align: center;
-  color: #64748b;
-  padding: 20px;
-  font-style: italic;
+  padding: 48px 24px;
   background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
   border: 1px solid #e2e8f0;
+  max-width: 700px;
+  margin: 30px auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.empty-icon {
+  font-size: 3.5rem;
+  margin-bottom: 12px;
+}
+
+.empty-state-card h3 {
+  font-size: 1.3rem;
+  color: #0f172a;
+  margin: 0 0 8px 0;
+  font-weight: 800;
+}
+
+.empty-desc {
+  font-size: 0.92rem;
+  color: #64748b;
+  max-width: 500px;
+  margin: 0 0 24px 0;
+  line-height: 1.5;
+}
+
+.empty-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.btn-preset-action {
+  background: #0284c7;
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-preset-action:hover {
+  background: #0369a1;
+}
+
+.btn-reset-action {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-reset-action:hover {
+  background: #e2e8f0;
+  color: #0f172a;
 }
 
 /* Responsive Layout */

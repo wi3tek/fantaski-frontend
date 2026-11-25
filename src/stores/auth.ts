@@ -106,6 +106,22 @@ export function useAuth() {
     }
   }
 
+  const updateProfile = async (payload: { name?: string; picture?: string }) => {
+    isLoading.value = true
+    try {
+      const data = await api.put<{ access_token?: string; user: User }>('/auth/me', payload)
+      if (data?.access_token && data?.user) {
+        setAuthData(data.access_token, data.user)
+      } else if (data?.user) {
+        user.value = data.user
+        localStorage.setItem('user', JSON.stringify(data.user))
+      }
+      return data?.user || user.value
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   return {
     user,
     token,
@@ -121,5 +137,6 @@ export function useAuth() {
     fetchMe,
     loginWithGoogle,
     devLogin,
+    updateProfile,
   }
 }

@@ -2,8 +2,11 @@
 import { RouterLink, RouterView } from 'vue-router'
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useAuth } from '@/stores/auth'
+import { useNotice } from '@/stores/notice'
 
 const auth = useAuth()
+const notice = useNotice()
+const envName = (import.meta.env.VITE_ENV_NAME || (import.meta.env.MODE === 'test' ? 'TEST' : '')).toUpperCase()
 
 const isMenuOpen = ref<boolean>(false)
 const isStatsDropdownOpen = ref<boolean>(false)
@@ -42,6 +45,12 @@ const closeNavigation = () => {
   isStatsDropdownOpen.value = false
   isUserDropdownOpen.value = false
 }
+
+watch(isMenuOpen, (open) => {
+  if (typeof document !== 'undefined') {
+    document.body.style.overflow = open ? 'hidden' : ''
+  }
+})
 
 const handleLogout = () => {
   auth.logout()
@@ -127,6 +136,7 @@ onUnmounted(() => {
           <div class="logo">
             <img src="/logo.png" alt="FantaSKI Logo" class="brand-logo-img" />
             <span class="logo-text">Fanta<strong>SKI</strong></span>
+            <span v-if="envName === 'TEST'" class="env-pill-test" title="Aktywne środowisko testowe (baza: FIS_DATA_DB_TEST)">TEST</span>
           </div>
         </RouterLink>
 
@@ -140,19 +150,50 @@ onUnmounted(() => {
         </button>
 
         <nav class="nav-links" :class="{ open: isMenuOpen }">
-          <RouterLink to="/athletes" @click="closeNavigation">Baza skoczków</RouterLink>
-          <RouterLink to="/sessions" @click="closeNavigation">Baza sesji</RouterLink>
-          <RouterLink to="/hills" @click="closeNavigation">Baza skoczni</RouterLink>
+          <div class="drawer-header-mobile">
+            <div class="drawer-logo">
+              <img src="/logo.png" alt="FantaSKI" class="drawer-logo-img" />
+              <span>Fanta<strong>SKI</strong></span>
+            </div>
+            <button class="drawer-close-btn" @click="closeNavigation" aria-label="Zamknij menu">&times;</button>
+          </div>
+
+          <div v-if="auth.isAuthenticated.value" class="drawer-user-card-mobile">
+            <img
+              v-if="auth.user.value?.picture"
+              :src="auth.user.value.picture"
+              class="user-avatar"
+              alt="Avatar"
+            />
+            <span v-else class="user-avatar-fallback">👤</span>
+            <div class="drawer-user-meta">
+              <div class="drawer-user-name">{{ auth.user.value?.name }}</div>
+              <div class="drawer-user-plan">Plan: <strong>{{ getRoleBadgeLabel(auth.user.value?.role) }}</strong></div>
+            </div>
+          </div>
+          <div v-else class="drawer-guest-card-mobile">
+            <button class="drawer-login-btn" @click="auth.isAuthModalOpen.value = true; closeNavigation()">
+              🚀 Zaloguj się na konto
+            </button>
+          </div>
+
+          <div class="drawer-section-label">Bazy Danych</div>
+          <RouterLink to="/athletes" @click="closeNavigation">🎿 Baza skoczków</RouterLink>
+          <RouterLink to="/sessions" @click="closeNavigation">📅 Baza sesji</RouterLink>
+          <RouterLink to="/hills" @click="closeNavigation">🏔️ Baza skoczni</RouterLink>
+
+          <div class="drawer-section-label">Zawody &amp; Wyniki</div>
           <RouterLink
             to="/standings"
             @click="closeNavigation"
             :class="{ 'nav-locked': !auth.isAuthenticated.value }"
-            :title="!auth.isAuthenticated.value ? '🔒 Wymaga darmowego logowania' : 'Oficjalne klasyfikacje FIS'"
+            :title="!auth.isAuthenticated.value ? '🔒 Wymaga zalogowania' : 'Oficjalne klasyfikacje FIS'"
           >
             🏆 Klasyfikacje
             <span v-if="!auth.isAuthenticated.value" class="lock-icon">🔒</span>
           </RouterLink>
 
+          <div class="drawer-section-label">Analityka &amp; Narzędzia</div>
           <div class="dropdown-container">
             <button
               class="dropdown-btn"
@@ -165,7 +206,7 @@ onUnmounted(() => {
               <span v-else class="badge-pro">PRO</span>
               <span class="arrow" :class="{ up: isStatsDropdownOpen }">▼</span>
             </button>
-            <div class="dropdown-menu" v-if="isStatsDropdownOpen">
+            <div class="dropdown-menu" v-if="isStatsDropdownOpen || isMenuOpen">
               <RouterLink
                 to="/stats"
                 @click="closeNavigation"
@@ -190,66 +231,63 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <RouterLink
-            to="/predictions"
-            @click="closeNavigation"
-            class="predictions-nav-link"
-            :class="{ 'nav-locked': !auth.isPro.value }"
-            :title="!auth.isPro.value ? '🔒 Dostępne wyłącznie w pakiecie PRO' : 'Przewidywania AI'"
-          >
-            🔮 Przewidywania
-            <span v-if="!auth.isPro.value" class="lock-icon">🔒</span>
-            <span class="badge-pro">PRO</span>
-          </RouterLink>
-
           <!-- Widoczne tylko dla ADMINA -->
-          <RouterLink v-if="auth.isAdmin.value" to="/admin" class="admin-link" @click="closeNavigation">
-            ⚙️ Panel
-          </RouterLink>
+          <template v-if="auth.isAdmin.value">
+            <div class="drawer-section-label">Administracja</div>
+            <RouterLink to="/admin" class="admin-link" @click="closeNavigation">
+              ⚙️ Panel Administratora
+            </RouterLink>
+          </template>
 
           <!-- Użytkownik zalogowany -->
-          <div v-if="auth.isAuthenticated.value" class="user-menu-container">
-            <button class="user-btn" @click.stop="isUserDropdownOpen = !isUserDropdownOpen">
-              <img
-                v-if="auth.user.value?.picture"
-                :src="auth.user.value.picture"
-                class="user-avatar"
-                alt="Avatar"
-              />
-              <span v-else class="user-avatar-fallback">👤</span>
-              <span class="user-name">{{ auth.user.value?.name }}</span>
-              <span
-                v-if="auth.user.value?.role !== 'USER'"
-                class="role-badge"
-                :class="{
-                  'role-admin': auth.user.value?.role === 'ADMIN',
-                  'role-pro': auth.user.value?.role === 'USER_PRO',
-                  'role-lite': auth.user.value?.role === 'USER_LITE',
-                }"
-              >
-                {{ getRoleBadgeLabel(auth.user.value?.role) }}
-              </span>
-              <span class="arrow" :class="{ up: isUserDropdownOpen }">▼</span>
-            </button>
-
-            <div class="dropdown-menu user-dropdown" v-if="isUserDropdownOpen">
-              <div class="user-info-box">
-                <div class="user-info-email">{{ auth.user.value?.email }}</div>
-                <div class="user-info-role">Plan: <strong>{{ getRoleFullLabel(auth.user.value?.role) }}</strong></div>
-              </div>
-              <RouterLink v-if="auth.isAdmin.value" to="/admin" @click="closeNavigation">
-                ⚙️ Panel Administratora
-              </RouterLink>
-              <button class="logout-menu-btn" @click="handleLogout">
-                🚪 Wyloguj się
+          <template v-if="auth.isAuthenticated.value">
+            <div class="drawer-section-label">Konto</div>
+            <div class="user-menu-container">
+              <button class="user-btn desktop-only" @click.stop="isUserDropdownOpen = !isUserDropdownOpen">
+                <img
+                  v-if="auth.user.value?.picture"
+                  :src="auth.user.value.picture"
+                  class="user-avatar"
+                  alt="Avatar"
+                />
+                <span v-else class="user-avatar-fallback">👤</span>
+                <span class="user-name">{{ auth.user.value?.name }}</span>
+                <span
+                  v-if="auth.user.value?.role !== 'USER'"
+                  class="role-badge"
+                  :class="{
+                    'role-admin': auth.user.value?.role === 'ADMIN',
+                    'role-pro': auth.user.value?.role === 'USER_PRO',
+                    'role-lite': auth.user.value?.role === 'USER_LITE',
+                  }"
+                >
+                  {{ getRoleBadgeLabel(auth.user.value?.role) }}
+                </span>
+                <span class="arrow" :class="{ up: isUserDropdownOpen }">▼</span>
               </button>
+
+              <div class="dropdown-menu user-dropdown" v-if="isUserDropdownOpen || isMenuOpen">
+                <div class="user-info-box">
+                  <div class="user-info-email">{{ auth.user.value?.email }}</div>
+                  <div class="user-info-role">Plan: <strong>{{ getRoleFullLabel(auth.user.value?.role) }}</strong></div>
+                </div>
+                <RouterLink to="/profile" @click="closeNavigation">
+                  👤 Mój profil
+                </RouterLink>
+                <RouterLink v-if="auth.isAdmin.value" to="/admin" @click="closeNavigation">
+                  ⚙️ Panel Administratora
+                </RouterLink>
+                <button class="logout-menu-btn" @click="handleLogout">
+                  🚪 Wyloguj się
+                </button>
+              </div>
             </div>
-          </div>
+          </template>
 
           <!-- Przycisk logowania jeśli niezalogowany -->
           <button
             v-else
-            class="login-btn"
+            class="login-btn desktop-only"
             @click="auth.isAuthModalOpen.value = true; closeNavigation()"
           >
             Zaloguj się
@@ -333,6 +371,47 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- CUSTOMOWY MODAL BRAKU DOSTĘPU / POWIADOMIENIA (ZAMIAST BRZYDKIEGO ALERT) -->
+    <div
+      v-if="notice.isOpen.value"
+      class="auth-modal-overlay"
+      @click.self="notice.closeNotice()"
+    >
+      <div class="auth-modal notice-modal">
+        <button class="auth-close-btn" @click="notice.closeNotice()">&times;</button>
+        <div class="notice-modal-header">
+          <div class="notice-icon-box">
+            <span>🔒</span>
+          </div>
+          <span v-if="notice.noticeData.value.badge" class="notice-badge">
+            {{ notice.noticeData.value.badge }}
+          </span>
+          <h3>{{ notice.noticeData.value.title }}</h3>
+          <p class="notice-desc">{{ notice.noticeData.value.message }}</p>
+        </div>
+
+        <div class="notice-modal-actions">
+          <button
+            v-if="notice.noticeData.value.requiresLogin"
+            class="btn-notice-action"
+            @click="notice.closeNotice(); auth.isAuthModalOpen.value = true"
+          >
+            🔑 Zaloguj się do FantaSKI
+          </button>
+          <button
+            v-else
+            class="btn-notice-action"
+            @click="notice.closeNotice()"
+          >
+            ✨ Skontaktuj się z administratorem
+          </button>
+          <button class="btn-notice-close" @click="notice.closeNotice()">
+            Zamknij
+          </button>
+        </div>
+      </div>
+    </div>
+
     <footer class="app-footer">
       <p>FantaSKI &bull; Fantasy &amp; Wyniki Skoków Narciarskich &bull; 2026</p>
     </footer>
@@ -381,6 +460,17 @@ onUnmounted(() => {
   gap: 10px;
   font-size: 1.25em;
   letter-spacing: 0.5px;
+}
+
+.env-pill-test {
+  background: #f59e0b;
+  color: #0f172a;
+  font-size: 0.58em;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35);
 }
 
 .brand-logo-img {
@@ -757,6 +847,81 @@ onUnmounted(() => {
   to { opacity: 1; transform: scale(1); }
 }
 
+.notice-modal {
+  text-align: center;
+  max-width: 420px;
+}
+
+.notice-icon-box {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #fef3c7;
+  color: #d97706;
+  font-size: 1.8em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px;
+}
+
+.notice-badge {
+  display: inline-block;
+  background: #f59e0b;
+  color: #0f172a;
+  font-size: 0.7em;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.notice-desc {
+  color: #475569;
+  font-size: 0.9em;
+  line-height: 1.5;
+  margin: 8px 0 20px;
+}
+
+.notice-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.btn-notice-action {
+  width: 100%;
+  padding: 10px 16px;
+  background: #0284c7;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.92em;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-notice-action:hover {
+  background: #0369a1;
+}
+
+.btn-notice-close {
+  width: 100%;
+  padding: 8px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 0.88em;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-notice-close:hover {
+  background: #e2e8f0;
+}
+
 .auth-close-btn {
   position: absolute;
   top: 16px;
@@ -926,36 +1091,211 @@ onUnmounted(() => {
   margin-bottom: 4px;
 }
 
+.drawer-header-mobile,
+.drawer-user-card-mobile,
+.drawer-guest-card-mobile,
+.drawer-section-label {
+  display: none;
+}
+
 @media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+
   .menu-toggle {
     display: flex;
   }
+
+  /* --- SLIDE-IN MOBILE DRAWER --- */
   .nav-links {
-    display: none;
-    flex-direction: column;
-    position: absolute;
-    top: 52px;
-    left: 0;
-    width: 100%;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(320px, 86vw);
+    height: 100vh;
     background-color: #0f172a;
-    border-bottom: 1px solid #334155;
-    padding: 14px 20px;
+    border-left: 1px solid #1e293b;
+    box-shadow: -12px 0 35px rgba(0, 0, 0, 0.5);
+    padding: 14px 16px 28px;
     box-sizing: border-box;
-    gap: 8px;
-    align-items: stretch;
-  }
-  .nav-links.open {
     display: flex;
-    z-index: 10002;
+    flex-direction: column;
+    gap: 4px;
+    align-items: stretch;
+    transform: translateX(100%);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 10005;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
+
+  .nav-links.open {
+    transform: translateX(0);
+  }
+
+  .menu-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 10004;
+  }
+
+  .drawer-header-mobile {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 12px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #1e293b;
+  }
+
+  .drawer-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.15em;
+    color: white;
+  }
+
+  .drawer-logo-img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    border-radius: 50%;
+  }
+
+  .drawer-close-btn {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.8rem;
+    line-height: 1;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  .drawer-close-btn:hover {
+    color: white;
+  }
+
+  .drawer-user-card-mobile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #1e293b;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+  }
+
+  .drawer-user-meta {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .drawer-user-name {
+    color: white;
+    font-weight: 600;
+    font-size: 0.9em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .drawer-user-plan {
+    font-size: 0.75em;
+    color: #94a3b8;
+  }
+
+  .drawer-guest-card-mobile {
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .drawer-login-btn {
+    width: 100%;
+    padding: 12px;
+    background: #0284c7;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.92em;
+    cursor: pointer;
+  }
+
+  .drawer-section-label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+    font-weight: 700;
+    padding: 10px 8px 4px;
+  }
+
+  .nav-links a {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 0.95em;
+    border-radius: 8px;
+    color: #cbd5e1;
+  }
+
+  .nav-links a:hover,
+  .nav-links a.router-link-active {
+    background-color: #1e293b;
+    color: #38bdf8;
+  }
+
+  .dropdown-btn {
+    width: 100%;
+    justify-content: space-between;
+    padding: 10px 14px;
+    min-height: 44px;
+    font-size: 0.95em;
+    border-radius: 8px;
+  }
+
   .dropdown-menu {
     position: static;
     transform: none;
-    background-color: #1e293b;
-    border: 1px solid #334155;
+    background-color: #0b1329;
+    border: 1px solid #1e293b;
     box-shadow: none;
     margin-top: 4px;
+    padding: 4px 6px;
+    border-radius: 8px;
   }
+
+  .dropdown-menu a {
+    min-height: 40px;
+    font-size: 0.9em;
+  }
+
+  .user-dropdown {
+    position: static;
+    transform: none;
+    width: 100%;
+    background-color: #0b1329;
+    box-shadow: none;
+    margin-top: 6px;
+  }
+
+  .logout-menu-btn {
+    width: 100%;
+    min-height: 42px;
+    padding: 8px 12px;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   .app-content {
     padding: 10px 12px;
   }

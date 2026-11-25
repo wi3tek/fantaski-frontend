@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useAuth } from '@/stores/auth'
+import { useNotice } from '@/stores/notice'
+
+const auth = useAuth()
+const notice = useNotice()
 
 const props = defineProps<{
   searchForm: any
@@ -69,6 +74,14 @@ const filteredNames = computed(() => {
 })
 
 const addName = (name: string) => {
+  if (auth.isLite.value && localNames.value.length >= 2) {
+    notice.showNotice({
+      title: 'Limit pakietu FantaSKI LITE',
+      message: 'Konto FantaSKI LITE pozwala na jednoczesne porównanie maksymalnie 2 zawodników. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków.',
+      badge: 'LIMIT LITE: 2',
+    })
+    return
+  }
   if (!localNames.value.includes(name)) localNames.value = [...localNames.value, name]
   nameInput.value = ''
   showDropdown.value = false
@@ -142,6 +155,121 @@ const loadSet = (setName: string) => {
   if (savedSets.value[setName]) localNames.value = [...savedSets.value[setName]]
 }
 
+// --- CZYSZCZENIE I PRESETY FILTRÓW ---
+const showAdvancedFilters = ref(true)
+
+// Licznik aktywnych kryteriów zaawansowanych
+const activeCriteriaCount = computed(() => {
+  let count = 0
+  if (localForm.value.place) count++
+  if (localForm.value.hill_type) count++
+  if (localForm.value.category && localForm.value.category.length > 0) count++
+  if (localForm.value.session_type) count++
+  if (localForm.value.date_from || localForm.value.date_to) count++
+  if (localForm.value.limit && localForm.value.limit !== 10) count++
+  return count
+})
+
+// Lista aktywnych filtrów do szybkiego usuwania pojedynczych kryteriów (Active Filter Chips)
+const activeFiltersList = computed(() => {
+  const chips: { key: string; label: string; clear: () => void }[] = []
+
+  if (localPriceMode.value) {
+    chips.push({
+      key: 'price',
+      label: `Cena: ${Number(localPriceMin.value).toFixed(1)} - ${Number(localPriceMax.value).toFixed(1)}`,
+      clear: () => {
+        localPriceMode.value = false
+      },
+    })
+  }
+
+  if (localForm.value.place) {
+    chips.push({
+      key: 'place',
+      label: `Miejsce: ${localForm.value.place}`,
+      clear: () => {
+        localForm.value.place = ''
+      },
+    })
+  }
+
+  if (localForm.value.hill_type) {
+    const hillName =
+      props.dictionaries?.hills?.[localForm.value.hill_type]?.pl || localForm.value.hill_type
+    chips.push({
+      key: 'hill_type',
+      label: `Skocznia: ${hillName}`,
+      clear: () => {
+        localForm.value.hill_type = ''
+      },
+    })
+  }
+
+  if (localForm.value.category && localForm.value.category.length > 0) {
+    const catLabels = localForm.value.category
+      .map((c: string) => props.dictionaries?.categories?.[c]?.pl || c)
+      .join(', ')
+    chips.push({
+      key: 'category',
+      label: `Cykl: ${catLabels}`,
+      clear: () => {
+        localForm.value.category = []
+      },
+    })
+  }
+
+  if (localForm.value.session_type) {
+    const sessName =
+      props.dictionaries?.sessions?.[localForm.value.session_type]?.pl || localForm.value.session_type
+    chips.push({
+      key: 'session_type',
+      label: `Sesja: ${sessName}`,
+      clear: () => {
+        localForm.value.session_type = ''
+      },
+    })
+  }
+
+  if (localForm.value.date_from || localForm.value.date_to) {
+    chips.push({
+      key: 'dates',
+      label: `Daty: ${localForm.value.date_from || '...'} do ${localForm.value.date_to || '...'}`,
+      clear: () => {
+        localForm.value.date_from = ''
+        localForm.value.date_to = ''
+      },
+    })
+  }
+
+  if (localForm.value.limit && localForm.value.limit !== 10) {
+    chips.push({
+      key: 'limit',
+      label: `Limit skoków: ${localForm.value.limit}`,
+      clear: () => {
+        localForm.value.limit = 10
+      },
+    })
+  }
+
+  return chips
+})
+
+// Szybkie presety 1-click
+const applyQuickPreset = (preset: 'wc' | 'flying' | 'individual' | 'recent') => {
+  if (preset === 'wc') {
+    localForm.value.category = ['WC']
+    localForm.value.session_type = ''
+    localForm.value.limit = 20
+  } else if (preset === 'flying') {
+    localForm.value.hill_type = 'FLYING'
+  } else if (preset === 'individual') {
+    localForm.value.session_type = 'INDIVIDUAL'
+  } else if (preset === 'recent') {
+    localForm.value.limit = 5
+  }
+}
+
 // --- CZYSZCZENIE FILTRÓW ---
 const clearFilters = () => {
   // Resetujemy formularz do wartości domyślnych
@@ -173,10 +301,33 @@ const submitSearch = () => {
       localNames.value.length > 0
         ? inRange.filter((a) => localNames.value.includes(a.name)).map((a) => a.name)
         : inRange.map((a) => a.name)
-    if (finalNames.length === 0) return alert('Brak zawodników spełniających kryteria cenowe!')
+    if (finalNames.length === 0) {
+      notice.showNotice({
+        title: 'Brak wyników cenowych',
+        message: 'Żaden zawodnik nie mieści się w wybranym przedziale cenowym. Rozszerz zakres suwaków.',
+        badge: 'FILTR CENOWY',
+      })
+      return
+    }
   } else {
-    if (localNames.value.length === 0) return alert('Dodaj co najmniej jednego skoczka!')
+    if (localNames.value.length === 0) {
+      notice.showNotice({
+        title: 'Wybierz zawodników',
+        message: 'Dodaj co najmniej jednego skoczka do listy, aby pobrać i porównać statystyki.',
+        badge: 'WYMAGANY SKOCZEK',
+      })
+      return
+    }
     finalNames = [...localNames.value]
+  }
+
+  if (auth.isLite.value && finalNames.length > 2) {
+    notice.showNotice({
+      title: 'Limit pakietu FantaSKI LITE',
+      message: 'Konto FantaSKI LITE pozwala na jednoczesne porównanie maksymalnie 2 zawodników. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków.',
+      badge: 'LIMIT LITE: 2',
+    })
+    return
   }
 
   const payload: any = Object.fromEntries(
@@ -198,6 +349,46 @@ const submitSearch = () => {
     </div>
 
     <form @submit.prevent="submitSearch" class="search-form">
+      <!-- SZYBKIE PRESETY 1-CLICK -->
+      <div class="quick-presets-bar">
+        <span class="presets-intro">⚡ Szybkie filtry:</span>
+        <button
+          type="button"
+          class="preset-chip"
+          :class="{ active: localForm.category.length === 1 && localForm.category[0] === 'WC' }"
+          @click="applyQuickPreset('wc')"
+        >
+          🏆 Puchar Świata (PŚ)
+        </button>
+        <button
+          type="button"
+          class="preset-chip"
+          :class="{ active: localForm.hill_type === 'FLYING' }"
+          @click="applyQuickPreset('flying')"
+        >
+          🦅 Tylko Mamuty
+        </button>
+        <button
+          type="button"
+          class="preset-chip"
+          :class="{ active: localForm.session_type === 'INDIVIDUAL' }"
+          @click="applyQuickPreset('individual')"
+        >
+          🎯 Tylko Konkursy
+        </button>
+        <button
+          type="button"
+          class="preset-chip"
+          :class="{ active: localForm.limit === 5 }"
+          @click="applyQuickPreset('recent')"
+        >
+          ⏱️ Ostatnie 5 prób
+        </button>
+        <button type="button" class="preset-chip reset-chip" @click="clearFilters">
+          🔄 Wyczyść filtry
+        </button>
+      </div>
+
       <div class="options-container" style="border: none; margin-bottom: 10px; padding-top: 0">
         <label
           class="toggle-label toggle-esm"
@@ -311,7 +502,16 @@ const submitSearch = () => {
         </div>
       </div>
 
-      <div class="form-grid mt-4">
+      <!-- ZWIJANY PANEL KRYTERIÓW ZAAWANSOWANYCH -->
+      <div class="advanced-filters-toggle" @click="showAdvancedFilters = !showAdvancedFilters">
+        <span class="toggle-text">
+          ⚙️ Kryteria obiektu i zawodów (miejsce, skocznia, kategoria, typ sesji, daty, limit)
+          <span v-if="activeCriteriaCount > 0" class="criteria-counter">{{ activeCriteriaCount }} aktywne</span>
+        </span>
+        <span class="toggle-icon">{{ showAdvancedFilters ? 'Zwiń filtry ▲' : 'Rozwiń filtry ▼' }}</span>
+      </div>
+
+      <div v-show="showAdvancedFilters" class="form-grid mt-4">
         <div class="filter-group autocomplete-container" ref="placeContainerRef">
           <label>Miejsce</label>
           <input
@@ -395,6 +595,20 @@ const submitSearch = () => {
             max="100"
             step="1"
           />
+        </div>
+      </div>
+
+      <!-- AKTYWNE FILTRY (ACTIVE CHIPS BAR) -->
+      <div v-if="activeFiltersList.length > 0" class="active-filters-container">
+        <span class="active-label">Aktywne filtry:</span>
+        <div class="active-chips-wrap">
+          <span v-for="af in activeFiltersList" :key="af.key" class="active-filter-badge">
+            {{ af.label }}
+            <button type="button" class="btn-remove-chip" @click="af.clear()">&times;</button>
+          </span>
+          <button type="button" class="btn-clear-all-link" @click="clearFilters">
+            Wyczyść wszystkie
+          </button>
         </div>
       </div>
 
@@ -656,6 +870,172 @@ const submitSearch = () => {
   z-index: 50;
   margin-top: 4px;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+/* SZYBKIE PRESETY */
+.quick-presets-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.presets-intro {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.preset-chip {
+  background: white;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.preset-chip:hover {
+  border-color: #0284c7;
+  color: #0284c7;
+  background: #f0f9ff;
+}
+
+.preset-chip.active {
+  background: #0284c7;
+  color: white;
+  border-color: #0284c7;
+}
+
+.preset-chip.reset-chip {
+  margin-left: auto;
+  color: #64748b;
+  border-style: dashed;
+}
+
+.preset-chip.reset-chip:hover {
+  color: #dc2626;
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+/* AKORDEON FILTRÓW ZAAWANSOWANYCH */
+.advanced-filters-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+  margin-top: 14px;
+}
+
+.advanced-filters-toggle:hover {
+  background: #e2e8f0;
+}
+
+.toggle-text {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.criteria-counter {
+  background: #0284c7;
+  color: white;
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  font-weight: 800;
+}
+
+.toggle-icon {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #0284c7;
+  white-space: nowrap;
+}
+
+/* AKTYWNE CHIPSY */
+.active-filters-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  margin-top: 14px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.active-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #0369a1;
+}
+
+.active-chips-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.active-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: white;
+  border: 1px solid #93c5fd;
+  color: #1e40af;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.btn-remove-chip {
+  background: none;
+  border: none;
+  color: #93c5fd;
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  font-weight: 700;
+}
+
+.btn-remove-chip:hover {
+  color: #1e3a8a;
+}
+
+.btn-clear-all-link {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  margin-left: 6px;
 }
 
 .form-actions {

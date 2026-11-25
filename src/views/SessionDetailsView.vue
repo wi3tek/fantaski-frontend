@@ -464,7 +464,7 @@ onMounted(() => {
                   </span>
                   <span class="count-tag">{{ pkg.athletes.length }} skoczków</span>
                   <span v-if="calcPackagePrice(pkg.athletes) > 0" class="price-tag">
-                    {{ calcPackagePrice(pkg.athletes).toFixed(1) }} ESM
+                    Koszt: {{ calcPackagePrice(pkg.athletes).toFixed(1) }}
                   </span>
                 </div>
               </div>
@@ -535,7 +535,7 @@ onMounted(() => {
                 <th class="th-rank">Poz.</th>
                 <th class="th-bib">Bib</th>
                 <th class="th-name">Zawodnik</th>
-                <th class="th-price">Cena ESM</th>
+                <th class="th-price">Cena</th>
                 <th class="th-country">Kraj</th>
                 <th class="th-jump">Seria 1</th>
                 <th class="th-jump">Seria 2</th>

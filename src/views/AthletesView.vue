@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
 import { api } from '@/api/client'
 import { useAuth } from '@/stores/auth'
@@ -24,11 +24,13 @@ const pricesMap = ref<Record<string, number>>({})
 const loading = ref(true)
 const loadingMore = ref(false)
 
-// Stan Filtrów (wysyłany do backendu)
+// Stan Filtrów (wysyłany do backendu) - Domyślnie tylko aktywni skoczkowie
 const filters = ref({
   search_name: '',
   countries: [] as string[],
-  status: '', // '' (wszyscy), 'ACTIVE', 'INACTIVE'
+  status: 'ACTIVE', // Domyślnie 'ACTIVE' (aktywni skoczkowie)
+  seasons: [] as string[], // Sezony startów
+  categories: [] as string[], // Rodzaje zawodów (WC, COC itd.)
   age_min: null as number | null,
   age_max: null as number | null,
   sort_by: 'full_name',
@@ -36,6 +38,98 @@ const filters = ref({
   limit: 20,
   skip: 0
 })
+
+// Metadane filtrów sezonów i rodzajów zawodów
+const availableSeasons = ref<string[]>([])
+const availableCategories = ref<{ code: string; name: string }[]>([])
+const showSeasonDropdown = ref(false)
+const showCategoryDropdown = ref(false)
+
+const toggleSeason = (season: string) => {
+  const idx = filters.value.seasons.indexOf(season)
+  if (idx > -1) {
+    filters.value.seasons.splice(idx, 1)
+  } else {
+    filters.value.seasons.push(season)
+  }
+  fetchAthletes(false)
+}
+
+const selectAllSeasons = () => {
+  filters.value.seasons = [...availableSeasons.value]
+  fetchAthletes(false)
+}
+
+const clearSeasons = () => {
+  filters.value.seasons = []
+  fetchAthletes(false)
+}
+
+const toggleCategory = (catCode: string) => {
+  const idx = filters.value.categories.indexOf(catCode)
+  if (idx > -1) {
+    filters.value.categories.splice(idx, 1)
+  } else {
+    filters.value.categories.push(catCode)
+  }
+  fetchAthletes(false)
+}
+
+const selectAllCategories = () => {
+  filters.value.categories = availableCategories.value.map(c => c.code)
+  fetchAthletes(false)
+}
+
+const clearCategories = () => {
+  filters.value.categories = []
+  fetchAthletes(false)
+}
+
+const getCategoryLabel = (code?: string) => {
+  if (!code) return ''
+  const found = availableCategories.value.find(c => c.code === code)
+  return found ? found.name : code
+}
+
+const hasActiveExtraFilters = computed(() => {
+  return (
+    filters.value.seasons.length > 0 ||
+    filters.value.categories.length > 0 ||
+    filters.value.countries.length > 0 ||
+    filters.value.age_min !== null ||
+    filters.value.age_max !== null ||
+    filters.value.status !== 'ACTIVE'
+  )
+})
+
+const clearAllFilters = () => {
+  filters.value.search_name = ''
+  filters.value.countries = []
+  filters.value.status = 'ACTIVE'
+  filters.value.seasons = []
+  filters.value.categories = []
+  filters.value.age_min = null
+  filters.value.age_max = null
+  fetchAthletes(false)
+}
+
+const fetchFiltersMeta = async () => {
+  try {
+    const data = await api.get('/athletes/filters-meta', { cacheTtlMs: 300000 })
+    availableSeasons.value = data.seasons || []
+    availableCategories.value = data.categories || []
+  } catch (e) {
+    console.error('Błąd pobierania metadanych filtrów skoczków', e)
+  }
+}
+
+const closeAllDropdowns = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  if (!target.closest('.dropdown-container')) {
+    showSeasonDropdown.value = false
+    showCategoryDropdown.value = false
+  }
+}
 
 // --- WYSZUKIWANIE KRAJÓW I KLAWIATURA ---
 const countryInput = ref('')
@@ -223,8 +317,14 @@ const getCountryDisplay = (code: string) => {
 
 onMounted(() => {
   fetchCountries()
+  fetchFiltersMeta()
   fetchAthletes()
   fetchPrices()
+  window.addEventListener('click', closeAllDropdowns)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('click', closeAllDropdowns)
 })
 </script>
 
@@ -259,14 +359,87 @@ onMounted(() => {
       <div class="filter-box filter-box-select">
         <label>Status:</label>
         <select v-model="filters.status" @change="fetchAthletes(false)" class="filter-input">
-          <option value="">Wszyscy</option>
-          <option value="ACTIVE">Aktywny</option>
+          <option value="ACTIVE">Tylko aktywni (Domyślne)</option>
+          <option value="">Wszyscy (w tym byli skoczkowie)</option>
           <option value="INACTIVE">Koniec kariery</option>
         </select>
       </div>
     </div>
 
     <div class="filters-container mt-0">
+      <!-- Filtr Sezonów (Rozwijana lista z checkboxami) -->
+      <div class="filter-box dropdown-container">
+        <label>Sezon startów:</label>
+        <div class="dropdown-wrapper">
+          <button
+            type="button"
+            class="dropdown-toggle-btn"
+            @click.stop="showSeasonDropdown = !showSeasonDropdown; showCategoryDropdown = false"
+            title="Wybierz sezony, w których startowali zawodnicy"
+          >
+            <span>
+              {{ filters.seasons.length === 0 ? 'Wszystkie sezony' : (filters.seasons.length === 1 ? `Sezon ${filters.seasons[0]}` : `Wybrano sezonów: ${filters.seasons.length}`) }}
+            </span>
+            <span class="dropdown-arrow">▼</span>
+          </button>
+
+          <div v-if="showSeasonDropdown" class="dropdown-panel" @click.stop>
+            <div class="dropdown-panel-actions">
+              <button type="button" class="btn-text-xs" @click="selectAllSeasons">Zaznacz wszystkie</button>
+              <button type="button" class="btn-text-xs" @click="clearSeasons">Wyczyść</button>
+            </div>
+            <div class="dropdown-panel-items">
+              <label v-for="s in availableSeasons" :key="s" class="dropdown-checkbox-item">
+                <input
+                  type="checkbox"
+                  :value="s"
+                  :checked="filters.seasons.includes(s)"
+                  @change="toggleSeason(s)"
+                />
+                <span>Sezon {{ s }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filtr Rodzaju Zawodów (PŚ, COC, LGP, FC itd.) -->
+      <div class="filter-box dropdown-container">
+        <label>Rodzaj zawodów:</label>
+        <div class="dropdown-wrapper">
+          <button
+            type="button"
+            class="dropdown-toggle-btn"
+            @click.stop="showCategoryDropdown = !showCategoryDropdown; showSeasonDropdown = false"
+            title="Wybierz rodzaj zawodów, w których startowali zawodnicy"
+          >
+            <span>
+              {{ filters.categories.length === 0 ? 'Wszystkie zawody' : (filters.categories.length === 1 ? getCategoryLabel(filters.categories[0]) : `Wybrano rodzajów: ${filters.categories.length}`) }}
+            </span>
+            <span class="dropdown-arrow">▼</span>
+          </button>
+
+          <div v-if="showCategoryDropdown" class="dropdown-panel" @click.stop>
+            <div class="dropdown-panel-actions">
+              <button type="button" class="btn-text-xs" @click="selectAllCategories">Zaznacz wszystkie</button>
+              <button type="button" class="btn-text-xs" @click="clearCategories">Wyczyść</button>
+            </div>
+            <div class="dropdown-panel-items">
+              <label v-for="cat in availableCategories" :key="cat.code" class="dropdown-checkbox-item">
+                <input
+                  type="checkbox"
+                  :value="cat.code"
+                  :checked="filters.categories.includes(cat.code)"
+                  @change="toggleCategory(cat.code)"
+                />
+                <span>{{ cat.name }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filtr Krajów -->
       <div class="filter-box flex-grow multi-select-container">
         <label>Filtruj po krajach (możesz dodać kilka):</label>
         <div class="chips-box">
@@ -298,6 +471,30 @@ onMounted(() => {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Pasek aktywnych filtrów (szybkie czyszczenie) -->
+    <div v-if="hasActiveExtraFilters" class="active-filters-row">
+      <span class="active-filters-label">Aktywne filtry:</span>
+      <span v-if="filters.status !== 'ACTIVE'" class="active-filter-badge badge-status">
+        Status: {{ filters.status === '' ? 'Wszyscy' : 'Koniec kariery' }}
+        <button type="button" @click="filters.status = 'ACTIVE'; fetchAthletes(false)">&times;</button>
+      </span>
+      <span v-for="s in filters.seasons" :key="s" class="active-filter-badge badge-season">
+        Sezon {{ s }}
+        <button type="button" @click="toggleSeason(s)">&times;</button>
+      </span>
+      <span v-for="c in filters.categories" :key="c" class="active-filter-badge badge-cat">
+        {{ getCategoryLabel(c) }}
+        <button type="button" @click="toggleCategory(c)">&times;</button>
+      </span>
+      <span v-for="co in filters.countries" :key="co" class="active-filter-badge badge-country">
+        {{ co }}
+        <button type="button" @click="removeCountry(co)">&times;</button>
+      </span>
+      <button type="button" class="btn-clear-all" @click="clearAllFilters">
+        ✕ Wyczyść filtry
+      </button>
     </div>
 
     <SkiLoader v-if="loading">Pobieranie bazy skoczków FIS...</SkiLoader>
@@ -536,6 +733,180 @@ onMounted(() => {
   background: #e0f2fe;
   color: #0369a1;
   font-weight: 700;
+}
+
+/* ROZWIJANE MENU Z CHECKBOXAMI (SEZONY / KATEGORIE) */
+.dropdown-container {
+  min-width: 170px;
+  max-width: 210px;
+  position: relative;
+}
+.dropdown-wrapper {
+  position: relative;
+  width: 100%;
+}
+.dropdown-toggle-btn {
+  width: 100%;
+  padding: 6px 10px;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: #1e293b;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  height: 36px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dropdown-toggle-btn:hover {
+  border-color: #0284c7;
+  background: #f8fafc;
+}
+.dropdown-arrow {
+  font-size: 0.7em;
+  color: #64748b;
+  margin-left: 6px;
+}
+.dropdown-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 240px;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  z-index: 100;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+}
+.dropdown-panel-actions {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 6px 6px 6px;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 4px;
+}
+.btn-text-xs {
+  background: none;
+  border: none;
+  color: #0284c7;
+  font-size: 0.76em;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.btn-text-xs:hover {
+  background: #e0f2fe;
+}
+.dropdown-panel-items {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.dropdown-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.82em;
+  color: #334155;
+  transition: background 0.15s;
+}
+.dropdown-checkbox-item:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+.dropdown-checkbox-item input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: #0284c7;
+  cursor: pointer;
+}
+
+/* PASEK AKTYWNYCH FILTRÓW */
+.active-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.8em;
+}
+.active-filters-label {
+  color: #64748b;
+  font-weight: 600;
+  margin-right: 4px;
+}
+.active-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.82em;
+  font-weight: 600;
+}
+.active-filter-badge button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1em;
+  line-height: 1;
+  padding: 0;
+  color: inherit;
+  opacity: 0.8;
+}
+.active-filter-badge button:hover {
+  opacity: 1;
+}
+.active-filter-badge.badge-season {
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #b45309;
+}
+.active-filter-badge.badge-cat {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+}
+.active-filter-badge.badge-country {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+}
+.active-filter-badge.badge-status {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+}
+.btn-clear-all {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 0.8em;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  margin-left: auto;
+  border-radius: 4px;
+}
+.btn-clear-all:hover {
+  background: #fee2e2;
 }
 
 /* TABELA I SORTOWANIE */

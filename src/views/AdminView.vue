@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
 import { API_BASE_URL } from '@/api/client'
 
@@ -22,7 +22,89 @@ const selectedSeasons = ref<string[]>([new Date().getFullYear().toString()])
 const scrapeMode = ref('IND')
 
 const isScraping = ref(false)
+const isStoppingScraper = ref(false)
+const scrapeStatus = ref<any>(null)
+const scrapeMessage = ref<string | null>(null)
 const scrapeResult = ref<any>(null)
+let scrapePollTimer: any = null
+
+// --- Stan Wgranych Sezonów w Bazie ---
+const seasonsSummary = ref<any[]>([])
+const isLoadingSeasonsSummary = ref(false)
+
+const totalMissingAcrossDb = computed(() =>
+  seasonsSummary.value.reduce((acc, s) => acc + (s.missing_sessions || 0), 0),
+)
+const totalFailed429AcrossDb = computed(() =>
+  seasonsSummary.value.reduce((acc, s) => acc + (s.failed_429_sessions || 0), 0),
+)
+
+const loadSeasonsSummary = async () => {
+  isLoadingSeasonsSummary.value = true
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/seasons-summary`, { headers: getHeaders() })
+    if (res.ok) {
+      const data = await res.json()
+      seasonsSummary.value = data.seasons || []
+    }
+  } catch (e) {
+    console.error('Błąd ładowania podsumowania sezonów', e)
+  } finally {
+    isLoadingSeasonsSummary.value = false
+  }
+}
+
+const getSeasonStatus = (seasonStr: string) => {
+  return seasonsSummary.value.find((s) => s.season === seasonStr)
+}
+
+const quickSelectSeason = (seasonStr: string) => {
+  if (!selectedSeasons.value.includes(seasonStr)) {
+    selectedSeasons.value = [seasonStr]
+  }
+  const sData = getSeasonStatus(seasonStr)
+  if (sData && sData.categories && sData.categories.length > 0) {
+    selectedCategories.value = sData.categories.map((c: any) => c.category_code)
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+// --- Stan Optymalizacji i Brakujących Zawodów ---
+const onlyMissing = ref(true)
+const showMissingModal = ref(false)
+const isLoadingMissing = ref(false)
+const selectedMissingSeason = ref<string>('')
+const missingSeasonData = ref<any>(null)
+
+const openMissingDetails = async (seasonStr: string) => {
+  selectedMissingSeason.value = seasonStr
+  showMissingModal.value = true
+  isLoadingMissing.value = true
+  missingSeasonData.value = null
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/seasons-summary/${seasonStr}/missing`, {
+      headers: getHeaders(),
+    })
+    if (res.ok) {
+      missingSeasonData.value = await res.json()
+    }
+  } catch (e) {
+    console.error('Błąd pobierania szczegółów brakujących zawodów', e)
+  } finally {
+    isLoadingMissing.value = false
+  }
+}
+
+const closeMissingDetails = () => {
+  showMissingModal.value = false
+  missingSeasonData.value = null
+}
+
+const scrapeMissingSeason = async (seasonStr: string, only429: boolean = false) => {
+  closeMissingDetails()
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+  await triggerRetryMissing(seasonStr, only429)
+}
 
 // Stan Dropdownów
 const showCategoryDropdown = ref(false)
@@ -66,6 +148,36 @@ const expandedAthlete = ref<number | null>(null)
 const isPdfScraping = ref(false)
 const pdfScrapeResult = ref<any>(null)
 const pdfSeason = ref<string>(new Date().getFullYear().toString())
+
+// --- Stan Wzbogacania Pogodą (Weather Enricher) ---
+const weatherStatus = ref<any>(null)
+const isEnrichingWeather = ref(false)
+const isLoadingWeatherStatus = ref(false)
+const isStoppingWeather = ref(false)
+const weatherTarget = ref<'all' | 'dev' | 'test'>('all')
+const weatherForce = ref(false)
+const weatherMessage = ref<string | null>(null)
+let weatherPollTimer: any = null
+
+// --- Stan Nocnego Scrapowania (Nightly Batch Scraper) ---
+const nightlyStatus = ref<any>(null)
+const isNightlyScraping = ref(false)
+const isStoppingNightly = ref(false)
+const isLoadingNightlyStatus = ref(false)
+const nightlyDelaySeconds = ref(1.8)
+const nightlyMessage = ref<string | null>(null)
+let nightlyPollTimer: any = null
+
+const hasActiveBackgroundProcess = computed(
+  () => isScraping.value || isNightlyScraping.value || isEnrichingWeather.value,
+)
+
+// --- Stan Sieci Neuronowej (Training) ---
+const modelInfo = ref<any>(null)
+const isTrainingModel = ref(false)
+const isLoadingModelInfo = ref(false)
+const modelTrainingMessage = ref<string | null>(null)
+let modelPollTimer: any = null
 
 // --- Stan dla DEBUGGERA PDF ---
 const checkerForm = ref({ url: '', codex: '', race_id: '' })
@@ -198,6 +310,48 @@ const updatingUserId = ref<string | null>(null)
 const userSuccessMessage = ref('')
 const userErrorMessage = ref('')
 
+// Filtrowanie i wyszukiwanie użytkowników
+const userSearchQuery = ref('')
+const userRoleFilter = ref('ALL')
+
+const filteredUsersList = computed(() => {
+  return usersList.value.filter((u) => {
+    // 1. Filtr roli
+    if (userRoleFilter.value !== 'ALL' && u.role !== userRoleFilter.value) {
+      return false
+    }
+    // 2. Szukanie po nazwie lub emailu
+    const query = userSearchQuery.value.trim().toLowerCase()
+    if (!query) return true
+
+    const nameMatch = (u.name || '').toLowerCase().includes(query)
+    const emailMatch = (u.email || '').toLowerCase().includes(query)
+    return nameMatch || emailMatch
+  })
+})
+
+const userRoleCounts = computed(() => {
+  const counts = {
+    ALL: usersList.value.length,
+    ADMIN: 0,
+    USER_PRO: 0,
+    USER_LITE: 0,
+    USER: 0,
+  }
+  usersList.value.forEach((u) => {
+    if (u.role === 'ADMIN') counts.ADMIN++
+    else if (u.role === 'USER_PRO') counts.USER_PRO++
+    else if (u.role === 'USER_LITE') counts.USER_LITE++
+    else if (u.role === 'USER') counts.USER++
+  })
+  return counts
+})
+
+const clearUserFilters = () => {
+  userSearchQuery.value = ''
+  userRoleFilter.value = 'ALL'
+}
+
 const loadUsers = async () => {
   isLoadingUsers.value = true
   userErrorMessage.value = ''
@@ -251,28 +405,344 @@ const loadConfig = async () => {
   }
 }
 
+const loadScrapeStatus = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/refresh-results/status`, {
+      headers: getHeaders(),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      scrapeStatus.value = data
+      isScraping.value = Boolean(data.is_running)
+      if (isScraping.value && !scrapePollTimer) {
+        startScrapePolling()
+      } else if (!isScraping.value && scrapePollTimer) {
+        stopScrapePolling()
+      }
+    }
+  } catch (e) {
+    console.error('Błąd pobierania statusu scrapera:', e)
+  }
+}
+
+const startScrapePolling = () => {
+  if (scrapePollTimer) clearInterval(scrapePollTimer)
+  scrapePollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/refresh-results/status`, {
+        headers: getHeaders(),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        scrapeStatus.value = data
+        isScraping.value = Boolean(data.is_running)
+        if (!isScraping.value) {
+          stopScrapePolling()
+          scrapeResult.value = data.stats || null
+          scrapeMessage.value = data.last_message || 'Scrapowanie wyników zakończone.'
+          await Promise.all([loadSeasonsSummary(), loadWeatherStatus(), fetchReviews()])
+        }
+      }
+    } catch (e) {
+      console.error('Błąd odpytywania statusu scrapera:', e)
+    }
+  }, 1500)
+}
+
+const stopScrapePolling = () => {
+  if (scrapePollTimer) {
+    clearInterval(scrapePollTimer)
+    scrapePollTimer = null
+  }
+}
+
 const runScraper = async () => {
   if (selectedCategories.value.length === 0 || selectedSeasons.value.length === 0)
     return alert('Wybierz sezon i kategorię.')
-  isScraping.value = true
   scrapeResult.value = null
+  scrapeMessage.value = null
   try {
-    const res = await fetch(`${API_BASE_URL}/admin/refresh-results`, {
+    const res = await fetch(`${API_BASE_URL}/admin/refresh-results/start`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({
         seasons: selectedSeasons.value,
         categories: selectedCategories.value,
         mode: scrapeMode.value,
+        only_missing: onlyMissing.value,
       }),
     })
     const data = await res.json()
-    if (res.ok) scrapeResult.value = data.stats
-    else alert('Błąd: ' + data.detail)
-  } catch (e) {
+    if (res.ok) {
+      isScraping.value = true
+      scrapeMessage.value = data.message || 'Scrapowanie uruchomione w tle...'
+      await loadScrapeStatus()
+      startScrapePolling()
+    } else {
+      alert('Błąd: ' + (data.detail || 'Nie udało się uruchomić scrapowania'))
+    }
+  } catch (e: any) {
     console.error(e)
+    alert(`Błąd sieci: ${e.message}`)
+  }
+}
+
+const triggerRetryMissing = async (seasonStr: string | null = null, only429: boolean = false) => {
+  scrapeResult.value = null
+  scrapeMessage.value = null
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/retry-missing/start`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        season: seasonStr,
+        only_429: only429,
+      }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      isScraping.value = true
+      scrapeMessage.value = data.message || 'Dociąganie brakujących sesji uruchomione w tle...'
+      await loadScrapeStatus()
+      startScrapePolling()
+    } else {
+      alert('Błąd: ' + (data.detail || 'Nie udało się wznowić pobierania'))
+    }
+  } catch (e: any) {
+    console.error(e)
+    alert(`Błąd sieci: ${e.message}`)
+  }
+}
+
+const triggerStopScraper = async () => {
+  if (isStoppingScraper.value) return
+  isStoppingScraper.value = true
+  if (scrapeStatus.value) {
+    scrapeStatus.value.stop_requested = true
+  }
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/refresh-results/stop`, {
+      method: 'POST',
+      headers: getHeaders(),
+    })
+    if (res.ok) {
+      scrapeMessage.value = 'Wysłano sygnał bezpiecznego zatrzymania scrapera...'
+    }
+  } catch (e) {
+    console.error('Błąd zatrzymywania scrapera:', e)
   } finally {
-    isScraping.value = false
+    setTimeout(() => {
+      isStoppingScraper.value = false
+    }, 2500)
+  }
+}
+
+// ========================================================
+// --- METODY: WZBOGACANIE POGODĄ (OPEN-METEO ARCHIVE) ---
+// ========================================================
+
+const loadWeatherStatus = async () => {
+  isLoadingWeatherStatus.value = true
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/weather-status`, { headers: getHeaders() })
+    if (res.ok) {
+      const data = await res.json()
+      weatherStatus.value = data
+      isEnrichingWeather.value = Boolean(data.status?.is_running)
+      if (isEnrichingWeather.value && !weatherPollTimer) {
+        startWeatherPolling()
+      } else if (!isEnrichingWeather.value && weatherPollTimer) {
+        stopWeatherPolling()
+      }
+    }
+  } catch (e) {
+    console.error('Błąd pobierania statusu pogody:', e)
+  } finally {
+    isLoadingWeatherStatus.value = false
+  }
+}
+
+const startWeatherPolling = () => {
+  if (weatherPollTimer) clearInterval(weatherPollTimer)
+  weatherPollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/weather-status`, { headers: getHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        weatherStatus.value = data
+        isEnrichingWeather.value = Boolean(data.status?.is_running)
+        if (!isEnrichingWeather.value) {
+          stopWeatherPolling()
+          weatherMessage.value = 'Wzbogacanie bazy danymi pogodowymi zostało zakończone pomyślnie!'
+          setTimeout(() => (weatherMessage.value = null), 6000)
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }, 2500)
+}
+
+const stopWeatherPolling = () => {
+  if (weatherPollTimer) {
+    clearInterval(weatherPollTimer)
+    weatherPollTimer = null
+  }
+}
+
+const triggerStartWeatherEnrichment = async () => {
+  weatherMessage.value = null
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/enrich-weather/start`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        target: weatherTarget.value,
+        force: weatherForce.value,
+      }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      isEnrichingWeather.value = true
+      weatherMessage.value = data.message || 'Wzbogacanie zostało uruchomione w tle.'
+      startWeatherPolling()
+    } else {
+      alert(`Błąd: ${data.detail || 'Nie udało się uruchomić enrichera'}`)
+    }
+  } catch (e: any) {
+    alert(`Błąd sieci: ${e.message}`)
+  }
+}
+
+const triggerStopWeatherEnrichment = async () => {
+  if (isStoppingWeather.value) return
+  isStoppingWeather.value = true
+  if (weatherStatus.value?.status) {
+    weatherStatus.value.status.stop_requested = true
+  }
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/enrich-weather/stop`, {
+      method: 'POST',
+      headers: getHeaders(),
+    })
+    if (res.ok) {
+      weatherMessage.value = 'Wysłano sygnał zatrzymania wzbogacania bazy...'
+    }
+  } catch (e: any) {
+    console.error('Błąd zatrzymywania enrichera:', e)
+  } finally {
+    setTimeout(() => {
+      isStoppingWeather.value = false
+    }, 2500)
+  }
+}
+
+// ========================================================
+// --- METODY: NOCNE PRZETWARZANIE BAZY (BATCH SCRAPE) ---
+// ========================================================
+
+const loadNightlyStatus = async () => {
+  isLoadingNightlyStatus.value = true
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/nightly-scrape/status`, { headers: getHeaders() })
+    if (res.ok) {
+      const data = await res.json()
+      nightlyStatus.value = data
+      isNightlyScraping.value = Boolean(data.is_running)
+      if (isNightlyScraping.value && !nightlyPollTimer) {
+        startNightlyPolling()
+      } else if (!isNightlyScraping.value && nightlyPollTimer) {
+        stopNightlyPolling()
+      }
+    }
+  } catch (e) {
+    console.error('Błąd pobierania statusu nocnego scrapowania:', e)
+  } finally {
+    isLoadingNightlyStatus.value = false
+  }
+}
+
+const startNightlyPolling = () => {
+  if (nightlyPollTimer) clearInterval(nightlyPollTimer)
+  nightlyPollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/nightly-scrape/status`, { headers: getHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        nightlyStatus.value = data
+        isNightlyScraping.value = Boolean(data.is_running)
+        if (!isNightlyScraping.value) {
+          stopNightlyPolling()
+          loadSeasonsSummary()
+          loadWeatherStatus()
+          nightlyMessage.value = 'Nocne pobieranie bazy zostało zakończone pomyślnie!'
+          setTimeout(() => (nightlyMessage.value = null), 6000)
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }, 3000)
+}
+
+const stopNightlyPolling = () => {
+  if (nightlyPollTimer) {
+    clearInterval(nightlyPollTimer)
+    nightlyPollTimer = null
+  }
+}
+
+const triggerStartNightlyScrape = async () => {
+  if (
+    !confirm(
+      'Czy na pewno chcesz uruchomić nocne przetwarzanie całej bazy? Operacja przetworzy wszystkie sezony ze sztucznym opóźnieniem chroniącym przed błędem 429 i automatycznie dołączy dane pogodowe.'
+    )
+  ) {
+    return
+  }
+  nightlyMessage.value = null
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/nightly-scrape/start`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        delay_seconds: Number(nightlyDelaySeconds.value) || 1.8,
+        mode: 'IND',
+      }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      isNightlyScraping.value = true
+      nightlyMessage.value = data.message || 'Nocne pobieranie zostało uruchomione w tle.'
+      startNightlyPolling()
+    } else {
+      alert(`Błąd: ${data.detail || 'Nie udało się uruchomić nocnego przetwarzania'}`)
+    }
+  } catch (e: any) {
+    alert(`Błąd sieci: ${e.message}`)
+  }
+}
+
+const triggerStopNightlyScrape = async () => {
+  if (isStoppingNightly.value) return
+  isStoppingNightly.value = true
+  if (nightlyStatus.value) {
+    nightlyStatus.value.stop_requested = true
+  }
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/nightly-scrape/stop`, {
+      method: 'POST',
+      headers: getHeaders(),
+    })
+    if (res.ok) {
+      nightlyMessage.value = 'Wysłano sygnał bezpiecznego zatrzymania nocnego przetwarzania...'
+    }
+  } catch (e: any) {
+    console.error('Błąd zatrzymywania nocnego przetwarzania:', e)
+  } finally {
+    setTimeout(() => {
+      isStoppingNightly.value = false
+    }, 2500)
   }
 }
 
@@ -435,7 +905,87 @@ const handleRejectAllSessions = async () => {
 watch(activeTab, (newVal) => {
   if (newVal === 'review') fetchReviews()
   if (newVal === 'users') loadUsers()
+  if (newVal === 'neural') loadModelInfo()
 })
+
+// ========================================================
+// --- METODY: SIEĆ NEURONOWA (TRENING MODELU) ---
+// ========================================================
+
+const loadModelInfo = async () => {
+  isLoadingModelInfo.value = true
+  try {
+    const res = await fetch(`${API_BASE_URL}/prediction/model-info`, { headers: getHeaders() })
+    if (res.ok) {
+      const data = await res.json()
+      modelInfo.value = data
+      isTrainingModel.value = Boolean(data.training_status?.is_training ?? data.metadata?.is_training)
+      if (isTrainingModel.value && !modelPollTimer) {
+        startModelPolling()
+      } else if (!isTrainingModel.value && modelPollTimer) {
+        stopModelPolling()
+      }
+    }
+  } catch (e) {
+    console.error('Błąd pobierania stanu modelu:', e)
+  } finally {
+    isLoadingModelInfo.value = false
+  }
+}
+
+const startModelPolling = () => {
+  if (modelPollTimer) clearInterval(modelPollTimer)
+  modelPollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/prediction/model-info`, { headers: getHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        modelInfo.value = data
+        isTrainingModel.value = Boolean(data.training_status?.is_training ?? data.metadata?.is_training)
+        if (!isTrainingModel.value) {
+          stopModelPolling()
+          if (data.training_status?.error) {
+            modelTrainingMessage.value = `❌ Błąd treningu modelu: ${data.training_status.error}`
+          } else {
+            modelTrainingMessage.value = '✅ Trening modelu zakończony pomyślnie!'
+          }
+          setTimeout(() => (modelTrainingMessage.value = null), 10000)
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }, 2000)
+}
+
+const stopModelPolling = () => {
+  if (modelPollTimer) {
+    clearInterval(modelPollTimer)
+    modelPollTimer = null
+  }
+}
+
+const triggerModelRetrain = async () => {
+  if (!confirm('Czy na pewno chcesz przetrenować sieć neuronową na aktualnych danych z bazy? Operacja może potrwać kilka minut.')) return
+  modelTrainingMessage.value = null
+  try {
+    const res = await fetch(`${API_BASE_URL}/prediction/retrain`, {
+      method: 'POST',
+      headers: getHeaders(),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      isTrainingModel.value = true
+      modelTrainingMessage.value = data.message || 'Trening modelu został uruchomiony w tle.'
+      await loadModelInfo()
+      startModelPolling()
+    } else {
+      alert(`Błąd: ${data.detail || 'Nie udało się uruchomić treningu modelu'}`)
+    }
+  } catch (e: any) {
+    alert(`Błąd sieci: ${e.message}`)
+  }
+}
 watch(reviewTab, () => {
   fetchReviews()
 })
@@ -446,13 +996,24 @@ const totalPendingReviews = computed(
 
 onMounted(() => {
   loadConfig()
+  loadSeasonsSummary()
+  loadScrapeStatus()
+  loadWeatherStatus()
+  loadNightlyStatus()
   fetchReviews()
+  loadModelInfo()
+})
+
+onUnmounted(() => {
+  stopScrapePolling()
+  stopWeatherPolling()
+  stopNightlyPolling()
+  stopModelPolling()
 })
 </script>
 
 <template>
   <div class="admin-page">
-    <SkiLoader v-if="isScraping">Pobieranie i analizowanie wyników FIS...</SkiLoader>
     <SkiLoader v-if="isAthletesScraping">Weryfikacja bazy skoczków z FIS...</SkiLoader>
     <SkiLoader v-if="isLoadingReviews">Wczytywanie kwarantanny...</SkiLoader>
     <SkiLoader v-if="isApprovingAll">Masowe zatwierdzanie...</SkiLoader>
@@ -483,6 +1044,124 @@ onMounted(() => {
       <button :class="{ active: activeTab === 'users' }" @click="activeTab = 'users'">
         <span>👥</span> Użytkownicy & Role
       </button>
+      <button :class="{ active: activeTab === 'neural' }" @click="activeTab = 'neural'">
+        <span>🧠</span> Sieć neuronowa
+      </button>
+    </div>
+
+    <!-- PRZYKLEJONY GLOBALNY PASEK AKTYWNEGO ZADANIA W TLE -->
+    <div v-if="hasActiveBackgroundProcess" class="active-process-sticky-card">
+      <div class="active-process-header">
+        <div class="active-process-indicator">
+          <span class="pulsing-live-dot"></span>
+          <strong>
+            {{
+              isNightlyScraping
+                ? 'Nocne przetwarzanie bazy w toku (Batch Scrape)'
+                : isEnrichingWeather
+                ? 'Wzbogacanie bazy pogodą (Open-Meteo Archive)'
+                : scrapeStatus?.job_type === 'retry_missing'
+                ? 'Dociąganie brakujących sesji / 429'
+                : 'Scrapowanie wyników FIS'
+            }}
+          </strong>
+          <span v-if="isScraping && scrapeStatus?.current_season" class="active-process-sub">
+            • Sezon {{ scrapeStatus.current_season }}
+            <template v-if="scrapeStatus.current_category">({{ scrapeStatus.current_category }})</template>
+          </span>
+          <span v-else-if="isNightlyScraping && nightlyStatus?.current_season" class="active-process-sub">
+            • Sezon {{ nightlyStatus.current_season }} ({{ nightlyStatus.current_category }})
+          </span>
+        </div>
+        <div class="active-process-actions">
+          <button
+            v-if="isScraping"
+            type="button"
+            @click="triggerStopScraper"
+            class="btn-danger btn-compact-stop"
+            :disabled="scrapeStatus?.stop_requested || isStoppingScraper"
+          >
+            <span>⏹️</span>
+            {{ (scrapeStatus?.stop_requested || isStoppingScraper) ? 'Zatrzymywanie...' : 'Zatrzymaj scrapowanie' }}
+          </button>
+          <button
+            v-else-if="isNightlyScraping"
+            type="button"
+            @click="triggerStopNightlyScrape"
+            class="btn-danger btn-compact-stop"
+            :disabled="nightlyStatus?.stop_requested || isStoppingNightly"
+          >
+            <span>⏹️</span>
+            {{ (nightlyStatus?.stop_requested || isStoppingNightly) ? 'Zatrzymywanie...' : 'Zatrzymaj nocne pobieranie' }}
+          </button>
+          <button
+            v-else-if="isEnrichingWeather"
+            type="button"
+            @click="triggerStopWeatherEnrichment"
+            class="btn-danger btn-compact-stop"
+            :disabled="weatherStatus?.status?.stop_requested || isStoppingWeather"
+          >
+            <span>⏹️</span>
+            {{ (weatherStatus?.status?.stop_requested || isStoppingWeather) ? 'Zatrzymywanie...' : 'Zatrzymaj pogodę' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="active-process-bar-wrap">
+        <div
+          class="active-process-bar-fill"
+          :style="{
+            width: isNightlyScraping
+              ? `${nightlyStatus?.percent_complete || 0}%`
+              : isEnrichingWeather
+              ? `${weatherStatus?.status?.percent_complete || 0}%`
+              : `${scrapeStatus?.percent_complete || 0}%`
+          }"
+        ></div>
+      </div>
+
+      <div class="active-process-stats">
+        <span v-if="isScraping && scrapeStatus?.current_item" class="active-item-label">
+          📍 {{ scrapeStatus.current_item }}
+        </span>
+        <span v-else-if="isNightlyScraping && nightlyStatus?.current_item" class="active-item-label">
+          📍 {{ nightlyStatus.current_item }}
+        </span>
+        <span v-else-if="isEnrichingWeather && weatherStatus?.status?.current_item" class="active-item-label">
+          🌤️ {{ weatherStatus.status.current_item }}
+        </span>
+
+        <div class="active-stats-pills">
+          <template v-if="isScraping && scrapeStatus">
+            <span class="mini-stat-pill pill-green">
+              Nowe: {{ (scrapeStatus.inserted ?? scrapeStatus.stats?.inserted ?? 0) + (scrapeStatus.recovered_missing ?? scrapeStatus.stats?.recovered_missing ?? 0) }}
+            </span>
+            <span class="mini-stat-pill pill-cyan">
+              Pominięte: {{ (scrapeStatus.skipped_complete ?? scrapeStatus.stats?.skipped_complete ?? 0) + (scrapeStatus.unchanged ?? scrapeStatus.stats?.unchanged ?? 0) }}
+            </span>
+            <span v-if="scrapeStatus.failed_429 > 0" class="mini-stat-pill pill-red">
+              429: {{ scrapeStatus.failed_429 }}
+            </span>
+            <span class="mini-stat-pill pill-gray">
+              ⏱️ {{ Math.floor((scrapeStatus.elapsed_seconds || 0) / 60) }}m {{ (scrapeStatus.elapsed_seconds || 0) % 60 }}s
+            </span>
+          </template>
+          <template v-else-if="isNightlyScraping && nightlyStatus">
+            <span class="mini-stat-pill pill-green">
+              Nowe: {{ nightlyStatus.inserted_sessions || 0 }}
+            </span>
+            <span class="mini-stat-pill pill-blue">
+              Zakt.: {{ nightlyStatus.updated_sessions || 0 }}
+            </span>
+            <span class="mini-stat-pill pill-cyan">
+              🌤️ {{ nightlyStatus.weather_attached_count || 0 }}
+            </span>
+            <span class="mini-stat-pill pill-gray">
+              ⏱️ {{ Math.floor((nightlyStatus.elapsed_seconds || 0) / 60) }}m {{ (nightlyStatus.elapsed_seconds || 0) % 60 }}s
+            </span>
+          </template>
+        </div>
+      </div>
     </div>
 
     <!-- TAB 1: SESJE & WYNIKI -->
@@ -534,9 +1213,19 @@ onMounted(() => {
                   <button type="button" @click="selectAllSeasons" class="btn-text-sm">Zaznacz wszystkie</button>
                   <button type="button" @click="clearSeasons" class="btn-text-sm">Wyczyść</button>
                 </div>
-                <label v-for="year in availableSeasons" :key="year" class="dropdown-item">
-                  <input type="checkbox" :value="year" v-model="selectedSeasons" />
-                  <span>{{ year }}</span>
+                <label v-for="year in availableSeasons" :key="year" class="dropdown-item dropdown-season-item">
+                  <div class="season-checkbox-label">
+                    <input type="checkbox" :value="year" v-model="selectedSeasons" />
+                    <span>{{ year }}</span>
+                  </div>
+                  <span
+                    v-if="getSeasonStatus(year)"
+                    class="season-pill-mini"
+                    :class="`pill-${getSeasonStatus(year).status.toLowerCase()}`"
+                  >
+                    {{ getSeasonStatus(year).status === 'COMPLETE' ? '✓ Kompletny' : (getSeasonStatus(year).status === 'PARTIAL' ? `⚠️ ${getSeasonStatus(year).completeness_pct}% (${getSeasonStatus(year).sessions_with_results}/${getSeasonStatus(year).total_sessions})` : 'Pusty') }}
+                  </span>
+                  <span v-else class="season-pill-mini pill-empty">Brak</span>
                 </label>
               </div>
             </div>
@@ -549,22 +1238,732 @@ onMounted(() => {
               <option value="TEAM" disabled>Drużynówki (Wkrótce)</option>
             </select>
           </div>
+
+          <div class="filter-section checkbox-filter-section">
+            <label class="field-label">Optymalizacja pobierania:</label>
+            <label class="checkbox-control-box" title="Pomija zapytania HTTP do konkursów, które są już kompletne w bazie. Pobiera tylko brakujące lub niepełne sesje.">
+              <input type="checkbox" v-model="onlyMissing" />
+              <div class="checkbox-control-text">
+                <strong>⚡ Pobieraj tylko brakujące zawody</strong>
+                <span class="help-desc">Pomija kompletne konkursy (nie zapycha bazy, chroni przed 429)</span>
+              </div>
+            </label>
+          </div>
         </div>
 
-        <div class="action-footer">
-          <button @click="runScraper" :disabled="isScraping" class="btn-primary">
+        <div class="action-footer scraper-action-footer">
+          <button v-if="!isScraping" @click="runScraper" class="btn-primary" :disabled="isNightlyScraping">
             <span>🚀</span> Rozpocznij Scrapowanie
           </button>
+          <button
+            v-else
+            type="button"
+            @click="triggerStopScraper"
+            class="btn-danger"
+            :disabled="scrapeStatus?.stop_requested || isStoppingScraper"
+          >
+            <span>⏹️</span> {{ (scrapeStatus?.stop_requested || isStoppingScraper) ? 'Zatrzymywanie...' : 'Zatrzymaj scrapowanie' }}
+          </button>
+          <span
+            class="status-pill-indicator"
+            :class="isScraping ? 'pill-running' : 'pill-idle'"
+          >
+            <span class="status-dot"></span>
+            {{ isScraping ? ((scrapeStatus?.stop_requested || isStoppingScraper) ? 'Zatrzymywanie...' : 'Scrapowanie w toku') : 'Gotowy' }}
+          </span>
         </div>
 
-        <div v-if="scrapeResult" class="results-box">
+        <div v-if="scrapeMessage && !isScraping" class="feedback-banner mt-3">
+          <span>ℹ️</span> {{ scrapeMessage }}
+        </div>
+
+        <!-- PASEK POSTĘPU SCRAPERA NA ŻYWO -->
+        <div
+          v-if="scrapeStatus && (isScraping || scrapeStatus.total_combinations > 0 || scrapeStatus.races_total > 0)"
+          class="live-progress-box mt-4"
+        >
+          <div class="progress-header">
+            <div class="progress-title">
+              <span>{{ scrapeStatus.job_type === 'retry_missing' ? 'Dociąganie brakujących / 429:' : 'Postęp scrapowania FIS:' }}</span>
+              <strong v-if="scrapeStatus.current_season">
+                Sezon {{ scrapeStatus.current_season }}
+                <template v-if="scrapeStatus.current_category">({{ scrapeStatus.current_category }})</template>
+              </strong>
+              <span v-if="scrapeStatus.current_item && isScraping" class="current-item-text">
+                • {{ scrapeStatus.current_item }}
+              </span>
+              <span v-else-if="!isScraping" class="current-item-text text-green font-semibold">
+                • {{ scrapeStatus.current_item || 'Zakończono pomyślnie' }}
+              </span>
+            </div>
+            <div class="progress-stat">
+              <template v-if="scrapeStatus.job_type === 'retry_missing' && scrapeStatus.races_total > 0">
+                {{ scrapeStatus.races_done }} / {{ scrapeStatus.races_total }} sesji ({{ scrapeStatus.percent_complete }}%)
+              </template>
+              <template v-else-if="scrapeStatus.events_total > 0">
+                <template v-if="isScraping">
+                  Kombinacja {{ scrapeStatus.combination_index }}/{{ scrapeStatus.total_combinations }}
+                  • Event {{ scrapeStatus.events_done }}/{{ scrapeStatus.events_total }}
+                  ({{ scrapeStatus.percent_complete }}%)
+                </template>
+                <template v-else>
+                  Kombinacji: {{ scrapeStatus.total_combinations }}/{{ scrapeStatus.total_combinations }}
+                  • Eventów: {{ scrapeStatus.events_total }}/{{ scrapeStatus.events_total }}
+                  (100%)
+                </template>
+              </template>
+              <template v-else>
+                {{ scrapeStatus.combination_index }} / {{ scrapeStatus.total_combinations }} kombinacji ({{ scrapeStatus.percent_complete }}%)
+              </template>
+            </div>
+          </div>
+
+          <div class="progress-bar-bg mb-3">
+            <div
+              class="progress-bar-fill"
+              :class="isScraping ? 'fill-running' : 'fill-complete'"
+              :style="{ width: `${scrapeStatus.percent_complete || 0}%` }"
+            ></div>
+          </div>
+
+          <div class="live-metrics-grid">
+            <div class="live-metric-card">
+              <span class="metric-label">Nowe / Uzupełnione</span>
+              <strong class="metric-value text-green">
+                {{ (scrapeStatus.inserted ?? scrapeStatus.stats?.inserted ?? 0) + (scrapeStatus.recovered_missing ?? scrapeStatus.stats?.recovered_missing ?? 0) }}
+                <span v-if="isScraping && (scrapeStatus.inserted || 0) === 0 && (scrapeStatus.races_done || 0) > 0" class="text-xs text-muted font-normal">
+                  ({{ scrapeStatus.races_done }} w buforze)
+                </span>
+              </strong>
+            </div>
+            <div class="live-metric-card">
+              <span class="metric-label">Pominięte (kompletne)</span>
+              <strong class="metric-value text-cyan">
+                {{ (scrapeStatus.skipped_complete ?? scrapeStatus.stats?.skipped_complete ?? 0) + (scrapeStatus.unchanged ?? scrapeStatus.stats?.unchanged ?? 0) }}
+              </strong>
+            </div>
+            <div class="live-metric-card">
+              <span class="metric-label">Kwarantanna</span>
+              <strong class="metric-value text-blue">{{ scrapeStatus.sent_to_review ?? scrapeStatus.stats?.sent_to_review ?? 0 }}</strong>
+            </div>
+            <div class="live-metric-card" v-if="(scrapeStatus.failed_429 ?? scrapeStatus.stats?.failed_429 ?? 0) > 0">
+              <span class="metric-label">Błędy 429 (do wznowienia)</span>
+              <strong class="metric-value text-red">🚦 {{ scrapeStatus.failed_429 ?? scrapeStatus.stats?.failed_429 }}</strong>
+            </div>
+            <div class="live-metric-card">
+              <span class="metric-label">Czas trwania</span>
+              <strong class="metric-value">
+                {{ Math.floor((scrapeStatus.elapsed_seconds || 0) / 60) }}m {{ (scrapeStatus.elapsed_seconds || 0) % 60 }}s
+              </strong>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="scrapeResult && !isScraping" class="results-box">
           <h4>Raport z wykonania:</h4>
           <ul class="stats-list">
-            <li>Przetworzono kombinacji: <span>{{ scrapeResult.combinations_processed }}</span></li>
-            <li>Zapisano nowych konkursów: <span class="text-green">{{ scrapeResult.inserted }}</span></li>
-            <li>Zaktualizowano (brak zmian): <span>{{ scrapeResult.unchanged }}</span></li>
-            <li>Wysłano do kwarantanny: <span class="text-yellow">{{ scrapeResult.sent_to_review }}</span></li>
+            <li>Przetworzono kombinacji: <span>{{ scrapeResult.combinations_processed || scrapeStatus?.total_combinations }}</span></li>
+            <li>Zapisano nowych konkursów: <span class="text-green">{{ scrapeResult.inserted || 0 }}</span></li>
+            <li>Uzupełniono brakujących / 429: <span class="text-cyan">{{ scrapeResult.recovered_missing || 0 }}</span></li>
+            <li>Pominięto kompletnych (bez zmian): <span class="text-cyan">{{ (scrapeResult.skipped_complete || 0) + (scrapeResult.unchanged || 0) }}</span></li>
+            <li>Wysłano do kwarantanny: <span class="text-yellow">{{ scrapeResult.sent_to_review || 0 }}</span></li>
+            <li v-if="scrapeResult.failed_429 > 0">Błędy 429 (oznaczone w bazie): <span class="text-red">{{ scrapeResult.failed_429 }}</span></li>
           </ul>
+          <div class="nn-retrain-hint-inline">
+            <span>🧠 <strong>Wskazówka AI:</strong> Po aktualizacjach wyników w bazie warto przetrenować sieć neuronową na zaktualizowanych danych.</span>
+            <button type="button" class="btn-link-neural" @click="activeTab = 'neural'">
+              Przejdź do: Sieć neuronowa →
+            </button>
+          </div>
+        </div>
+
+        <!-- PODSUMOWANIE BAZY DANYCH: SEZONY I KOMPLETNOŚĆ -->
+        <div class="seasons-database-section">
+          <div class="seasons-header-row">
+            <div>
+              <h4 class="seasons-summary-title">📊 Stan bazy: Wgrane sezony i kompletność</h4>
+              <p class="seasons-summary-subtitle">
+                Sprawdź, które sezony i zawody są już w bazie danych, albo wznów wyłącznie brakujące lub zablokowane przez limit 429 konkursy.
+              </p>
+            </div>
+            <div class="seasons-header-actions">
+              <button
+                v-if="isScraping"
+                type="button"
+                class="btn-danger btn-header-stop"
+                @click="triggerStopScraper"
+                :disabled="scrapeStatus?.stop_requested || isStoppingScraper"
+                title="Bezpiecznie zatrzymaj aktywne zadanie scrapowania"
+              >
+                ⏹️ {{ (scrapeStatus?.stop_requested || isStoppingScraper) ? 'Zatrzymywanie...' : 'Zatrzymaj zadanie' }}
+              </button>
+              <button
+                v-if="totalFailed429AcrossDb > 0"
+                type="button"
+                class="btn-resume-429"
+                @click="triggerRetryMissing(null, true)"
+                :disabled="isScraping"
+                title="Pobierz wyłącznie sesje oznaczone w bazie błędem HTTP 429"
+              >
+                🚦 Wznów błędy 429 ({{ totalFailed429AcrossDb }})
+              </button>
+              <button
+                v-if="totalMissingAcrossDb > 0"
+                type="button"
+                class="btn-fetch-missing-header"
+                @click="triggerRetryMissing(null, false)"
+                :disabled="isScraping"
+                title="Pobierz wyłącznie brakujące sesje wprost z bazy (bez pełnego skanu kalendarza)"
+              >
+                ⚡ Dociągnij wszystkie brakujące ({{ totalMissingAcrossDb }})
+              </button>
+              <button
+                type="button"
+                class="btn-refresh-summary"
+                @click="loadSeasonsSummary"
+                :disabled="isLoadingSeasonsSummary"
+              >
+                <span :class="{ spinning: isLoadingSeasonsSummary }">🔄</span> Odśwież stan bazy
+              </button>
+            </div>
+          </div>
+
+          <div v-if="isLoadingSeasonsSummary" class="seasons-loading">
+            Wczytywanie podsumowania bazy danych...
+          </div>
+          <div v-else-if="seasonsSummary.length === 0" class="seasons-empty">
+            Baza nie zawiera jeszcze żadnych wgranych sesji.
+          </div>
+          <div v-else class="seasons-grid">
+            <div
+              v-for="s in seasonsSummary"
+              :key="s.season"
+              class="season-card"
+              :class="`border-${s.status.toLowerCase()}`"
+            >
+              <div class="season-card-header">
+                <span class="season-year">Sezon {{ s.season }}</span>
+                <span class="season-status-badge" :class="`badge-${s.status.toLowerCase()}`">
+                  {{ s.status === 'COMPLETE' ? '✓ Kompletny' : (s.status === 'PARTIAL' ? '⚠️ Częściowy' : 'Pusty') }}
+                </span>
+              </div>
+
+              <div class="season-progress">
+                <div class="progress-info">
+                  <span>Kompletność sezonu:</span>
+                  <strong>{{ s.completeness_pct }}%</strong>
+                </div>
+                <div class="progress-bar-bg">
+                  <div
+                    class="progress-bar-fill"
+                    :class="`fill-${s.status.toLowerCase()}`"
+                    :style="{ width: `${s.completeness_pct}%` }"
+                  ></div>
+                </div>
+                <div class="progress-stats-breakdown">
+                  <span class="stat-pill-sm pill-results" title="Liczba rozegranych sesji z wynikami">
+                    ✅ {{ s.sessions_with_results }} rozegranych
+                  </span>
+                  <span
+                    v-if="s.cancelled_sessions > 0"
+                    class="stat-pill-sm pill-cancelled"
+                    title="Liczba zawodów odwołanych przez jury (np. wiatr)"
+                  >
+                    💨 {{ s.cancelled_sessions }} odwołanych
+                  </span>
+                  <span
+                    v-if="s.failed_429_sessions > 0"
+                    class="stat-pill-sm pill-429"
+                    title="Liczba zawodów przerwanych przez limit FIS 429 — gotowych do szybkiego wznowienia"
+                  >
+                    🚦 {{ s.failed_429_sessions }} błędów 429
+                  </span>
+                  <span
+                    v-if="s.missing_sessions > 0"
+                    class="stat-pill-sm pill-missing"
+                    title="Liczba zawodów zaplanowanych, ale brakujących w bazie"
+                  >
+                    ⚠️ {{ s.missing_sessions }} do pobrania
+                  </span>
+                </div>
+              </div>
+
+              <div class="season-details">
+                <div class="season-detail-row">
+                  <span class="detail-label-inline">Skocznie / miejsca:</span>
+                  <span class="detail-value">{{ s.unique_places_count }} lokalizacji</span>
+                </div>
+                <div class="season-categories-list">
+                  <span class="detail-label-inline">Zawody:</span>
+                  <div class="cat-tags">
+                    <span
+                      v-for="cat in s.categories"
+                      :key="cat.category_code"
+                      class="cat-tag"
+                      :title="`${cat.category_code}: ${cat.sessions_with_results}/${cat.total_sessions} sesji z wynikami`"
+                    >
+                      {{ cat.category_name_pl || cat.category_code }}
+                      <small>({{ cat.sessions_with_results }}/{{ cat.total_sessions }})</small>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="season-card-footer">
+                <button
+                  v-if="s.missing_sessions > 0"
+                  type="button"
+                  class="btn-fetch-missing"
+                  @click="scrapeMissingSeason(s.season)"
+                  :disabled="isScraping"
+                  title="Pobierz wyłącznie brakujące / błędne 429 zawody z tego sezonu bez skanowania kompletnych eventów"
+                >
+                  ⚡ Dociągnij tylko brakujące ({{ s.missing_sessions }})
+                </button>
+                <div class="footer-btn-group">
+                  <button
+                    type="button"
+                    class="btn-view-details"
+                    @click="openMissingDetails(s.season)"
+                    title="Zobacz listę odwołanych lub brakujących zawodów"
+                  >
+                    🔍 Szczegóły ({{ (s.cancelled_sessions || 0) + (s.missing_sessions || 0) }})
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-quick-select"
+                    @click="quickSelectSeason(s.season)"
+                    title="Ustaw ten sezon w formularzu na górze"
+                  >
+                    Wybierz
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL: SZCZEGÓŁY BRAKUJĄCYCH I ODWOŁANYCH ZAWODÓW -->
+      <div v-if="showMissingModal" class="modal-overlay" @click.self="closeMissingDetails">
+        <div class="modal-card">
+          <div class="modal-header">
+            <div>
+              <h3 class="modal-title">🔍 Zawody w sezonie {{ selectedMissingSeason }}</h3>
+              <p class="modal-subtitle">Szczegółowa weryfikacja statusu konkursów: rozegrane, odwołane przez jury oraz brakujące w bazie.</p>
+            </div>
+            <button type="button" class="btn-modal-close" @click="closeMissingDetails">✕</button>
+          </div>
+
+          <div v-if="isLoadingMissing" class="modal-loading">
+            <span class="spinning">🔄</span> Pobieranie szczegółowej listy zawodów...
+          </div>
+
+          <div v-else-if="missingSeasonData" class="modal-body">
+            <!-- Pigułki podsumowania -->
+            <div class="missing-summary-banner">
+              <div class="summary-pill pill-success">
+                <span>Rozegrane z wynikami:</span>
+                <strong>{{ getSeasonStatus(selectedMissingSeason)?.sessions_with_results || 0 }}</strong>
+              </div>
+              <div class="summary-pill pill-cancelled">
+                <span>Odwołane przez jury:</span>
+                <strong>{{ missingSeasonData.cancelled_count }}</strong>
+              </div>
+              <div class="summary-pill pill-missing">
+                <span>Brakujące w bazie:</span>
+                <strong>{{ missingSeasonData.missing_count }}</strong>
+              </div>
+              <div v-if="missingSeasonData.failed_429_count > 0" class="summary-pill pill-429">
+                <span>Błędy 429 (do wznowienia):</span>
+                <strong>{{ missingSeasonData.failed_429_count }}</strong>
+              </div>
+            </div>
+
+            <!-- SEKCJA: BRAKUJĄCE W BAZIE -->
+            <div v-if="missingSeasonData.missing_sessions && missingSeasonData.missing_sessions.length > 0" class="missing-section">
+              <div class="section-title-row">
+                <h4 class="text-missing">⚠️ Zawody do pobrania (brak wyników w bazie)</h4>
+                <button
+                  type="button"
+                  class="btn-primary-sm"
+                  @click="scrapeMissingSeason(selectedMissingSeason)"
+                  :disabled="isScraping"
+                >
+                  ⚡ Pobierz te brakujące zawody
+                </button>
+              </div>
+              <div class="table-responsive">
+                <table class="missing-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Miejscowość</th>
+                      <th>Nazwa konkursu</th>
+                      <th>Kategoria</th>
+                      <th>Skocznia</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in missingSeasonData.missing_sessions" :key="item.id">
+                      <td>{{ item.date }} <small v-if="item.time">{{ item.time }}</small></td>
+                      <td><strong>{{ item.place }}</strong></td>
+                      <td>{{ item.title }}</td>
+                      <td><span class="badge-cat">{{ item.category_code }}</span></td>
+                      <td>{{ item.hill_size ? `${item.hill_unit}${item.hill_size}` : '—' }}</td>
+                      <td>
+                        <span :class="item.status === 'FAILED_429' ? 'badge-status-429' : 'badge-status-missing'">
+                          {{ item.status === 'FAILED_429' ? '🚦 ' : '⚠️ ' }}{{ item.status_label }}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- SEKCJA: ODWOŁANE PRZEZ JURY -->
+            <div v-if="missingSeasonData.cancelled_sessions && missingSeasonData.cancelled_sessions.length > 0" class="missing-section">
+              <h4 class="text-cancelled">💨 Zawody odwołane przez jury FIS (warunki / wiatr)</h4>
+              <p class="section-desc">
+                Te zawody widnieją w oficjalnym kalendarzu FIS, ale zostały odwołane przez jury (np. zbyt silny wiatr, odwilż). Baza prawidłowo rejestruje je jako odwołane bez pustych rekordów.
+              </p>
+              <div class="table-responsive">
+                <table class="missing-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Miejscowość</th>
+                      <th>Nazwa konkursu</th>
+                      <th>Kategoria</th>
+                      <th>Skocznia</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in missingSeasonData.cancelled_sessions" :key="item.id">
+                      <td>{{ item.date }} <small v-if="item.time">{{ item.time }}</small></td>
+                      <td><strong>{{ item.place }}</strong></td>
+                      <td>{{ item.title }}</td>
+                      <td><span class="badge-cat">{{ item.category_code }}</span></td>
+                      <td>{{ item.hill_size ? `${item.hill_unit}${item.hill_size}` : '—' }}</td>
+                      <td><span class="badge-status-cancelled">💨 {{ item.status_label }}</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div v-if="missingSeasonData.total_unresolved === 0" class="empty-state-card">
+              <span class="text-2xl">🎉</span>
+              <strong>Kompletny sezon!</strong>
+              <p>Wszystkie zawody w sezonie {{ selectedMissingSeason }} zostały rozegrane i posiadają pełne wyniki.</p>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" @click="closeMissingDetails">Zamknij</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- KARTA: NOCNE POBIERANIE CAŁEJ BAZY (BATCH SCRAPE) -->
+      <div class="admin-card mt-6">
+        <div class="admin-card-header flex-between">
+          <div>
+            <h3>🌙 Nocne Przetwarzanie Bazy (Batch Scrape)</h3>
+            <p class="subtitle">
+              Pobieranie wszystkich wyników ze wszystkich sezonów ze sztucznym opóźnieniem chroniącym przed błędem 429 oraz automatycznym dołączaniem danych pogodowych.
+            </p>
+          </div>
+          <div class="header-badges">
+            <span
+              class="status-pill-indicator"
+              :class="isNightlyScraping ? 'pill-running' : 'pill-idle'"
+            >
+              <span class="status-dot"></span>
+              {{ isNightlyScraping ? 'W toku (Aktywne)' : 'Bezczynny (Gotowy)' }}
+            </span>
+          </div>
+        </div>
+
+        <div class="info-alert-banner">
+          <span class="alert-icon">⏱️</span>
+          <div>
+            <strong>Ochrona przed błędem HTTP 429 (Too Many Requests):</strong>
+            <p>
+              Proces wysyła żądania do FIS w kontrolowanych odstępach czasowych z losowym szumem (jitter). Dzięki temu możesz bezpiecznie uruchomić pobieranie na noc bez ryzyka tymczasowej blokady IP. Każdy pobrany konkurs otrzymuje od razu historyczne dane pogodowe.
+            </p>
+          </div>
+        </div>
+
+        <div v-if="nightlyMessage" class="feedback-banner">
+          <span>ℹ️</span> {{ nightlyMessage }}
+        </div>
+
+        <!-- Parametry i akcje -->
+        <div class="batch-controls-row">
+          <div class="control-group">
+            <label class="field-label">Opóźnienie między żądaniami (sekundy):</label>
+            <div class="input-with-hint">
+              <input
+                type="number"
+                step="0.1"
+                min="0.8"
+                max="10.0"
+                v-model.number="nightlyDelaySeconds"
+                :disabled="isNightlyScraping"
+                class="form-input-number"
+              />
+              <span class="hint-text">Zalecane: 1.5 – 2.5s (bezpieczne nocne pobieranie)</span>
+            </div>
+          </div>
+
+          <div class="control-actions">
+            <button
+              v-if="!isNightlyScraping"
+              type="button"
+              @click="triggerStartNightlyScrape"
+              class="btn-primary btn-nightly-start"
+              :disabled="isScraping"
+            >
+              <span>🌙</span> Rozpocznij nocne pobieranie
+            </button>
+            <button
+              v-else
+              type="button"
+              @click="triggerStopNightlyScrape"
+              class="btn-danger btn-nightly-stop"
+              :disabled="nightlyStatus?.stop_requested || isStoppingNightly"
+            >
+              <span>⏹️</span> {{ (nightlyStatus?.stop_requested || isStoppingNightly) ? 'Zatrzymywanie...' : 'Zatrzymaj pobieranie' }}
+            </button>
+            <button
+              type="button"
+              @click="loadNightlyStatus"
+              :disabled="isLoadingNightlyStatus"
+              class="btn-refresh-summary"
+            >
+              <span :class="{ spinning: isLoadingNightlyStatus }">🔄</span> Odśwież stan
+            </button>
+          </div>
+        </div>
+
+        <!-- Postęp i statystyki live -->
+        <div v-if="nightlyStatus && (nightlyStatus.is_running || nightlyStatus.total_combinations > 0)" class="live-progress-box mt-4">
+          <div class="progress-header">
+            <div class="progress-title">
+              <span>Postęp nocnego przetwarzania:</span>
+              <strong v-if="nightlyStatus.current_season">
+                Sezon {{ nightlyStatus.current_season }} ({{ nightlyStatus.current_category }})
+              </strong>
+              <strong v-else>Oczekiwanie...</strong>
+              <span v-if="nightlyStatus.current_item && isNightlyScraping" class="current-item-text">
+                • {{ nightlyStatus.current_item }}
+              </span>
+              <span v-else-if="!isNightlyScraping && nightlyStatus.last_message" class="current-item-text text-green font-semibold">
+                • {{ nightlyStatus.last_message }}
+              </span>
+            </div>
+            <div class="progress-stat">
+              {{ nightlyStatus.progress_index }} / {{ nightlyStatus.total_combinations }} kombinacji ({{ nightlyStatus.percent_complete }}%)
+            </div>
+          </div>
+
+          <div class="progress-bar-bg mb-3">
+            <div
+              class="progress-bar-fill"
+              :class="isNightlyScraping ? 'fill-running' : 'fill-complete'"
+              :style="{ width: `${nightlyStatus.percent_complete}%` }"
+            ></div>
+          </div>
+
+          <div class="live-metrics-grid">
+            <div class="live-metric-card">
+              <span class="metric-label">Zapisano nowych</span>
+              <strong class="metric-value text-green">{{ nightlyStatus.inserted_sessions ?? 0 }}</strong>
+            </div>
+            <div class="live-metric-card">
+              <span class="metric-label">Zaktualizowano</span>
+              <strong class="metric-value text-blue">{{ nightlyStatus.updated_sessions ?? 0 }}</strong>
+            </div>
+            <div class="live-metric-card">
+              <span class="metric-label">Bez zmian</span>
+              <strong class="metric-value">{{ nightlyStatus.unchanged_sessions ?? 0 }}</strong>
+            </div>
+            <div class="live-metric-card">
+              <span class="metric-label">Pogoda dołączona</span>
+              <strong class="metric-value text-cyan">🌤️ {{ nightlyStatus.weather_attached_count ?? 0 }}</strong>
+            </div>
+            <div class="live-metric-card" v-if="nightlyStatus.failed_combinations > 0">
+              <span class="metric-label">Błędy</span>
+              <strong class="metric-value text-red">{{ nightlyStatus.failed_combinations }}</strong>
+            </div>
+            <div class="live-metric-card">
+              <span class="metric-label">Czas trwania</span>
+              <strong class="metric-value">
+                {{ Math.floor(nightlyStatus.elapsed_seconds / 60) }}m {{ nightlyStatus.elapsed_seconds % 60 }}s
+              </strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KARTA: WZBOGACANIE BAZY DANYMI POGODOWYMI (OPEN-METEO ARCHIVE) -->
+      <div class="admin-card mt-6">
+        <div class="admin-card-header flex-between">
+          <div>
+            <h3>🌤️ Wzbogacanie Bazy Danymi Pogodowymi (Open-Meteo Archive)</h3>
+            <p class="subtitle">
+              Pobieranie historycznych warunków pogodowych (wiatr, kierunek, porywy, składowa czołowa, temperatura, ciśnienie) pod kątem predykcji AI.
+            </p>
+          </div>
+          <div class="header-badges">
+            <span
+              class="status-pill-indicator"
+              :class="isEnrichingWeather ? 'pill-running' : 'pill-idle'"
+            >
+              <span class="status-dot"></span>
+              {{ isEnrichingWeather ? 'Wzbogacanie w toku' : 'Gotowy' }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Wskaźniki pokrycia baz danych -->
+        <div class="weather-coverage-section">
+          <div class="coverage-grid">
+            <div class="coverage-card">
+              <div class="coverage-card-header">
+                <span class="coverage-db-name">🗄️ Baza Środowiska DEV (Główna)</span>
+                <span class="coverage-badge" :class="weatherStatus?.dev?.coverage_pct >= 90 ? 'badge-complete' : 'badge-partial'">
+                  {{ weatherStatus?.dev?.coverage_pct || 0 }}%
+                </span>
+              </div>
+              <div class="coverage-numbers">
+                <strong>{{ weatherStatus?.dev?.with_weather || 0 }}</strong>
+                <span>z {{ weatherStatus?.dev?.total_sessions || 0 }} sesji posiada pogodę</span>
+              </div>
+              <div class="progress-bar-bg">
+                <div
+                  class="progress-bar-fill fill-complete"
+                  :style="{ width: `${weatherStatus?.dev?.coverage_pct || 0}%` }"
+                ></div>
+              </div>
+            </div>
+
+            <div class="coverage-card">
+              <div class="coverage-card-header">
+                <span class="coverage-db-name">🧪 Baza Środowiska TEST</span>
+                <span class="coverage-badge" :class="weatherStatus?.test?.coverage_pct >= 90 ? 'badge-complete' : 'badge-partial'">
+                  {{ weatherStatus?.test?.coverage_pct || 0 }}%
+                </span>
+              </div>
+              <div class="coverage-numbers">
+                <strong>{{ weatherStatus?.test?.with_weather || 0 }}</strong>
+                <span>z {{ weatherStatus?.test?.total_sessions || 0 }} sesji posiada pogodę</span>
+              </div>
+              <div class="progress-bar-bg">
+                <div
+                  class="progress-bar-fill fill-complete"
+                  :style="{ width: `${weatherStatus?.test?.coverage_pct || 0}%` }"
+                ></div>
+              </div>
+            </div>
+
+            <div class="coverage-card prod-note-card">
+              <div class="coverage-card-header">
+                <span class="coverage-db-name">🚀 Środowisko PROD</span>
+                <span class="coverage-badge badge-prod">Auto-Enrich</span>
+              </div>
+              <p class="prod-note-text">
+                Na środowisku produkcyjnym dane pogodowe pobierane są i dołączane automatycznie w locie przy każdym scrapowaniu konkursu.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="weatherMessage" class="feedback-banner mt-3">
+          <span>ℹ️</span> {{ weatherMessage }}
+        </div>
+
+        <!-- Sterowanie enricherem -->
+        <div class="enricher-controls-row mt-4">
+          <div class="control-group">
+            <label class="field-label">Baza docelowa do uzupełnienia:</label>
+            <select v-model="weatherTarget" :disabled="isEnrichingWeather" class="form-select">
+              <option value="all">Wszystkie bazy (DEV oraz TEST)</option>
+              <option value="dev">Tylko baza DEV (FIS_DATA_DB_DEV)</option>
+              <option value="test">Tylko baza TEST (FIS_DATA_DB_TEST)</option>
+            </select>
+          </div>
+
+          <div class="control-group checkbox-group">
+            <label class="custom-checkbox-label">
+              <input type="checkbox" v-model="weatherForce" :disabled="isEnrichingWeather" />
+              <span>Nadpisz istniejące dane (Force refresh)</span>
+            </label>
+          </div>
+
+          <div class="control-actions">
+            <button
+              v-if="!isEnrichingWeather"
+              type="button"
+              @click="triggerStartWeatherEnrichment"
+              class="btn-primary"
+            >
+              <span>🌤️</span> Uzupełnij pogodę
+            </button>
+            <button
+              v-else
+              type="button"
+              @click="triggerStopWeatherEnrichment"
+              class="btn-danger"
+            >
+              <span>⏹️</span> Zatrzymaj wzbogacanie
+            </button>
+            <button
+              type="button"
+              @click="loadWeatherStatus"
+              :disabled="isLoadingWeatherStatus"
+              class="btn-refresh-summary"
+            >
+              <span :class="{ spinning: isLoadingWeatherStatus }">🔄</span> Odśwież stan
+            </button>
+          </div>
+        </div>
+
+        <!-- Live postęp enrichera -->
+        <div v-if="weatherStatus?.status && weatherStatus.status.is_running" class="live-progress-box mt-4">
+          <div class="progress-header">
+            <div class="progress-title">
+              <span>Wzbogacanie bazy <strong>{{ weatherStatus.status.db_name }}</strong>:</span>
+              <span v-if="weatherStatus.status.current_item" class="current-item-text">
+                {{ weatherStatus.status.current_item }}
+              </span>
+            </div>
+            <div class="progress-stat">
+              {{ weatherStatus.status.processed_sessions }} / {{ weatherStatus.status.total_sessions }} sesji ({{ weatherStatus.status.percent_complete }}%)
+            </div>
+          </div>
+
+          <div class="progress-bar-bg mb-3">
+            <div
+              class="progress-bar-fill fill-running"
+              :style="{ width: `${weatherStatus.status.percent_complete}%` }"
+            ></div>
+          </div>
+
+          <div class="live-metrics-grid">
+            <div class="live-metric-card">
+              <span class="metric-label">Zaktualizowano sesji</span>
+              <strong class="metric-value text-green">{{ weatherStatus.status.updated_sessions }}</strong>
+            </div>
+            <div class="live-metric-card" v-if="weatherStatus.status.failed_sessions > 0">
+              <span class="metric-label">Błędy API</span>
+              <strong class="metric-value text-red">{{ weatherStatus.status.failed_sessions }}</strong>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -965,65 +2364,290 @@ onMounted(() => {
           ❌ {{ userErrorMessage }}
         </div>
 
+        <!-- PASEK WYSZUKIWANIA I FILTROWANIA UŻYTKOWNIKÓW -->
+        <div class="users-toolbar">
+          <div class="users-search-box">
+            <span class="search-icon">🔍</span>
+            <input
+              v-model="userSearchQuery"
+              type="text"
+              class="form-input users-search-input"
+              placeholder="Szukaj użytkownika po nazwie lub adresie e-mail..."
+            />
+            <button
+              v-if="userSearchQuery"
+              type="button"
+              class="btn-clear-search"
+              @click="userSearchQuery = ''"
+              title="Wyczyść pole wyszukiwania"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div class="users-filter-group">
+            <div class="filter-role-pills">
+              <button
+                type="button"
+                class="role-filter-pill"
+                :class="{ active: userRoleFilter === 'ALL' }"
+                @click="userRoleFilter = 'ALL'"
+              >
+                Wszyscy ({{ userRoleCounts.ALL }})
+              </button>
+              <button
+                type="button"
+                class="role-filter-pill pill-admin"
+                :class="{ active: userRoleFilter === 'ADMIN' }"
+                @click="userRoleFilter = 'ADMIN'"
+              >
+                Admin ({{ userRoleCounts.ADMIN }})
+              </button>
+              <button
+                type="button"
+                class="role-filter-pill pill-pro"
+                :class="{ active: userRoleFilter === 'USER_PRO' }"
+                @click="userRoleFilter = 'USER_PRO'"
+              >
+                PRO ({{ userRoleCounts.USER_PRO }})
+              </button>
+              <button
+                type="button"
+                class="role-filter-pill pill-lite"
+                :class="{ active: userRoleFilter === 'USER_LITE' }"
+                @click="userRoleFilter = 'USER_LITE'"
+              >
+                LITE ({{ userRoleCounts.USER_LITE }})
+              </button>
+              <button
+                type="button"
+                class="role-filter-pill pill-user"
+                :class="{ active: userRoleFilter === 'USER' }"
+                @click="userRoleFilter = 'USER'"
+              >
+                Standard ({{ userRoleCounts.USER }})
+              </button>
+            </div>
+
+            <button
+              v-if="userSearchQuery || userRoleFilter !== 'ALL'"
+              type="button"
+              class="btn-reset-filters"
+              @click="clearUserFilters"
+            >
+              ✕ Wyczyść filtry
+            </button>
+          </div>
+        </div>
+
         <div v-if="isLoadingUsers" class="loading-state">
           Wczytywanie listy użytkowników...
         </div>
 
-        <div v-else-if="usersList.length > 0" class="table-responsive">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Użytkownik</th>
-                <th>Adres e-mail</th>
-                <th>Data rejestracji</th>
-                <th>Ostatnie logowanie</th>
-                <th>Aktualna rola</th>
-                <th>Zmień uprawnienia</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="u in usersList" :key="u.id">
-                <td>
-                  <div class="user-row-cell">
-                    <img v-if="u.picture" :src="u.picture" class="user-row-avatar" alt="Avatar" />
-                    <span v-else class="user-row-fallback">👤</span>
-                    <strong>{{ u.name }}</strong>
-                  </div>
-                </td>
-                <td><code>{{ u.email }}</code></td>
-                <td>{{ u.created_at ? new Date(u.created_at).toLocaleDateString() : '-' }}</td>
-                <td>{{ u.last_login ? new Date(u.last_login).toLocaleString() : '-' }}</td>
-                <td>
-                  <span
-                    class="role-badge"
-                    :class="{
-                      'role-admin': u.role === 'ADMIN',
-                      'role-pro': u.role === 'USER_PRO',
-                      'role-lite': u.role === 'USER_LITE',
-                      'role-user': u.role === 'USER',
-                    }"
-                  >
-                    {{ u.role === 'ADMIN' ? 'ADMIN' : (u.role === 'USER_PRO' ? 'PRO' : (u.role === 'USER_LITE' ? 'LITE' : 'STANDARD')) }}
-                  </span>
-                </td>
-                <td>
-                  <select
-                    class="form-select role-select"
-                    :value="u.role"
-                    :disabled="updatingUserId === u.id"
-                    @change="changeUserRole(u, ($event.target as HTMLSelectElement).value)"
-                  >
-                    <option value="USER">Konto standardowe (Darmowe)</option>
-                    <option value="USER_LITE">FantaSKI LITE (Porównywarka do 2 skoczków)</option>
-                    <option value="USER_PRO">FantaSKI PRO (Pełna analityka & Predykcje)</option>
-                    <option value="ADMIN">Administrator</option>
-                  </select>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div v-else-if="usersList.length > 0">
+          <div v-if="filteredUsersList.length > 0" class="table-responsive">
+            <div class="table-summary-bar">
+              <span>Znaleziono: <strong>{{ filteredUsersList.length }}</strong> z <strong>{{ usersList.length }}</strong> zarejestrowanych użytkowników</span>
+            </div>
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Użytkownik</th>
+                  <th>Adres e-mail</th>
+                  <th>Data rejestracji</th>
+                  <th>Ostatnie logowanie</th>
+                  <th>Aktualna rola</th>
+                  <th>Zmień uprawnienia</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="u in filteredUsersList" :key="u.id">
+                  <td>
+                    <div class="user-row-cell">
+                      <img v-if="u.picture" :src="u.picture" class="user-row-avatar" alt="Avatar" />
+                      <span v-else class="user-row-fallback">👤</span>
+                      <strong>{{ u.name }}</strong>
+                    </div>
+                  </td>
+                  <td><code>{{ u.email }}</code></td>
+                  <td>{{ u.created_at ? new Date(u.created_at).toLocaleDateString() : '-' }}</td>
+                  <td>{{ u.last_login ? new Date(u.last_login).toLocaleString() : '-' }}</td>
+                  <td>
+                    <span
+                      class="role-badge"
+                      :class="{
+                        'role-admin': u.role === 'ADMIN',
+                        'role-pro': u.role === 'USER_PRO',
+                        'role-lite': u.role === 'USER_LITE',
+                        'role-user': u.role === 'USER',
+                      }"
+                    >
+                      {{ u.role === 'ADMIN' ? 'ADMIN' : (u.role === 'USER_PRO' ? 'PRO' : (u.role === 'USER_LITE' ? 'LITE' : 'STANDARD')) }}
+                    </span>
+                  </td>
+                  <td>
+                    <select
+                      class="form-select role-select"
+                      :value="u.role"
+                      :disabled="updatingUserId === u.id"
+                      @change="changeUserRole(u, ($event.target as HTMLSelectElement).value)"
+                    >
+                      <option value="USER">Konto standardowe (Darmowe)</option>
+                      <option value="USER_LITE">FantaSKI LITE (Porównywarka do 2 skoczków)</option>
+                      <option value="USER_PRO">FantaSKI PRO (Pełna analityka & Predykcje)</option>
+                      <option value="ADMIN">Administrator</option>
+                    </select>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="empty-filter-state">
+            <p>Nie znaleziono użytkowników spełniających podane kryteria wyszukiwania.</p>
+            <button type="button" class="btn btn-secondary" @click="clearUserFilters">
+              🔄 Zresetuj filtry
+            </button>
+          </div>
         </div>
         <p v-else class="empty-state">Brak zarejestrowanych użytkowników w bazie danych.</p>
+      </div>
+    </div>
+
+    <!-- TAB 6: SIEĆ NEURONOWA -->
+    <div v-if="activeTab === 'neural'" class="tab-content">
+      <div class="admin-card">
+        <div class="admin-card-header flex-between">
+          <div>
+            <h3>🧠 Sieć neuronowa — Trening modelu</h3>
+            <p class="subtitle">
+              Zarządzanie modelem predykcyjnym PyTorch (25 cech: skocznia, forma z time-decay, korytarz wiatru, konwersja presji, profil lotności i doświadczenie PŚ).
+            </p>
+          </div>
+          <div class="header-badges">
+            <span
+              class="status-pill-indicator"
+              :class="isTrainingModel ? 'pill-running' : 'pill-idle'"
+            >
+              <span class="status-dot"></span>
+              {{ isTrainingModel ? 'Trening w toku' : (modelInfo?.is_trained ? 'Wytrenowany' : 'Wymaga treningu') }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Sugestia przetrenowania po aktualizacji wyników -->
+        <div class="nn-suggestion-banner">
+          <span>💡</span>
+          <div>
+            <strong>Ważna wskazówka treningowa:</strong> Po każdej aktualizacji wyników (ręczny scraper FIS, dociąganie brakujących zawodów, nocne przetwarzanie bazy czy wzbogacenie danych pogodowych) należy przetrenować model na zaktualizowanych danych, aby predykcje uwzględniały aktualną formę zawodników.
+          </div>
+        </div>
+
+        <!-- Ostrzeżenie gdy brak kompatybilnego wytrenowanego modelu -->
+        <div v-if="modelInfo && !modelInfo.is_trained && !isTrainingModel" class="nn-warning-banner">
+          <span>⚠️</span>
+          <div>
+            <strong>Model nie jest jeszcze wytrenowany (lub zmieniła się liczba cech wejściowych):</strong> Uruchom trening przyciskiem „Trenuj model” poniżej, aby aktywować predykcje na podstronie Predykcje.
+          </div>
+        </div>
+
+        <!-- Live pasek postępu treningu sieci neuronowej -->
+        <div v-if="isTrainingModel" class="live-progress-box mb-4">
+          <div class="progress-header">
+            <div class="progress-title">
+              <span>Postęp treningu sieci neuronowej:</span>
+              <strong>{{ modelInfo?.training_status?.message || 'Trwa przetwarzanie danych i epok...' }}</strong>
+            </div>
+            <div class="progress-stat">
+              <template v-if="modelInfo?.training_status?.current_epoch">
+                Epoka {{ modelInfo.training_status.current_epoch }}/{{ modelInfo.training_status.total_epochs || 40 }} •
+              </template>
+              {{ modelInfo?.training_status?.percent_complete ?? 0 }}%
+            </div>
+          </div>
+
+          <div class="progress-bar-bg mb-3">
+            <div
+              class="progress-bar-fill fill-running"
+              :style="{ width: `${Math.max(5, modelInfo?.training_status?.percent_complete ?? 10)}%` }"
+            ></div>
+          </div>
+          <p class="nn-training-subhint">Trening przebiega w tle — możesz swobodnie korzystać z pozostałych zakładek panelu.</p>
+        </div>
+
+        <!-- Stan modelu -->
+        <div v-if="modelInfo" class="nn-model-status">
+          <h4>Aktualne metryki i stan modelu</h4>
+          <div class="nn-metrics-grid">
+            <div class="nn-metric-card">
+              <span class="metric-label">Status</span>
+              <strong class="metric-value" :class="modelInfo.is_trained ? 'text-green' : 'text-red'">
+                {{ modelInfo.is_trained ? '✅ Wytrenowany i gotowy' : '❌ Wymaga treningu' }}
+              </strong>
+            </div>
+            <div class="nn-metric-card" v-if="modelInfo.metadata?.trained_at">
+              <span class="metric-label">Ostatni trening</span>
+              <strong class="metric-value">{{ new Date(modelInfo.metadata.trained_at).toLocaleString('pl-PL') }}</strong>
+            </div>
+            <div class="nn-metric-card" v-if="modelInfo.metadata?.sample_count">
+              <span class="metric-label">Próbki treningowe</span>
+              <strong class="metric-value">{{ modelInfo.metadata.sample_count.toLocaleString('pl-PL') }}</strong>
+            </div>
+            <div class="nn-metric-card" v-if="modelInfo.metadata?.mae_distance_meters_approx != null">
+              <span class="metric-label">Śr. błąd dystansu (MAE)</span>
+              <strong class="metric-value">~{{ modelInfo.metadata.mae_distance_meters_approx }} m</strong>
+            </div>
+            <div class="nn-metric-card" v-if="modelInfo.metadata?.val_loss != null">
+              <span class="metric-label">Strata walidacyjna (SmoothL1)</span>
+              <strong class="metric-value">{{ modelInfo.metadata.val_loss.toFixed(5) }}</strong>
+            </div>
+            <div class="nn-metric-card" v-if="modelInfo.metadata?.input_features">
+              <span class="metric-label">Cechy wejściowe</span>
+              <strong class="metric-value">{{ modelInfo.metadata.input_features }}</strong>
+            </div>
+            <div class="nn-metric-card" v-if="modelInfo.tracked_athletes_count">
+              <span class="metric-label">Śledzeni zawodnicy</span>
+              <strong class="metric-value">{{ modelInfo.tracked_athletes_count }}</strong>
+            </div>
+            <div class="nn-metric-card" v-if="modelInfo.metadata?.epochs != null">
+              <span class="metric-label">Epoki (najlepsza)</span>
+              <strong class="metric-value">
+                {{ modelInfo.metadata.epochs }}<template v-if="modelInfo.metadata?.best_epoch"> (best: {{ modelInfo.metadata.best_epoch }})</template>
+              </strong>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="isLoadingModelInfo" class="nn-loading">
+          <span class="spinning">🔄</span> Ładowanie informacji o modelu...
+        </div>
+
+        <!-- Komunikat wyniku -->
+        <div
+          v-if="modelTrainingMessage"
+          class="nn-message"
+          :class="modelTrainingMessage.startsWith('✅') ? 'nn-message-success' : (modelTrainingMessage.startsWith('❌') ? 'nn-message-error' : 'nn-message-info')"
+        >
+          {{ modelTrainingMessage }}
+        </div>
+
+        <!-- Akcja -->
+        <div class="action-footer nn-action-footer">
+          <button
+            @click="triggerModelRetrain"
+            :disabled="isTrainingModel"
+            class="btn-primary"
+          >
+            <span>🧠</span> {{ isTrainingModel ? 'Trening modelu w toku...' : 'Trenuj model' }}
+          </button>
+          <button
+            type="button"
+            @click="loadModelInfo"
+            :disabled="isLoadingModelInfo"
+            class="btn-refresh-summary"
+          >
+            <span :class="{ spinning: isLoadingModelInfo }">🔄</span> Odśwież metryki
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -1621,10 +3245,1465 @@ onMounted(() => {
   margin-bottom: 16px;
   font-size: 0.9em;
 }
+
+/* PASEK FILTROWANIA I WYSZUKIWANIA UŻYTKOWNIKÓW */
+.users-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.users-search-box {
+  position: relative;
+  width: 100%;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.95em;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.users-search-input {
+  padding-left: 36px !important;
+  padding-right: 36px !important;
+  font-size: 0.9em;
+}
+
+.btn-clear-search {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.85em;
+  padding: 4px;
+}
+
+.btn-clear-search:hover {
+  color: #ef4444;
+}
+
+.users-filter-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.filter-role-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.role-filter-pill {
+  background: white;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 0.78em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.role-filter-pill:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.role-filter-pill.active {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: white;
+}
+
+.role-filter-pill.pill-admin.active {
+  background: #ef4444;
+  border-color: #ef4444;
+}
+
+.role-filter-pill.pill-pro.active {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #0f172a;
+}
+
+.role-filter-pill.pill-lite.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.role-filter-pill.pill-user.active {
+  background: #475569;
+  border-color: #475569;
+}
+
+.btn-reset-filters {
+  background: none;
+  border: none;
+  color: #0284c7;
+  font-size: 0.8em;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.btn-reset-filters:hover {
+  text-decoration: underline;
+  color: #0369a1;
+}
+
+.table-summary-bar {
+  font-size: 0.82em;
+  color: #64748b;
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+
+.empty-filter-state {
+  text-align: center;
+  padding: 30px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
 .loading-state {
   text-align: center;
   padding: 30px;
   color: #64748b;
   font-style: italic;
+}
+
+/* STANY SEZONÓW W DROPDOWNIE I PODSUMOWANIU */
+.dropdown-season-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.season-checkbox-label {
+  display: flex;
+  align-items: center;
+}
+.season-pill-mini {
+  font-size: 0.72em;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.pill-complete {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+.pill-partial {
+  background: #fef9c3;
+  color: #a16207;
+  border: 1px solid #fde047;
+}
+.pill-empty {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.seasons-database-section {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #e2e8f0;
+}
+.seasons-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  gap: 16px;
+}
+.seasons-summary-title {
+  margin: 0 0 4px 0;
+  font-size: 1.1em;
+  font-weight: 600;
+  color: #0f172a;
+}
+.seasons-summary-subtitle {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.85em;
+}
+.btn-refresh-summary {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.82em;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-refresh-summary:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.spinning {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.seasons-loading,
+.seasons-empty {
+  padding: 20px;
+  text-align: center;
+  color: #64748b;
+  font-style: italic;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px dashed #cbd5e1;
+}
+
+.seasons-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.season-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.season-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+}
+.season-card.border-complete {
+  border-left: 4px solid #22c55e;
+}
+.season-card.border-partial {
+  border-left: 4px solid #eab308;
+}
+.season-card.border-empty {
+  border-left: 4px solid #94a3b8;
+}
+
+.season-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.season-year {
+  font-weight: 700;
+  font-size: 1.05em;
+  color: #0f172a;
+}
+.season-status-badge {
+  font-size: 0.75em;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+.badge-complete {
+  background: #dcfce7;
+  color: #15803d;
+}
+.badge-partial {
+  background: #fef9c3;
+  color: #a16207;
+}
+.badge-empty {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.season-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8em;
+  color: #475569;
+}
+.progress-bar-bg {
+  width: 100%;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.fill-complete {
+  background: #22c55e;
+}
+.fill-partial {
+  background: #eab308;
+}
+.fill-empty {
+  background: #94a3b8;
+}
+
+.season-details {
+  font-size: 0.82em;
+  color: #475569;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.season-detail-row {
+  display: flex;
+  justify-content: space-between;
+}
+.detail-label-inline {
+  color: #64748b;
+  font-weight: 500;
+}
+.detail-value {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.season-categories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cat-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.cat-tag {
+  background: #f1f5f9;
+  color: #334155;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.76em;
+  border: 1px solid #e2e8f0;
+}
+.cat-tag small {
+  color: #64748b;
+  margin-left: 2px;
+}
+
+/* --- OPTYMALIZACJA SCRAPERA: CHECKBOX --- */
+.checkbox-filter-section {
+  grid-column: span 2;
+}
+.checkbox-control-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.checkbox-control-box:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.checkbox-control-box input[type="checkbox"] {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+.checkbox-control-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.checkbox-control-text strong {
+  font-size: 0.88em;
+  color: #1e293b;
+}
+.checkbox-control-text .help-desc {
+  font-size: 0.78em;
+  color: #64748b;
+}
+
+/* --- SEZON: PODZIAŁ STATYSTYK --- */
+.progress-stats-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.stat-pill-sm {
+  font-size: 0.74em;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+}
+.stat-pill-sm.pill-results {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+.stat-pill-sm.pill-cancelled {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+.stat-pill-sm.pill-missing {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+/* --- SEZON CARD FOOTER I PRZYCISKI --- */
+.season-card-footer {
+  margin-top: auto;
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.btn-fetch-missing {
+  width: 100%;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #b45309;
+  font-size: 0.8em;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.btn-fetch-missing:hover:not(:disabled) {
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+.footer-btn-group {
+  display: flex;
+  gap: 6px;
+}
+.btn-view-details {
+  flex: 1;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  font-size: 0.78em;
+  font-weight: 600;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  text-align: center;
+}
+.btn-view-details:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+.btn-quick-select {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+  font-size: 0.78em;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-quick-select:hover {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
+/* ========================================================
+   MODAL: SZCZEGÓŁY ZAWODÓW (BRAKUJĄCE / ODWOŁANE)
+   ======================================================== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+  animation: fadeIn 0.15s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.modal-card {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.08);
+  width: 100%;
+  max-width: 860px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px 20px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+.modal-title {
+  margin: 0;
+  font-size: 1.15em;
+  font-weight: 700;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.modal-subtitle {
+  margin: 4px 0 0 0;
+  font-size: 0.82em;
+  color: #64748b;
+}
+.btn-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.2em;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.btn-modal-close:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+.modal-loading {
+  padding: 40px;
+  text-align: center;
+  color: #475569;
+  font-size: 0.95em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.missing-summary-banner {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.summary-pill {
+  padding: 10px 14px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85em;
+}
+.summary-pill strong {
+  font-size: 1.15em;
+}
+.summary-pill.pill-success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+.summary-pill.pill-cancelled {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+}
+.summary-pill.pill-missing {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+.missing-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.section-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.text-missing {
+  margin: 0;
+  font-size: 0.98em;
+  font-weight: 700;
+  color: #b91c1c;
+}
+.text-cancelled {
+  margin: 0;
+  font-size: 0.98em;
+  font-weight: 700;
+  color: #334155;
+}
+.section-desc {
+  margin: 0;
+  font-size: 0.82em;
+  color: #64748b;
+  line-height: 1.4;
+}
+.btn-primary-sm {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn-primary-sm:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+.missing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82em;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.missing-table th {
+  background: #f1f5f9;
+  color: #334155;
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid #cbd5e1;
+}
+.missing-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+}
+.missing-table tr:last-child td {
+  border-bottom: none;
+}
+.missing-table tr:hover td {
+  background: #f8fafc;
+}
+.badge-status-missing {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 600;
+  font-size: 0.78em;
+}
+.badge-status-cancelled {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
+  font-size: 0.78em;
+}
+.empty-state-card {
+  padding: 30px;
+  text-align: center;
+  background: #f0fdf4;
+  border: 1px dashed #86efac;
+  border-radius: 8px;
+  color: #166534;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.modal-footer {
+  padding: 12px 20px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ========================================================
+   STYLES: NOCNE POBIERANIE & WZBOGACANIE POGODĄ
+   ======================================================== */
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.status-pill-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8em;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pill-idle {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+.pill-running {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+  animation: pulse-border 1.8s infinite;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.pill-running .status-dot {
+  background: #f59e0b;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+@keyframes pulse-border {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.15); }
+}
+
+.info-alert-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
+  border-left: 4px solid #14b8a6;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  color: #0f766e;
+  font-size: 0.85em;
+  line-height: 1.45;
+}
+.info-alert-banner p {
+  margin: 4px 0 0 0;
+  color: #115e59;
+}
+.alert-icon {
+  font-size: 1.4em;
+  line-height: 1;
+}
+
+.feedback-banner {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 0.85em;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-controls-row,
+.enricher-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.control-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.input-with-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.form-input-number {
+  width: 130px;
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: #0f172a;
+}
+.hint-text {
+  font-size: 0.72em;
+  color: #64748b;
+}
+
+.custom-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85em;
+  color: #334155;
+  cursor: pointer;
+  user-select: none;
+  padding-bottom: 8px;
+}
+
+.btn-nightly-start {
+  background: #6366f1;
+}
+.btn-nightly-start:hover:not(:disabled) {
+  background: #4f46e5;
+}
+.btn-nightly-stop {
+  background: #dc2626;
+}
+
+.weather-coverage-section {
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+.coverage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+.coverage-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.coverage-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.coverage-db-name {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: #1e293b;
+}
+.coverage-badge {
+  font-size: 0.78em;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.badge-complete {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+.badge-partial {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+.badge-prod {
+  background: #ede9fe;
+  color: #6d28d9;
+  border: 1px solid #ddd6fe;
+}
+.coverage-numbers {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.8em;
+  color: #64748b;
+}
+.coverage-numbers strong {
+  font-size: 1.25em;
+  color: #0f172a;
+}
+.prod-note-card {
+  background: #faf5ff;
+  border-color: #f3e8ff;
+}
+.prod-note-text {
+  margin: 0;
+  font-size: 0.8em;
+  color: #6b21a8;
+  line-height: 1.4;
+}
+
+.live-progress-box {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+  font-size: 0.85em;
+}
+.progress-title {
+  color: #1e293b;
+}
+.progress-title strong {
+  color: #0284c7;
+}
+.current-item-text {
+  margin-left: 6px;
+  color: #64748b;
+  font-size: 0.9em;
+}
+.progress-stat {
+  font-weight: 600;
+  color: #334155;
+}
+.fill-running {
+  background: linear-gradient(90deg, #6366f1, #3b82f6);
+  animation: progress-stripe 1.5s linear infinite;
+  background-size: 200% 100%;
+}
+@keyframes progress-stripe {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.live-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+.live-metric-card {
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.metric-label {
+  font-size: 0.72em;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.metric-value {
+  font-size: 1.05em;
+  font-weight: 700;
+  color: #0f172a;
+}
+.text-cyan {
+  color: #0891b2 !important;
+}
+.text-blue {
+  color: #2563eb !important;
+}
+.text-red {
+  color: #dc2626 !important;
+}
+.text-green {
+  color: #16a34a !important;
+}
+
+@media (max-width: 768px) {
+  .batch-controls-row,
+  .enricher-controls-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .control-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* ========================================
+   SCRAPER LIVE, WZNOWIENIE 429 & SIEĆ NEURONOWA
+   ======================================== */
+.scraper-action-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.seasons-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-resume-429 {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #c2410c;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.82em;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-resume-429:hover:not(:disabled) {
+  background: #ffedd5;
+  border-color: #fb923c;
+}
+.btn-resume-429:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-fetch-missing-header {
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  color: #1d4ed8;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.82em;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-fetch-missing-header:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: #60a5fa;
+}
+.btn-fetch-missing-header:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.stat-pill-sm.pill-429,
+.summary-pill.pill-429 {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fdba74;
+}
+
+.badge-status-429 {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #ffedd5;
+  color: #9a3412;
+  font-weight: 600;
+  font-size: 0.78em;
+}
+
+.nn-retrain-hint-inline {
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: #fefce8;
+  border: 1px solid #fde047;
+  border-radius: 6px;
+  font-size: 0.85em;
+  color: #854d0e;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn-link-neural {
+  background: #ffffff;
+  border: 1px solid #facc15;
+  color: #854d0e;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 0.85em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn-link-neural:hover {
+  background: #fef9c3;
+}
+
+.nn-suggestion-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #fef9c3;
+  border: 1px solid #fde047;
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  font-size: 0.9em;
+  line-height: 1.5;
+  color: #854d0e;
+}
+.nn-suggestion-banner span {
+  font-size: 1.3em;
+  flex-shrink: 0;
+}
+
+.nn-warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  font-size: 0.88em;
+  line-height: 1.45;
+  color: #9a3412;
+}
+
+.nn-training-subhint {
+  margin: 4px 0 0 0;
+  font-size: 0.82em;
+  color: #64748b;
+}
+
+.nn-model-status {
+  margin-top: 8px;
+  margin-bottom: 20px;
+}
+.nn-model-status h4 {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: #0f172a;
+}
+.nn-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+.nn-metric-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nn-metric-card .metric-label {
+  font-size: 0.78em;
+  color: #64748b;
+  font-weight: 500;
+}
+.nn-metric-card .metric-value {
+  font-size: 1.05em;
+  color: #0f172a;
+}
+
+.nn-loading {
+  padding: 24px;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.95em;
+}
+
+.nn-message {
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 0.9em;
+  margin-bottom: 16px;
+}
+.nn-message-success {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+.nn-message-error {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+.nn-message-info {
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+  color: #1e40af;
+}
+
+.nn-action-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* --- Globalny pasek aktywnego procesu w tle --- */
+.active-process-sticky-card {
+  position: sticky;
+  top: 16px;
+  z-index: 100;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border: 1px solid #334155;
+  border-left: 4px solid #38bdf8;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+  color: #f8fafc;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.active-process-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.active-process-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.95em;
+  flex-wrap: wrap;
+}
+
+.pulsing-live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7);
+  animation: pulseDot 1.6s infinite;
+}
+
+@keyframes pulseDot {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(56, 189, 248, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
+  }
+}
+
+.active-process-sub {
+  color: #94a3b8;
+  font-size: 0.9em;
+}
+
+.active-process-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-compact-stop,
+.btn-header-stop {
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 0.85em;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-compact-stop:hover:not(:disabled),
+.btn-header-stop:hover:not(:disabled) {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+.btn-compact-stop:disabled,
+.btn-header-stop:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.active-process-bar-wrap {
+  width: 100%;
+  height: 6px;
+  background: #334155;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.active-process-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.active-process-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.82em;
+  flex-wrap: wrap;
+}
+
+.active-item-label {
+  color: #cbd5e1;
+  max-width: 480px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.active-stats-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mini-stat-pill {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.8em;
+}
+
+.mini-stat-pill.pill-green {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.mini-stat-pill.pill-cyan {
+  background: rgba(6, 182, 212, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.mini-stat-pill.pill-blue {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.mini-stat-pill.pill-red {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.mini-stat-pill.pill-gray {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.3);
 }
 </style>

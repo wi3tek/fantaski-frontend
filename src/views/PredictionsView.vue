@@ -23,6 +23,11 @@ interface WeatherState {
   headwind_component: number
   source?: string
   is_forecast?: boolean
+  wind_volatility_index?: number
+  wind_trend_slope?: number
+  direction_shift?: number
+  temperature_drift?: number
+  lottery_risk_level?: string
 }
 
 interface AvailableAthlete {
@@ -32,6 +37,7 @@ interface AvailableAthlete {
   price: number | null
   has_price: boolean
   has_wc: boolean
+  scored_current_season?: boolean
 }
 
 interface AthleteProfile {
@@ -55,6 +61,7 @@ interface PredictedAthlete {
   top10_probability: number
   top30_probability: number
   form_score: number
+  recent_form_score?: number
   consistency_score: number
   conversion_delta: number
   hill_affinity_score: number
@@ -62,7 +69,23 @@ interface PredictedAthlete {
   current_season_active: number
   career_starts: number
   has_wc_experience: boolean
+  is_tier_debutant?: boolean
+  tier_starts_count?: number
+  tier_experience_ratio?: number
   profiles: AthleteProfile[]
+  sequence_index?: number
+  effective_headwind?: number
+  wind_profile?: string
+  headwind_efficiency?: number
+  tailwind_penalty?: number
+}
+
+interface WeatherCorridor {
+  wind_volatility_index: number
+  lottery_risk_level: string
+  wind_trend_slope: number
+  temperature_drift: number
+  direction_shift: number
 }
 
 interface WeekendSessionInfo {
@@ -92,6 +115,7 @@ const getFlagUrl = (code?: string | null): string | null => {
 // --- Stan Skoczni i Daty ---
 const hills = ref<Hill[]>([])
 const selectedHillId = ref<string>('ZAKOPANE_HS140')
+const selectedCompetitionType = ref<string>('WC')
 const isCustomHill = ref(false)
 const customPlace = ref('Zakopane')
 const customHillSize = ref(140)
@@ -102,6 +126,50 @@ const tomorrow = new Date()
 tomorrow.setDate(tomorrow.getDate() + 1)
 const selectedDate = ref(tomorrow.toISOString().split('T')[0])
 const selectedTime = ref('16:00')
+
+// --- Stan Najbliższych Zawodów (Auto-detekcja z Kalendarza FIS) ---
+const upcomingCompetition = ref<any>(null)
+const isFetchingUpcoming = ref(false)
+
+const fetchUpcomingCompetition = async () => {
+  try {
+    isFetchingUpcoming.value = true
+    const data = await api.get('/prediction/next-competition')
+    if (data && data.found) {
+      upcomingCompetition.value = data
+      // Automatycznie ustaw najbliższy konkurs w formularzu
+      if (data.hill_id) {
+        selectedHillId.value = data.hill_id
+        isCustomHill.value = false
+      }
+      if (data.date) {
+        selectedDate.value = data.date
+      }
+      if (data.time) {
+        selectedTime.value = data.time
+      }
+      if (data.competition_type) {
+        selectedCompetitionType.value = data.competition_type
+      }
+    }
+  } catch (e) {
+    console.error('Błąd pobierania najbliższych zawodów z kalendarza FIS:', e)
+  } finally {
+    isFetchingUpcoming.value = false
+  }
+}
+
+const applyUpcomingCompetition = () => {
+  if (!upcomingCompetition.value) return
+  const data = upcomingCompetition.value
+  if (data.hill_id) {
+    selectedHillId.value = data.hill_id
+    isCustomHill.value = false
+  }
+  if (data.date) selectedDate.value = data.date
+  if (data.time) selectedTime.value = data.time
+  if (data.competition_type) selectedCompetitionType.value = data.competition_type
+}
 
 // --- Stan Pogody ---
 const weather = ref<WeatherState>({
@@ -119,6 +187,7 @@ const weather = ref<WeatherState>({
 
 const isFetchingWeather = ref(false)
 const weatherMessage = ref<string | null>(null)
+const weatherCorridor = ref<WeatherCorridor | null>(null)
 
 // --- Stan Listy Startowej (Zarządzanie skoczkami z wyceną) ---
 const availableAthletes = ref<AvailableAthlete[]>([])
@@ -138,6 +207,33 @@ const errorMsg = ref<string | null>(null)
 // Filtry tabeli
 const tableSearch = ref('')
 const filterMode = ref<'all' | 'top30' | 'pol' | 'podium' | 'clutch'>('all')
+
+// Sortowanie tabeli
+const sortKey = ref<string>('predicted_rank')
+const sortOrder = ref<'asc' | 'desc'>('asc')
+
+const sortBy = (key: string) => {
+  if (sortKey.value === key) {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortKey.value = key
+    // Metryki, gdzie wyższa wartość jest lepsza / pożądana na początku: sortujemy domyślnie malejąco
+    if ([
+      'predicted_distance',
+      'predicted_points',
+      'top30_probability',
+      'podium_probability',
+      'form_score',
+      'consistency_score',
+      'price'
+    ].includes(key)) {
+      sortOrder.value = 'desc'
+    } else {
+      // Dla rankingu (1. miejsce jest najlepsze) oraz nazwiska: sortujemy rosnąco
+      sortOrder.value = 'asc'
+    }
+  }
+}
 
 // Obliczenie aktualnej skoczni
 const currentHill = computed(() => {
@@ -243,11 +339,19 @@ const removeAthlete = (fisCode: string | number) => {
   })
 }
 
+const currentPreset = ref<'priced' | 'scored' | 'top30' | 'pol' | 'clear' | 'custom'>('priced')
+const scoredCount = computed(() => availableAthletes.value.filter(a => a.scored_current_season === true).length)
+
 // Presety listy startowej
-const applyAthletePreset = (preset: 'priced' | 'top30' | 'pol' | 'clear') => {
+const applyAthletePreset = (preset: 'priced' | 'scored' | 'top30' | 'pol' | 'clear') => {
+  currentPreset.value = preset
   if (preset === 'priced') {
     selectedFisCodes.value = availableAthletes.value
       .filter(a => a.has_price)
+      .map(a => String(a.fis_code))
+  } else if (preset === 'scored') {
+    selectedFisCodes.value = availableAthletes.value
+      .filter(a => a.scored_current_season)
       .map(a => String(a.fis_code))
   } else if (preset === 'top30') {
     selectedFisCodes.value = availableAthletes.value
@@ -291,7 +395,12 @@ const fetchWeatherForecast = async () => {
       precipitation: data.precipitation,
       headwind_component: data.headwind_component,
       source: data.source,
-      is_forecast: data.is_forecast
+      is_forecast: data.is_forecast,
+      wind_volatility_index: data.wind_volatility_index,
+      wind_trend_slope: data.wind_trend_slope,
+      direction_shift: data.direction_shift,
+      temperature_drift: data.temperature_drift,
+      lottery_risk_level: data.lottery_risk_level
     }
     weatherMessage.value = `Pobrano dane pogodowe dla: ${place} (${data.source})`
   } catch (e) {
@@ -317,6 +426,7 @@ const runPrediction = async () => {
       hill_size: currentHill.value.size,
       hill_type: currentHill.value.type,
       hill_id: currentHill.value.id,
+      competition_type: selectedCompetitionType.value,
       date: selectedDate.value,
       time: selectedTime.value,
       weather: weather.value,
@@ -327,6 +437,7 @@ const runPrediction = async () => {
     const data = await api.post('/prediction/predict', payload)
     predictions.value = data.predictions
     detectedWeekendSessions.value = data.weekend_sessions_detected || []
+    weatherCorridor.value = data.corridor || null
   } catch (err: any) {
     errorMsg.value = err.message || 'Wystąpił błąd podczas generowania predykcji.'
   } finally {
@@ -367,7 +478,7 @@ const applyWeatherPreset = (type: 'headwind' | 'tailwind' | 'calm' | 'thaw') => 
   }
 }
 
-// Filtrowanie listy zawodników w tabeli wyników
+// Filtrowanie i sortowanie listy zawodników w tabeli wyników
 const filteredPredictions = computed(() => {
   let list = predictions.value
 
@@ -389,7 +500,26 @@ const filteredPredictions = computed(() => {
     )
   }
 
-  return list
+  // Sortowanie
+  return [...list].sort((a, b) => {
+    const valA = a[sortKey.value as keyof PredictedAthlete]
+    const valB = b[sortKey.value as keyof PredictedAthlete]
+
+    // Wartości null/undefined (np. cena) na sam koniec tabeli
+    if (valA == null && valB == null) return 0
+    if (valA == null) return 1
+    if (valB == null) return -1
+
+    if (typeof valA === 'string' && typeof valB === 'string') {
+      return sortOrder.value === 'asc'
+        ? valA.localeCompare(valB, 'pl')
+        : valB.localeCompare(valA, 'pl')
+    }
+
+    const numA = Number(valA)
+    const numB = Number(valB)
+    return sortOrder.value === 'asc' ? numA - numB : numB - numA
+  })
 })
 
 const podiumAthletes = computed(() => {
@@ -412,6 +542,7 @@ watch([selectedHillId, isCustomHill], () => {
 
 onMounted(async () => {
   await fetchHills()
+  await fetchUpcomingCompetition()
   await fetchAvailableAthletes()
   await fetchModelInfo()
   await fetchWeatherForecast()
@@ -430,7 +561,7 @@ onMounted(async () => {
         </div>
         <h1 class="hero-title">Centrum Predykcji AI</h1>
         <p class="hero-desc">
-          Model sieci neuronowej z hierarchią sesji (konkurs > kwalifikacje > trening), normalizacją jakości obsady, wskaźnikiem powtarzalności skoków i profilami psychologii presji.
+          Model sieci neuronowej z hierarchią sesji (konkurs > kwalifikacje > trening), normalizacją jakości obsady, wskaźnikiem powtarzalności skoków, profilami psychologii presji, doświadczeniem kariery i wektorową kompensacją wiatru FIS (K-wind).
         </p>
 
         <div class="model-meta-bar" v-if="modelMeta">
@@ -446,7 +577,7 @@ onMounted(async () => {
           <div class="meta-divider">|</div>
           <div class="meta-item">
             <span class="meta-label">Cechy wejściowe sieci:</span>
-            <strong class="meta-val">18 parametrów sportowo-fizycznych</strong>
+            <strong class="meta-val">25 parametrów sportowo-fizycznych</strong>
           </div>
           <div class="meta-divider">|</div>
           <div class="meta-item">
@@ -458,6 +589,39 @@ onMounted(async () => {
     </header>
 
     <div class="container main-layout">
+      <!-- BANNER NAJBLIŻSZYCH ZAWODÓW (FIS CALENDAR AUTO-DETECTION) -->
+      <div v-if="upcomingCompetition && upcomingCompetition.found" class="upcoming-comp-banner">
+        <div class="upcoming-comp-left">
+          <div class="upcoming-badge">
+            <span class="pulse-indicator"></span>
+            <strong>NAJBLIŻSZE ZAWODY Z KALENDARZA FIS</strong>
+          </div>
+          <div class="upcoming-info">
+            <span class="upcoming-event-title">
+              📍 <strong>{{ upcomingCompetition.event_name || upcomingCompetition.place }}</strong>
+              <span class="upcoming-hill-spec" v-if="upcomingCompetition.hill_size">
+                ({{ upcomingCompetition.session_title || 'Konkurs Indywidualny' }} &bull; HS{{ upcomingCompetition.hill_size }})
+              </span>
+            </span>
+            <span class="upcoming-timing">
+              📅 Konkurs: <strong>{{ upcomingCompetition.date }}</strong> godz. <strong>{{ upcomingCompetition.time }}</strong>
+              <template v-if="upcomingCompetition.qualification">
+                &bull; ⏱️ Kwalifikacje: {{ upcomingCompetition.qualification.date }} {{ upcomingCompetition.qualification.time }}
+              </template>
+            </span>
+          </div>
+        </div>
+        <div class="upcoming-comp-actions">
+          <button
+            class="btn-apply-upcoming"
+            @click="applyUpcomingCompetition"
+            title="Kliknij, aby ustawić te zawody jako aktualny cel predykcji"
+          >
+            ⚡ Zastosuj zawody
+          </button>
+        </div>
+      </div>
+
       <!-- PANEL KONTROLNY (SKOCZNIA + POGODA + SYMULATOR) -->
       <section class="control-grid">
         <!-- KARTA 1: WYBÓR SKOCZNI I TERMINU -->
@@ -502,6 +666,17 @@ onMounted(async () => {
               </div>
             </div>
 
+            <!-- Wybór rangi zawodów (Liga FIS) -->
+            <div class="form-group">
+              <label>🏆 Ranga zawodów (Poziom ligowy FIS):</label>
+              <select v-model="selectedCompetitionType" class="custom-select tier-select">
+                <option value="WC">Puchar Świata (WC / Igrzyska / MŚ) &bull; Super-Elita (Waga 1.00)</option>
+                <option value="GP">Letnie Grand Prix (GP) &bull; Elita Igelit (Waga 0.70)</option>
+                <option value="COC">Puchar Kontynentalny (COC) &bull; Zaplecze / II liga (Waga 0.45)</option>
+                <option value="FC">FIS Cup (FC) &bull; III liga (Waga 0.20)</option>
+              </select>
+            </div>
+
             <!-- Data i Godzina -->
             <div class="form-row">
               <div class="form-group half">
@@ -528,15 +703,35 @@ onMounted(async () => {
             <!-- Pasek Listy Startowej -->
             <div class="start-list-toggle-bar">
               <div class="start-list-info">
-                <span class="sl-title">📋 Lista Startowa:</span>
-                <strong class="sl-count">{{ selectedFisCodes.length }} skoczków</strong>
-                <span class="sl-badge">Wycenieni Fantasy</span>
+                <span class="sl-title">📋 Skład:</span>
+                <strong class="sl-count">{{ selectedFisCodes.length }}</strong>
+                <span class="sl-badge">{{ currentPreset === 'scored' ? '⚡ Punktowali w sezonie' : (currentPreset === 'priced' ? 'Wycenieni' : (currentPreset === 'top30' ? 'TOP 30' : (currentPreset === 'pol' ? 'Polacy' : 'Własny'))) }}</span>
+              </div>
+              <div class="quick-preset-pills">
+                <button
+                  type="button"
+                  class="pill-quick-btn"
+                  :class="{ active: currentPreset === 'priced' }"
+                  @click="applyAthletePreset('priced')"
+                  title="Wszyscy wycenieni w Fantasy"
+                >
+                  Wycenieni
+                </button>
+                <button
+                  type="button"
+                  class="pill-quick-btn highlight-gold"
+                  :class="{ active: currentPreset === 'scored' }"
+                  @click="applyAthletePreset('scored')"
+                  title="Zawodnicy, którzy punktowali w obecnym sezonie zimowym"
+                >
+                  ⚡ Punktowali w sezonie ({{ scoredCount }})
+                </button>
               </div>
               <button
                 class="manage-list-btn"
                 @click="showStartListManager = !showStartListManager"
               >
-                {{ showStartListManager ? 'Zwiń listę ▲' : 'Zarządzaj skoczkami (dodaj/usuń) ▼' }}
+                {{ showStartListManager ? 'Zwiń ▲' : 'Wybierz ▼' }}
               </button>
             </div>
           </div>
@@ -669,9 +864,10 @@ onMounted(async () => {
         <div class="card-header">
           <h3>👥 Zarządzanie Listą Startową (Dodawaj i usuwaj skoczków)</h3>
           <div class="manager-presets">
-            <button class="small-preset-btn" @click="applyAthletePreset('priced')">Wszyscy wycenieni (~100)</button>
-            <button class="small-preset-btn" @click="applyAthletePreset('top30')">TOP 30 Wycenionych</button>
-            <button class="small-preset-btn" @click="applyAthletePreset('pol')">Tylko Polacy 🇵🇱</button>
+            <button class="small-preset-btn" :class="{ active: currentPreset === 'priced' }" @click="applyAthletePreset('priced')">Wszyscy wycenieni</button>
+            <button class="small-preset-btn highlight-gold" :class="{ active: currentPreset === 'scored' }" @click="applyAthletePreset('scored')">⚡ Punktowali w sezonie ({{ scoredCount }})</button>
+            <button class="small-preset-btn" :class="{ active: currentPreset === 'top30' }" @click="applyAthletePreset('top30')">TOP 30 Wycenionych</button>
+            <button class="small-preset-btn" :class="{ active: currentPreset === 'pol' }" @click="applyAthletePreset('pol')">Tylko Polacy 🇵🇱</button>
             <button class="small-preset-btn danger" @click="applyAthletePreset('clear')">Wyczyść listę</button>
           </div>
         </div>
@@ -698,7 +894,7 @@ onMounted(async () => {
                   <img :src="getFlagUrl(ath.country_code) || ''" class="mini-flag" alt="" />
                   <span class="ath-name">{{ ath.full_name }}</span>
                   <span class="ath-country">({{ ath.country_code }})</span>
-                  <span v-if="ath.price" class="ath-price-tag">💰 {{ ath.price }}m</span>
+                  <span v-if="ath.price" class="ath-price-tag">💰 {{ Number(ath.price).toFixed(1) }}</span>
                   <span v-if="ath.has_wc" class="ath-wc-tag">PŚ</span>
                   <span class="ath-add-plus">+ Dodaj</span>
                 </div>
@@ -715,7 +911,7 @@ onMounted(async () => {
             >
               <img :src="getFlagUrl(ath.country_code) || ''" class="mini-flag" alt="" />
               <span class="chip-name">{{ ath.full_name }}</span>
-              <span v-if="ath.price" class="chip-price">💰 {{ ath.price }}m</span>
+              <span v-if="ath.price" class="chip-price">💰 {{ Number(ath.price).toFixed(1) }}</span>
               <button
                 class="chip-remove"
                 @click.stop="removeAthlete(ath.fis_code)"
@@ -751,7 +947,7 @@ onMounted(async () => {
               <div class="podium-flag-box">
                 <img :src="getFlagUrl(podiumAthletes[1].country) || ''" class="p-flag" alt="" />
                 <span class="p-country">{{ podiumAthletes[1].country }}</span>
-                <span v-if="podiumAthletes[1].price" class="p-price">💰 {{ podiumAthletes[1].price }}m</span>
+                <span v-if="podiumAthletes[1].price" class="p-price">💰 {{ Number(podiumAthletes[1].price).toFixed(1) }}</span>
               </div>
               <h4 class="p-name">{{ podiumAthletes[1].name }}</h4>
               <div class="p-metrics">
@@ -765,7 +961,7 @@ onMounted(async () => {
                 </div>
               </div>
               <div class="p-badge">
-                Podium: <strong>{{ podiumAthletes[1].podium_probability }}%</strong> | Top 30: <strong>{{ podiumAthletes[1].top30_probability }}%</strong>
+                Podium: <strong>{{ podiumAthletes[1].podium_probability ?? 0 }}%</strong> | Top 30: <strong>{{ podiumAthletes[1].top30_probability ?? 0 }}%</strong>
               </div>
             </div>
 
@@ -776,7 +972,7 @@ onMounted(async () => {
               <div class="podium-flag-box">
                 <img :src="getFlagUrl(podiumAthletes[0].country) || ''" class="p-flag" alt="" />
                 <span class="p-country">{{ podiumAthletes[0].country }}</span>
-                <span v-if="podiumAthletes[0].price" class="p-price">💰 {{ podiumAthletes[0].price }}m</span>
+                <span v-if="podiumAthletes[0].price" class="p-price">💰 {{ Number(podiumAthletes[0].price).toFixed(1) }}</span>
               </div>
               <h3 class="p-name">{{ podiumAthletes[0].name }}</h3>
               <div class="p-metrics">
@@ -790,7 +986,7 @@ onMounted(async () => {
                 </div>
               </div>
               <div class="p-badge win-badge">
-                Wygrana: <strong>{{ podiumAthletes[0].win_probability }}%</strong> | Podium: <strong>{{ podiumAthletes[0].podium_probability }}%</strong> | Top 30: <strong>{{ podiumAthletes[0].top30_probability }}%</strong>
+                Wygrana: <strong>{{ podiumAthletes[0].win_probability ?? 0 }}%</strong> | Podium: <strong>{{ podiumAthletes[0].podium_probability ?? 0 }}%</strong> | Top 30: <strong>{{ podiumAthletes[0].top30_probability ?? 0 }}%</strong>
               </div>
             </div>
 
@@ -800,7 +996,7 @@ onMounted(async () => {
               <div class="podium-flag-box">
                 <img :src="getFlagUrl(podiumAthletes[2].country) || ''" class="p-flag" alt="" />
                 <span class="p-country">{{ podiumAthletes[2].country }}</span>
-                <span v-if="podiumAthletes[2].price" class="p-price">💰 {{ podiumAthletes[2].price }}m</span>
+                <span v-if="podiumAthletes[2].price" class="p-price">💰 {{ Number(podiumAthletes[2].price).toFixed(1) }}</span>
               </div>
               <h4 class="p-name">{{ podiumAthletes[2].name }}</h4>
               <div class="p-metrics">
@@ -814,9 +1010,33 @@ onMounted(async () => {
                 </div>
               </div>
               <div class="p-badge">
-                Podium: <strong>{{ podiumAthletes[2].podium_probability }}%</strong> | Top 30: <strong>{{ podiumAthletes[2].top30_probability }}%</strong>
+                Podium: <strong>{{ podiumAthletes[2].podium_probability ?? 0 }}%</strong> | Top 30: <strong>{{ podiumAthletes[2].top30_probability ?? 0 }}%</strong>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- KORYTARZ POGODOWY I DYNAMIKA OKNA ZAWODÓW -->
+        <div v-if="weatherCorridor" class="corridor-status-card">
+          <div class="csc-left">
+            <span
+              class="corridor-pill"
+              :class="`risk-${weatherCorridor.lottery_risk_level.toLowerCase()}`"
+            >
+              <span v-if="weatherCorridor.lottery_risk_level === 'HIGH'">🌪️ Loteria wiatrowa (Wysoka zmienność)</span>
+              <span v-else-if="weatherCorridor.lottery_risk_level === 'MODERATE'">💨 Umiarkowana zmienność wiatru</span>
+              <span v-else>🟢 Stabilne warunki laminarne</span>
+            </span>
+            <div class="csc-metrics">
+              <span>Porywistość: <strong>{{ weatherCorridor.wind_volatility_index }}</strong></span>
+              <span>Trend okna: <strong>{{ weatherCorridor.wind_trend_slope >= 0 ? '+' : '' }}{{ weatherCorridor.wind_trend_slope }} m/s</strong></span>
+              <span>Drift temp.: <strong>{{ weatherCorridor.temperature_drift }} °C</strong></span>
+            </div>
+          </div>
+          <div class="csc-right">
+            <span class="corridor-note">
+              Model przypisał dynamiczne warunki wyjścia na belkę do każdego zawodnika według kolejności startowej (niezależnie od numeru bib).
+            </span>
           </div>
         </div>
 
@@ -879,33 +1099,87 @@ onMounted(async () => {
             </div>
           </div>
 
-          <!-- SŁOWNIK PROFILI (MODAL / EXPANDABLE) -->
+          <!-- SŁOWNIK POJĘĆ, WSKAŹNIKÓW I PROFILI -->
           <div v-if="showLegendModal" class="legend-panel">
-            <h4>📖 Przewodnik po wskaźnikach i profilach zawodnika</h4>
-            <div class="legend-grid">
-              <div class="legend-item">
-                <span class="badge-item badge-clutch">🔥 Zwierzę konkursowe</span>
-                <p>Zyskuje statystycznie $\ge 2.5$ pozycji w konkursie w porównaniu do treningów i kwalifikacji. Doskonale radzi sobie z presją.</p>
+            <div class="legend-header-bar">
+              <h4>📖 Słownik pojęć, wskaźników i profili zawodników</h4>
+              <button class="legend-close-btn" @click="showLegendModal = false">✕ Zamknij</button>
+            </div>
+
+            <!-- SEKCJA 1: STATUSY ZAWODNIKA -->
+            <div class="legend-section">
+              <h5 class="legend-subheading">🏷️ Statusy i oznaczenia zawodnika</h5>
+              <div class="legend-grid">
+                <div class="legend-item">
+                  <span class="debutant-pill">DEBIUTANT</span>
+                  <p><strong>Debiutant w Pucharze Świata:</strong> Oznaczany wyłącznie, gdy skoczek ma <strong>0 startów w konkursie głównym Pucharu Świata</strong> (I seria po kwalifikacjach). Udział w kwalifikacjach lub treningach <strong>NIE znosi</strong> statusu debiutanta! Status znika dopiero po awansie i oddaniu skoku w I serii konkursu głównego PŚ / IO / MŚ.</p>
+                </div>
+                <div class="legend-item">
+                  <span class="badge-item badge-scored">⚡ Punktował w sezonie</span>
+                  <p>Zawodnik zajął miejsce w czołowej trzydziestce (Top 30) przynajmniej w jednym konkursie Pucharu Świata w <strong>trwającym sezonie zimowym</strong>.</p>
+                </div>
+                <div class="legend-item">
+                  <span class="badge-item badge-active">❄️ Aktywność zimowa</span>
+                  <p>Weryfikacja realnych startów na śniegu w trwającym sezonie. Skoczkowie powracający po kontuzji lub bez powołań (0 startów zimowych) podlegają korekcie niepewności.</p>
+                </div>
+                <div class="legend-item">
+                  <span class="badge-item badge-esm">💰 Cena ESM (Fantasy)</span>
+                  <p>Wycena zawodnika w grze Ekstra Skoki Menadżer. Jest to <strong>wyłącznie informacja pomocnicza dla graczy</strong> — cena <strong>nie ma absolutnie żadnego wpływu na wyliczenia sztucznej inteligencji</strong>.</p>
+                </div>
               </div>
-              <div class="legend-item">
-                <span class="badge-item badge-choker">📉 Syndrom treningów</span>
-                <p>W seriach próbnych osiąga wyższe lokaty niż w konkursie głównym (średni spadek o $\ge 3$ pozycje pod presją).</p>
+            </div>
+
+            <!-- SEKCJA 2: WSKAŹNIKI ANALIZY AI I FORM -->
+            <div class="legend-section">
+              <h5 class="legend-subheading">📊 Wskaźniki analizy AI i symulacji</h5>
+              <div class="legend-grid">
+                <div class="legend-item">
+                  <span class="badge-item badge-top30">Awans Top 30 (%)</span>
+                  <p>Prawdopodobieństwo awansu do II serii (miejsca 1–30) wyliczone metodą <strong>Monte Carlo (300 symulacji konkursu)</strong> przy uwzględnieniu losowości wiatru i dyspozycji.</p>
+                </div>
+                <div class="legend-item">
+                  <span class="badge-item badge-podium">Szansa Podium (%)</span>
+                  <p>Prawdopodobieństwo ukończenia zawodów w pierwszej trójce (miejsca 1–3) wyznaczone w symulacji wielowariantowej.</p>
+                </div>
+                <div class="legend-item">
+                  <span class="badge-item badge-form">Forma bieżąca (28 dni / ▲▼)</span>
+                  <p>Dyspozycja skoczka z ostatnich 4 tygodni w relacji do średniej wielotygodniowej. Strzałka <strong>▲</strong> oznacza zwyżkę formy i wysoki trend punktowy.</p>
+                </div>
+                <div class="legend-item">
+                  <span class="badge-item badge-venue">Afinitet do skoczni (Historia)</span>
+                  <p>Model analizuje <strong>historyczną dyspozycję zawodnika na tej konkretnej skoczni i w tej miejscowości</strong> (np. Ruka HS142) oraz dopasowanie do profilu obiektu (skocznia normalna/duża/mamucia).</p>
+                </div>
               </div>
-              <div class="legend-item">
-                <span class="badge-item badge-metronome">🎯 Metronom</span>
-                <p>Wysoka powtarzalność prób ($>80\%$). Minimalna wariancja odległości między seriami treningowymi i konkursowymi.</p>
-              </div>
-              <div class="legend-item">
-                <span class="badge-item badge-volatile">🎲 Chwiejny</span>
-                <p>Duży rozrzut skoków i wysoka amplituda punktowa. Skoczek podatny na dyspozycję chwili i podmuchy wiatru.</p>
-              </div>
-              <div class="legend-item">
-                <span class="badge-item badge-flying">🦅 Lotnik</span>
-                <p>Specjalista od skoczni mamucich (HS 200+). Osiąga na nich wyraźnie większe odległości niż na obiektach tradycyjnych.</p>
-              </div>
-              <div class="legend-item">
-                <span class="badge-item badge-balanced">⚖️ Równy poziom</span>
-                <p>Skacze na zbliżonym poziomie w seriach próbnych, kwalifikacyjnych i konkursowych bez wahań psychicznych.</p>
+            </div>
+
+            <!-- SEKCJA 3: PROFILE STYLU I PSYCHIKI -->
+            <div class="legend-section">
+              <h5 class="legend-subheading">🧠 Psychologia i profile sportowe</h5>
+              <div class="legend-grid">
+                <div class="legend-item">
+                  <span class="badge-item badge-clutch">🔥 Zwierzę konkursowe</span>
+                  <p>Zyskuje statystycznie $\ge 2.5$ pozycji w konkursie w porównaniu do treningów i kwalifikacji. Doskonale radzi sobie z presją.</p>
+                </div>
+                <div class="legend-item">
+                  <span class="badge-item badge-choker">📉 Syndrom treningów</span>
+                  <p>W seriach próbnych osiąga wyższe lokaty niż w konkursie głównym (średni spadek o $\ge 3$ pozycje pod presją).</p>
+                </div>
+                <div class="legend-item">
+                  <span class="badge-item badge-metronome">🎯 Metronom</span>
+                  <p>Wysoka powtarzalność prób ($>80\%$). Minimalna wariancja odległości między seriami treningowymi i konkursowymi.</p>
+                </div>
+                <div class="legend-item">
+                  <span class="badge-item badge-volatile">🎲 Chwiejny</span>
+                  <p>Duży rozrzut skoków i wysoka amplituda punktowa. Skoczek podatny na dyspozycję chwili i podmuchy wiatru.</p>
+                </div>
+                <div class="legend-item">
+                  <span class="badge-item badge-flying">🦅 Lotnik</span>
+                  <p>Specjalista od skoczni mamucich (HS 200+). Osiąga na nich wyraźnie większe odległości niż na obiektach tradycyjnych.</p>
+                </div>
+                <div class="legend-item">
+                  <span class="badge-item badge-balanced">⚖️ Równy poziom</span>
+                  <p>Skacze na zbliżonym poziomie w seriach próbnych, kwalifikacyjnych i konkursowych bez wahań psychicznych.</p>
+                </div>
               </div>
             </div>
           </div>
@@ -914,16 +1188,106 @@ onMounted(async () => {
             <table class="predictions-table">
               <thead>
                 <tr>
-                  <th class="th-rank">Msc</th>
-                  <th class="th-athlete">Skoczek</th>
-                  <th class="th-price">Cena</th>
-                  <th class="th-dist">Dystans</th>
-                  <th class="th-pts">Punkty</th>
-                  <th class="th-top30">Top 30</th>
-                  <th class="th-chance">Podium</th>
-                  <th class="th-form">Forma</th>
+                  <th
+                    class="th-rank sortable-th"
+                    :class="{ 'sorted-th': sortKey === 'predicted_rank' }"
+                    @click="sortBy('predicted_rank')"
+                    title="Sortuj po przewidywanej pozycji"
+                  >
+                    Msc
+                    <span v-if="sortKey === 'predicted_rank'" class="sort-indicator">
+                      {{ sortOrder === 'asc' ? '▲' : '▼' }}
+                    </span>
+                  </th>
+                  <th
+                    class="th-athlete sortable-th"
+                    :class="{ 'sorted-th': sortKey === 'name' }"
+                    @click="sortBy('name')"
+                    title="Sortuj alfabetycznie po nazwisku"
+                  >
+                    Skoczek
+                    <span v-if="sortKey === 'name'" class="sort-indicator">
+                      {{ sortOrder === 'asc' ? '▲' : '▼' }}
+                    </span>
+                  </th>
+                  <th
+                    class="th-price sortable-th"
+                    :class="{ 'sorted-th': sortKey === 'price' }"
+                    @click="sortBy('price')"
+                    title="Sortuj po cenie w Fantasy"
+                  >
+                    Cena
+                    <span v-if="sortKey === 'price'" class="sort-indicator">
+                      {{ sortOrder === 'asc' ? '▲' : '▼' }}
+                    </span>
+                  </th>
+                  <th
+                    class="th-dist sortable-th"
+                    :class="{ 'sorted-th': sortKey === 'predicted_distance' }"
+                    @click="sortBy('predicted_distance')"
+                    title="Sortuj po prognozowanym dystansie"
+                  >
+                    Dystans
+                    <span v-if="sortKey === 'predicted_distance'" class="sort-indicator">
+                      {{ sortOrder === 'asc' ? '▲' : '▼' }}
+                    </span>
+                  </th>
+                  <th
+                    class="th-pts sortable-th"
+                    :class="{ 'sorted-th': sortKey === 'predicted_points' }"
+                    @click="sortBy('predicted_points')"
+                    title="Sortuj po sumarycznych punktach"
+                  >
+                    Punkty
+                    <span v-if="sortKey === 'predicted_points'" class="sort-indicator">
+                      {{ sortOrder === 'asc' ? '▲' : '▼' }}
+                    </span>
+                  </th>
+                  <th
+                    class="th-top30 sortable-th"
+                    :class="{ 'sorted-th': sortKey === 'top30_probability' }"
+                    @click="sortBy('top30_probability')"
+                    title="Sortuj po szansie na awans do II serii"
+                  >
+                    Top 30
+                    <span v-if="sortKey === 'top30_probability'" class="sort-indicator">
+                      {{ sortOrder === 'asc' ? '▲' : '▼' }}
+                    </span>
+                  </th>
+                  <th
+                    class="th-chance sortable-th"
+                    :class="{ 'sorted-th': sortKey === 'podium_probability' }"
+                    @click="sortBy('podium_probability')"
+                    title="Sortuj po szansie na podium"
+                  >
+                    Podium
+                    <span v-if="sortKey === 'podium_probability'" class="sort-indicator">
+                      {{ sortOrder === 'asc' ? '▲' : '▼' }}
+                    </span>
+                  </th>
+                  <th
+                    class="th-form sortable-th"
+                    :class="{ 'sorted-th': sortKey === 'form_score' }"
+                    @click="sortBy('form_score')"
+                    title="Sortuj po wskaźniku formy"
+                  >
+                    Forma
+                    <span v-if="sortKey === 'form_score'" class="sort-indicator">
+                      {{ sortOrder === 'asc' ? '▲' : '▼' }}
+                    </span>
+                  </th>
                   <th class="th-profiles">Profil</th>
-                  <th class="th-repeat">Stabilność</th>
+                  <th
+                    class="th-repeat sortable-th"
+                    :class="{ 'sorted-th': sortKey === 'consistency_score' }"
+                    @click="sortBy('consistency_score')"
+                    title="Sortuj po wskaźniku powtarzalności prób"
+                  >
+                    Stabilność
+                    <span v-if="sortKey === 'consistency_score'" class="sort-indicator">
+                      {{ sortOrder === 'asc' ? '▲' : '▼' }}
+                    </span>
+                  </th>
                   <th class="th-action">✕</th>
                 </tr>
               </thead>
@@ -954,13 +1318,20 @@ onMounted(async () => {
                         {{ ath.name }}
                       </RouterLink>
                       <span class="country-tag">{{ ath.country }}</span>
+                      <span
+                        v-if="ath.is_tier_debutant && selectedCompetitionType === 'WC'"
+                        class="debutant-pill"
+                        title="Debiutant w Pucharze Świata (0 dotychczasowych startów w PŚ)"
+                      >
+                        DEBIUTANT
+                      </span>
                     </div>
                   </td>
 
                   <!-- CENA (jeśli null to '-') -->
                   <td class="td-price">
                     <span v-if="ath.price !== null && ath.price !== undefined" class="price-badge">
-                      {{ ath.price }}
+                      {{ Number(ath.price).toFixed(1) }}
                     </span>
                     <span v-else class="price-null">-</span>
                   </td>
@@ -968,7 +1339,17 @@ onMounted(async () => {
                   <!-- DYSTANS + PASEK WIZUALNY -->
                   <td class="td-dist">
                     <div class="dist-container">
-                      <span class="dist-num">{{ ath.predicted_distance.toFixed(1) }} m</span>
+                      <div class="dist-header-row">
+                        <span class="dist-num">{{ ath.predicted_distance.toFixed(1) }} m</span>
+                        <span
+                          v-if="ath.effective_headwind !== undefined"
+                          class="wind-micro-badge"
+                          :class="ath.effective_headwind >= 0 ? 'wind-head' : 'wind-tail'"
+                          :title="`Zinterpolowany wiatr w momencie skoku: ${ath.effective_headwind >= 0 ? '+' : ''}${ath.effective_headwind} m/s`"
+                        >
+                          {{ ath.effective_headwind >= 0 ? '↗' : '↘' }}{{ ath.effective_headwind >= 0 ? '+' : '' }}{{ ath.effective_headwind }}
+                        </span>
+                      </div>
                       <div class="dist-bar-track">
                         <div
                           class="dist-bar-fill"
@@ -992,21 +1373,21 @@ onMounted(async () => {
                   <!-- SZANSA NA TOP 30 (AWANS DO II SERII) -->
                   <td class="td-top30">
                     <div class="top30-badge" :class="{
-                      'top30-high': ath.top30_probability >= 80,
-                      'top30-med': ath.top30_probability >= 40 && ath.top30_probability < 80,
-                      'top30-low': ath.top30_probability < 40
+                      'top30-high': (ath.top30_probability ?? 0) >= 80,
+                      'top30-med': (ath.top30_probability ?? 0) >= 40 && (ath.top30_probability ?? 0) < 80,
+                      'top30-low': (ath.top30_probability ?? 0) < 40
                     }">
-                      {{ ath.top30_probability }}%
+                      {{ ath.top30_probability != null ? ath.top30_probability : 0 }}%
                     </div>
                   </td>
 
                   <!-- SZANSA PODIUM -->
                   <td class="td-chance">
-                    <div class="chance-box" v-if="ath.podium_probability > 0">
+                    <div class="chance-box" v-if="ath.podium_probability != null && ath.podium_probability > 0">
                       <div class="chance-bar">
                         <div
                           class="chance-fill"
-                          :style="{ width: ath.podium_probability + '%' }"
+                          :style="{ width: Math.min(100, ath.podium_probability) + '%' }"
                         ></div>
                       </div>
                       <span class="chance-val">{{ ath.podium_probability }}%</span>
@@ -1016,16 +1397,25 @@ onMounted(async () => {
 
                   <!-- FORMA -->
                   <td class="td-form">
-                    <span
-                      class="form-pill"
-                      :class="{
-                        'form-high': ath.form_score >= 95,
-                        'form-med': ath.form_score >= 88 && ath.form_score < 95,
-                        'form-low': ath.form_score < 88
-                      }"
-                    >
-                      {{ ath.form_score }}%
-                    </span>
+                    <div class="form-cell-wrapper" :title="ath.recent_form_score ? `Bieżąca dyspozycja (21 dni): ${ath.recent_form_score}% | Średnia ważona: ${ath.form_score}%` : `Forma: ${ath.form_score}%`">
+                      <span
+                        class="form-pill"
+                        :class="{
+                          'form-high': ath.form_score >= 95,
+                          'form-med': ath.form_score >= 88 && ath.form_score < 95,
+                          'form-low': ath.form_score < 88
+                        }"
+                      >
+                        {{ ath.form_score }}%
+                      </span>
+                      <span
+                        v-if="ath.recent_form_score"
+                        class="recent-form-tag"
+                        :class="ath.recent_form_score >= ath.form_score ? 'trend-up' : 'trend-down'"
+                      >
+                        {{ ath.recent_form_score >= ath.form_score ? '▲' : '▼' }}{{ ath.recent_form_score }}%
+                      </span>
+                    </div>
                   </td>
 
                   <!-- PROFILE WIELOWYMIAROWE Z TOOLTIPAMI -->
@@ -1129,12 +1519,13 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 12px 16px;
   background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 10px 18px;
   border-radius: 10px;
-  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
   font-size: 0.88rem;
 }
 
@@ -1267,17 +1658,22 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
-  padding: 12px 16px;
+  padding: 12px 14px;
   border-radius: 10px;
   margin-top: 14px;
+  box-sizing: border-box;
 }
 
 .h-badge-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
 }
 
 .h-name {
@@ -1306,17 +1702,22 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-top: 16px;
-  padding: 12px 16px;
+  padding: 12px 14px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
+  box-sizing: border-box;
 }
 
 .start-list-info {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .sl-title {
@@ -1344,17 +1745,30 @@ onMounted(async () => {
   background: white;
   border: 1px solid #cbd5e1;
   color: #0369a1;
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 6px;
   font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .manage-list-btn:hover {
   background: #f0f9ff;
   border-color: #7dd3fc;
+}
+
+@media (max-width: 540px) {
+  .start-list-toggle-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .manage-list-btn {
+    width: 100%;
+    text-align: center;
+  }
 }
 
 /* WEEKEND CONTEXT BANNER */
@@ -1821,7 +2235,7 @@ onMounted(async () => {
   gap: 20px;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 880px) {
   .podium-grid {
     grid-template-columns: 1fr;
     align-items: stretch;
@@ -2027,26 +2441,76 @@ onMounted(async () => {
   background: #e0f2fe;
 }
 
-/* SŁOWNIK PROFILI */
+/* SŁOWNIK POJĘĆ I PROFILI */
 .legend-panel {
   background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-  padding: 18px 22px;
+  border-bottom: 1px solid #cbd5e1;
+  padding: 18px 24px;
 }
 
-.legend-panel h4 {
-  margin: 0 0 14px 0;
-  font-size: 0.95rem;
+.legend-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 10px;
+}
+
+.legend-header-bar h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
   color: #0f172a;
+}
+
+.legend-close-btn {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.legend-close-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.legend-section {
+  margin-bottom: 20px;
+}
+
+.legend-section:last-child {
+  margin-bottom: 0;
+}
+
+.legend-subheading {
+  margin: 0 0 10px 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .legend-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
+  .legend-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
   .legend-grid {
     grid-template-columns: 1fr;
   }
@@ -2057,13 +2521,56 @@ onMounted(async () => {
   border: 1px solid #e2e8f0;
   padding: 12px;
   border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 .legend-item p {
   margin: 8px 0 0 0;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: #475569;
-  line-height: 1.4;
+  line-height: 1.45;
+}
+
+.badge-scored {
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1px solid #fde047;
+}
+
+.badge-active {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+}
+
+.badge-esm {
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.badge-top30 {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
+
+.badge-podium {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.badge-form {
+  background: #f3e8ff;
+  color: #6b21a8;
+  border: 1px solid #d8b4fe;
+}
+
+.badge-venue {
+  background: #ccfbf1;
+  color: #0f766e;
+  border: 1px solid #5eead4;
 }
 
 .filter-pills {
@@ -2130,6 +2637,31 @@ onMounted(async () => {
   padding: 10px 8px;
   border-bottom: 2px solid #e2e8f0;
   white-space: nowrap;
+}
+
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.sortable-th:hover {
+  background-color: #f1f5f9;
+  color: #0284c7;
+}
+
+.sortable-th.sorted-th {
+  color: #0284c7;
+  background-color: #f0f9ff;
+  border-bottom-color: #0284c7;
+}
+
+.sort-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 0.72rem;
+  color: #0284c7;
+  vertical-align: middle;
 }
 
 .predictions-table td {
@@ -2528,5 +3060,307 @@ onMounted(async () => {
 .btn-row-remove:hover {
   background: #fee2e2;
   color: #dc2626;
+}
+
+/* ========================================================
+   STYLES: KORYTARZ POGODOWY I DYNAMIKA OKNA ZAWODÓW
+   ======================================================== */
+.corridor-status-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #0284c7;
+  border-radius: 8px;
+  padding: 12px 18px;
+  margin-bottom: 18px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.csc-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.corridor-pill {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.corridor-pill.risk-high {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+.corridor-pill.risk-moderate {
+  background: #fffbeb;
+  color: #d97706;
+  border: 1px solid #fde68a;
+}
+.corridor-pill.risk-low {
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+}
+
+.csc-metrics {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 0.82rem;
+  color: #475569;
+}
+.csc-metrics strong {
+  color: #0f172a;
+}
+
+.csc-right {
+  font-size: 0.78rem;
+  color: #64748b;
+  max-width: 380px;
+  text-align: right;
+  line-height: 1.35;
+}
+
+.dist-header-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.wind-micro-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.wind-head {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+.wind-tail {
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+@media (max-width: 900px) {
+  .corridor-status-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .csc-right {
+    text-align: left;
+  }
+}
+
+/* ========================================================
+   STYLES: RANGA ZAWODÓW (LIGA FIS) & SZYBKIE PRESETY
+   ======================================================== */
+.tier-select {
+  font-weight: 600;
+  color: #1e293b;
+  border-left: 4px solid #6366f1;
+}
+
+.quick-preset-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pill-quick-btn {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pill-quick-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+.pill-quick-btn.active {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: #ffffff;
+}
+
+.pill-quick-btn.highlight-gold,
+.small-preset-btn.highlight-gold {
+  background: #fefce8;
+  border-color: #fde047;
+  color: #854d0e;
+}
+.pill-quick-btn.highlight-gold:hover,
+.small-preset-btn.highlight-gold:hover {
+  background: #fef08a;
+  color: #713f12;
+}
+.pill-quick-btn.highlight-gold.active,
+.small-preset-btn.highlight-gold.active {
+  background: #eab308;
+  border-color: #ca8a04;
+  color: #ffffff;
+}
+
+.debutant-pill {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.form-cell-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.recent-form-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.recent-form-tag.trend-up {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+.recent-form-tag.trend-down {
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
+}
+
+/* --- BANER NAJBLIŻSZYCH ZAWODÓW (FIS CALENDAR) --- */
+.upcoming-comp-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border: 1px solid #3b82f6;
+  border-left: 5px solid #3b82f6;
+  border-radius: 12px;
+  padding: 14px 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.upcoming-comp-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.upcoming-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  font-weight: 800;
+  color: #60a5fa;
+  text-transform: uppercase;
+}
+
+.pulse-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+  animation: pulse-blue 2s infinite;
+}
+
+@keyframes pulse-blue {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+
+.upcoming-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 0.92rem;
+  color: #f1f5f9;
+}
+
+.upcoming-event-title strong {
+  color: #ffffff;
+  font-size: 1.02rem;
+}
+
+.upcoming-hill-spec {
+  color: #94a3b8;
+  margin-left: 4px;
+}
+
+.upcoming-timing {
+  color: #cbd5e1;
+}
+
+.upcoming-timing strong {
+  color: #38bdf8;
+}
+
+.upcoming-comp-actions {
+  display: flex;
+  align-items: center;
+}
+
+.btn-apply-upcoming {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #ffffff;
+  border: 1px solid #60a5fa;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-apply-upcoming:hover {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
 }
 </style>

@@ -1,5 +1,43 @@
-# Logs
-logs
+# ==============================================================================
+# FantaSKI Frontend - .gitignore
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Środowisko, Secrety i Poświadczenia (BEZPIECZEŃSTWO)
+# ------------------------------------------------------------------------------
+.env
+.env.*
+*.env
+!.env.example
+*.local
+
+# Klucze prywatne, certyfikaty i poświadczenia
+*.pem
+*.key
+*.cert
+*.crt
+*credentials*.json
+client_secret*.json
+
+# ------------------------------------------------------------------------------
+# 2. Zależności i Pakiety
+# ------------------------------------------------------------------------------
+node_modules/
+
+# ------------------------------------------------------------------------------
+# 3. Pliki wynikowe kompilacji i build (Vite / TypeScript)
+# ------------------------------------------------------------------------------
+dist/
+dist-ssr/
+*.tsbuildinfo
+.eslintcache
+.vite/
+*.timestamp-*-*.mjs
+
+# ------------------------------------------------------------------------------
+# 4. Logi i pliki tymczasowe
+# ------------------------------------------------------------------------------
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,60 +45,31 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-.DS_Store
-dist
-dist-ssr
-coverage
-*.local
+# ------------------------------------------------------------------------------
+# 5. Testy i pokrycie kodu (Cypress / Vitest)
+# ------------------------------------------------------------------------------
+coverage/
+cypress/videos/
+cypress/screenshots/
+__screenshots__/
 
-# Editor directories and files
-.vscode/*
+# ------------------------------------------------------------------------------
+# 6. Dynamicznie generowane dane w public
+# ------------------------------------------------------------------------------
+public/data/
+public/jumpers.json
+
+# ------------------------------------------------------------------------------
+# 7. Środowiska edytorów (IDE) i pliki systemowe OS
+# ------------------------------------------------------------------------------
+.idea/
+.vscode/
 !.vscode/extensions.json
-.idea
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-
-*.tsbuildinfo
-
-.eslintcache
-
-# Cypress
-/cypress/videos/
-/cypress/screenshots/
-
-# Vitest
-__screenshots__/
-
-# Vite
-*.timestamp-*-*.mjs
-.vscode
-
-
-# Zależności
-node_modules/
-
-# Pliki środowisk edytorów (IDE)
-.idea/
-.vscode/
-
-# Pliki wynikowe (Vite)
-dist/
-dist-ssr/
-
-
+.DS_Store
 Thumbs.db
-
-# Pliki tymczasowe testów (jeśli kiedyś dodasz)
-coverage/
-
-# Dynamicznie generowane dane
-public/data/
-public/jumpers.json
-.env
-.env.*.local
-.env.local
-.env.example
+desktop.ini

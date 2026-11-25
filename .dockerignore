@@ -1,0 +1,41 @@
+# ==============================================================================
+# FantaSKI Frontend - .dockerignore
+# Zapobiega wstrzykiwaniu wrażliwych plików i zbędnych megabajtów do obrazu Docker
+# ==============================================================================
+
+# System kontroli wersji
+.git/
+.gitignore
+
+# Pliki środowiskowe i klucze (KRYTYCZNE DLA BEZPIECZEŃSTWA!)
+.env
+.env.*
+*.env
+*.pem
+*.key
+*credentials*.json
+client_secret*.json
+
+# Zależności i pliki tymczasowe
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+.eslintcache
+
+# Logi
+logs/
+*.log
+npm-debug.log*
+
+# Testy
+coverage/
+cypress/
+
+# Pliki środowisk IDE
+.idea/
+.vscode/
+
+# Dokumentacja i pliki robocze
+README.md
