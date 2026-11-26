@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import SkiLoader from '@/components/SkiLoader.vue'
 import { API_BASE_URL } from '@/api/client'
+import { useNotifications } from '@/stores/notifications'
 
+const route = useRoute()
+const { lastDraftEvent } = useNotifications()
 const activeTab = ref('scraper')
 
 // --- Stan Konfiguracji ---
@@ -1398,6 +1402,105 @@ const totalPendingReviews = computed(
   () => athleteReviews.value.length + sessionReviews.value.length,
 )
 
+// --- KOMUNIKATOR: WIADOMOŚCI OD UŻYTKOWNIKÓW ---
+const supportThreads = ref<any[]>([])
+const supportUnreadCount = ref(0)
+const isLoadingSupportThreads = ref(false)
+const selectedSupportUserId = ref<string | null>(null)
+const adminReplyText = ref('')
+const isSendingAdminReply = ref(false)
+const adminReplyError = ref('')
+
+const activeSupportThread = computed(() =>
+  supportThreads.value.find((t) => t.user_id === selectedSupportUserId.value) || null,
+)
+
+const loadSupportThreads = async (preferredUserId?: string) => {
+  isLoadingSupportThreads.value = true
+  try {
+    const res = await fetch(`${API_BASE_URL}/support/admin/threads`, { headers: getHeaders() })
+    if (res.ok) {
+      const data = await res.json()
+      supportThreads.value = data.threads || []
+      supportUnreadCount.value = Number(data.unread_count || 0)
+      if (preferredUserId && supportThreads.value.some((t) => t.user_id === preferredUserId)) {
+        await selectSupportThread(preferredUserId)
+      } else if (!selectedSupportUserId.value && supportThreads.value.length > 0) {
+        selectedSupportUserId.value = supportThreads.value[0].user_id
+      }
+    }
+  } catch (e) {
+    console.warn('Błąd ładowania wątków wiadomości:', e)
+  } finally {
+    isLoadingSupportThreads.value = false
+  }
+}
+
+const selectSupportThread = async (userId: string) => {
+  selectedSupportUserId.value = userId
+  adminReplyError.value = ''
+  const target = supportThreads.value.find((t) => t.user_id === userId)
+  if (target && target.unread_by_admin > 0) {
+    try {
+      await fetch(`${API_BASE_URL}/support/admin/threads/${encodeURIComponent(userId)}/read`, {
+        method: 'POST',
+        headers: getHeaders(),
+      })
+      supportUnreadCount.value = Math.max(0, supportUnreadCount.value - target.unread_by_admin)
+      target.unread_by_admin = 0
+    } catch {
+      // ignore
+    }
+  }
+}
+
+const sendAdminSupportReply = async () => {
+  const uid = selectedSupportUserId.value
+  const clean = adminReplyText.value.trim()
+  if (!uid || !clean || isSendingAdminReply.value) return
+  isSendingAdminReply.value = true
+  adminReplyError.value = ''
+  try {
+    const res = await fetch(`${API_BASE_URL}/support/admin/threads/${encodeURIComponent(uid)}/reply`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ message: clean }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      adminReplyError.value = data.detail || 'Nie udało się wysłać odpowiedzi.'
+      return
+    }
+    const idx = supportThreads.value.findIndex((t) => t.user_id === uid)
+    if (idx !== -1) {
+      supportThreads.value[idx] = data
+    } else {
+      supportThreads.value.unshift(data)
+    }
+    adminReplyText.value = ''
+  } catch (e: any) {
+    adminReplyError.value = e?.message || 'Błąd połączenia z serwerem.'
+  } finally {
+    isSendingAdminReply.value = false
+  }
+}
+
+watch(
+  () => [route.query.tab, route.query.user_id],
+  ([tab, uid]) => {
+    if (tab === 'messages') {
+      activeTab.value = 'messages'
+      loadSupportThreads(typeof uid === 'string' ? uid : undefined)
+    }
+  },
+)
+
+watch(lastDraftEvent, (ev) => {
+  if (ev && ev.event === 'notification') {
+    loadSupportThreads(selectedSupportUserId.value || undefined)
+  }
+})
+
 onMounted(() => {
   loadConfig()
   loadSeasonsSummary()
@@ -1410,6 +1513,12 @@ onMounted(() => {
   loadBacktestStatus()
   loadHyperparams()
   loadAutotuneStatus()
+  if (route.query.tab === 'messages') {
+    activeTab.value = 'messages'
+    loadSupportThreads(typeof route.query.user_id === 'string' ? route.query.user_id : undefined)
+  } else {
+    loadSupportThreads()
+  }
 })
 
 onUnmounted(() => {
@@ -1456,6 +1565,13 @@ onUnmounted(() => {
       </button>
       <button :class="{ active: activeTab === 'neural' }" @click="activeTab = 'neural'">
         <span>🧠</span> Sieć neuronowa
+      </button>
+      <button
+        :class="{ active: activeTab === 'messages' }"
+        @click="activeTab = 'messages'; loadSupportThreads(selectedSupportUserId || undefined)"
+      >
+        <span>💬</span> Wiadomości
+        <span v-if="supportUnreadCount > 0" class="badge-counter">{{ supportUnreadCount }}</span>
       </button>
     </div>
 
@@ -3479,6 +3595,95 @@ onUnmounted(() => {
               </table>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 7: KOMUNIKATOR Z UŻYTKOWNIKAMI -->
+    <div v-if="activeTab === 'messages'" class="tab-content">
+      <div class="admin-card">
+        <div class="admin-card-header flex-between">
+          <div>
+            <h3>💬 Wiadomości od użytkowników</h3>
+            <p class="subtitle">Zapytania wysłane przyciskiem „Skontaktuj się z administratorem” oraz historia rozmów.</p>
+          </div>
+          <button
+            type="button"
+            class="btn btn-secondary"
+            :disabled="isLoadingSupportThreads"
+            @click="loadSupportThreads(selectedSupportUserId || undefined)"
+          >
+            🔄 Odśwież
+          </button>
+        </div>
+
+        <div v-if="supportThreads.length === 0" class="empty-state">
+          Brak wiadomości od użytkowników.
+        </div>
+
+        <div v-else class="admin-support-layout">
+          <aside class="support-threads-sidebar">
+            <button
+              v-for="th in supportThreads"
+              :key="th.user_id"
+              type="button"
+              class="support-thread-item"
+              :class="{ active: selectedSupportUserId === th.user_id, unread: th.unread_by_admin > 0 }"
+              @click="selectSupportThread(th.user_id)"
+            >
+              <div class="sti-top">
+                <strong>{{ th.user_name }}</strong>
+                <span v-if="th.unread_by_admin > 0" class="badge-counter">{{ th.unread_by_admin }}</span>
+              </div>
+              <span class="sti-email">{{ th.user_email }}</span>
+              <span class="sti-preview">{{ th.last_message_preview }}</span>
+            </button>
+          </aside>
+
+          <section class="support-thread-view" v-if="activeSupportThread">
+            <div class="stv-header">
+              <div>
+                <strong>{{ activeSupportThread.user_name }}</strong>
+                <span class="stv-email">{{ activeSupportThread.user_email }}</span>
+              </div>
+            </div>
+
+            <div class="stv-messages">
+              <div
+                v-for="m in activeSupportThread.messages"
+                :key="m.id"
+                class="stv-bubble"
+                :class="m.sender_role === 'ADMIN' ? 'bubble-adm' : 'bubble-usr'"
+              >
+                <div class="stv-meta">
+                  <strong>{{ m.sender_role === 'ADMIN' ? '🛡️ Administrator' : activeSupportThread.user_name }}</strong>
+                  <span>{{ m.created_at ? new Date(m.created_at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' }) : '' }}</span>
+                </div>
+                <div v-if="m.context" class="stv-ctx">{{ m.context }}</div>
+                <p class="stv-text">{{ m.text }}</p>
+              </div>
+            </div>
+
+            <form @submit.prevent="sendAdminSupportReply" class="stv-reply-form">
+              <textarea
+                v-model="adminReplyText"
+                rows="3"
+                maxlength="1500"
+                class="form-input"
+                placeholder="Wpisz odpowiedź dla użytkownika..."
+              ></textarea>
+              <div v-if="adminReplyError" class="empty-state" style="color: #b91c1c; padding: 6px 0;">
+                {{ adminReplyError }}
+              </div>
+              <button
+                type="submit"
+                class="btn btn-primary"
+                :disabled="isSendingAdminReply || !adminReplyText.trim()"
+              >
+                {{ isSendingAdminReply ? 'Wysyłanie...' : '📩 Wyślij odpowiedź' }}
+              </button>
+            </form>
+          </section>
         </div>
       </div>
     </div>
@@ -5859,5 +6064,157 @@ onUnmounted(() => {
 .btn-esm-unlink:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* KOMUNIKATOR ADMINA */
+.admin-support-layout {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.support-threads-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.support-thread-item {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.support-thread-item.active {
+  background: #f0f9ff;
+  border-color: #0284c7;
+}
+
+.support-thread-item.unread:not(.active) {
+  background: #fffbeb;
+  border-color: #f59e0b;
+}
+
+.sti-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.88rem;
+  color: #0f172a;
+}
+
+.sti-email {
+  font-size: 0.74rem;
+  color: #64748b;
+  word-break: break-all;
+}
+
+.sti-preview {
+  font-size: 0.78rem;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.support-thread-view {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.stv-email {
+  margin-left: 8px;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.stv-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 10px;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+}
+
+.stv-bubble {
+  max-width: 85%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.bubble-usr {
+  align-self: flex-start;
+}
+
+.bubble-adm {
+  align-self: flex-end;
+  background: #f0f9ff;
+  border-color: #bae6fd;
+}
+
+.stv-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.73rem;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.stv-ctx {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #0369a1;
+  margin-bottom: 4px;
+}
+
+.stv-text {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #0f172a;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+.stv-reply-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (max-width: 900px) {
+  .admin-support-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

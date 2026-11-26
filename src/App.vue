@@ -4,7 +4,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useAuth } from '@/stores/auth'
 import { useNotice } from '@/stores/notice'
 import { useNotifications } from '@/stores/notifications'
-import { clearApiCache } from '@/api/client'
+import { api, clearApiCache } from '@/api/client'
 
 const auth = useAuth()
 const notice = useNotice()
@@ -31,6 +31,12 @@ const deferredInstallPrompt = ref<any>(null)
 const isAppInstalled = ref<boolean>(false)
 const showInstallGuideModal = ref<boolean>(false)
 const isIosDevice = ref<boolean>(false)
+const showSupportModal = ref<boolean>(false)
+const supportContext = ref<string>('')
+const supportMessageText = ref<string>('')
+const isSendingSupport = ref<boolean>(false)
+const supportSendError = ref<string>('')
+const supportSendSuccess = ref<boolean>(false)
 let notifPollTimer: any = null
 const devEmail = ref<string>('')
 const devName = ref<string>('')
@@ -161,6 +167,41 @@ const triggerPwaInstall = async () => {
   }
   closeNavigation()
   showInstallGuideModal.value = true
+}
+
+const openSupportComposer = (contextTitle?: string) => {
+  notice.closeNotice()
+  if (!auth.isAuthenticated.value) {
+    auth.isAuthModalOpen.value = true
+    return
+  }
+  supportContext.value = contextTitle ? `Dotyczy: ${contextTitle}` : ''
+  supportMessageText.value = ''
+  supportSendError.value = ''
+  supportSendSuccess.value = false
+  showSupportModal.value = true
+}
+
+const submitSupportMessage = async () => {
+  const clean = supportMessageText.value.trim()
+  if (!clean) {
+    supportSendError.value = 'Wpisz treść wiadomości przed wysłaniem.'
+    return
+  }
+  isSendingSupport.value = true
+  supportSendError.value = ''
+  try {
+    await api.post('/support/messages', {
+      message: clean,
+      context: supportContext.value || undefined,
+    })
+    supportSendSuccess.value = true
+    supportMessageText.value = ''
+  } catch (e: any) {
+    supportSendError.value = e?.message || 'Nie udało się wysłać wiadomości.'
+  } finally {
+    isSendingSupport.value = false
+  }
 }
 
 // Inicjalizacja Google One Tap / Button
@@ -617,7 +658,7 @@ onUnmounted(() => {
           <button
             v-else
             class="btn-notice-action"
-            @click="notice.closeNotice()"
+            @click="openSupportComposer(notice.noticeData.value.title)"
           >
             ✨ Skontaktuj się z administratorem
           </button>
@@ -625,6 +666,64 @@ onUnmounted(() => {
             Zamknij
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- KOMUNIKATOR: WIADOMOŚĆ DO ADMINISTRATORA -->
+    <div
+      v-if="showSupportModal"
+      class="auth-modal-overlay"
+      @click.self="showSupportModal = false"
+    >
+      <div class="auth-modal notice-modal">
+        <button class="auth-close-btn" @click="showSupportModal = false">&times;</button>
+        <div class="notice-modal-header">
+          <div class="notice-icon-box">
+            <span>💬</span>
+          </div>
+          <span class="notice-badge">KONTAKT Z ADMINISTRATOREM</span>
+          <h3>Napisz wiadomość</h3>
+          <p class="notice-desc">
+            Twoje zapytanie trafi prosto do panelu administratora. Gdy admin odpisze, dostaniesz powiadomienie tutaj w aplikacji.
+          </p>
+        </div>
+
+        <div v-if="supportContext" class="support-ctx-pill">{{ supportContext }}</div>
+
+        <div v-if="supportSendSuccess" class="support-success-box">
+          <p>✅ Wiadomość została wysłana do administratora!</p>
+          <div class="notice-modal-actions" style="margin-top: 10px;">
+            <button
+              type="button"
+              class="btn-notice-action"
+              @click="showSupportModal = false; router.push('/profile?tab=messages')"
+            >
+              💬 Przejdź do moich wiadomości
+            </button>
+            <button type="button" class="btn-notice-close" @click="showSupportModal = false">
+              Zamknij
+            </button>
+          </div>
+        </div>
+
+        <form v-else @submit.prevent="submitSupportMessage" class="support-compose-form">
+          <textarea
+            v-model="supportMessageText"
+            rows="4"
+            maxlength="1500"
+            class="support-textarea"
+            placeholder="Opisz krótko pytanie lub poproś o aktywację dostępu..."
+          ></textarea>
+          <div v-if="supportSendError" class="auth-error-msg">{{ supportSendError }}</div>
+          <div class="notice-modal-actions" style="margin-top: 10px;">
+            <button type="submit" class="btn-notice-action" :disabled="isSendingSupport">
+              {{ isSendingSupport ? 'Wysyłanie...' : '📩 Wyślij wiadomość' }}
+            </button>
+            <button type="button" class="btn-notice-close" @click="showSupportModal = false">
+              Anuluj
+            </button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -1593,6 +1692,55 @@ onUnmounted(() => {
   color: #334155;
   font-size: 0.88rem;
   line-height: 1.45;
+}
+
+.support-ctx-pill {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 7px;
+  margin-bottom: 10px;
+}
+
+.support-compose-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.support-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: #0f172a;
+  resize: vertical;
+}
+
+.support-textarea:focus {
+  outline: none;
+  border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.14);
+}
+
+.support-success-box {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.support-success-box p {
+  margin: 0;
 }
 
 @media (max-width: 1120px) {

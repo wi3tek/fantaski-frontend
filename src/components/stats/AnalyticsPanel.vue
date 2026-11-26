@@ -11,9 +11,7 @@ const sortKey = ref<string>('pointsPerPrice')
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const hoveredAthlete = ref<any | null>(null)
 const expandedAthlete = ref<string | null>(null)
-const mobileViewMode = ref<'cards' | 'table'>('cards')
 const mobileStatTab = ref<'basics' | 'rates' | 'hills'>('basics')
-const isTableFullScreen = ref(false)
 
 const mobileSortOptions = [
   { key: 'pointsPerPrice', label: 'Efektywność (Pkt / Cena)' },
@@ -602,42 +600,20 @@ const getTrendPath = (athleteName: string) => {
             {{ sortOrder === 'asc' ? '▲ Rosn.' : '▼ Mal.' }}
           </button>
         </div>
-        <div class="mac-view-switch">
-          <button
-            type="button"
-            class="mac-switch-btn"
-            :class="{ active: mobileViewMode === 'cards' }"
-            @click="mobileViewMode = 'cards'; isTableFullScreen = false"
-          >
-            🪪 Karty (3 zakładki)
-          </button>
-          <button
-            type="button"
-            class="mac-switch-btn"
-            :class="{ active: mobileViewMode === 'table' }"
-            @click="mobileViewMode = 'table'"
-          >
-            📋 Tabela
-          </button>
+
+        <div class="mobile-desktop-hint">
+          💻 Pełną tabelę ze wszystkimi wskaźnikami zobaczysz na większym ekranie (komputerze).
         </div>
-        <button
-          v-if="mobileViewMode === 'table'"
-          type="button"
-          class="mac-fs-btn"
-          @click="isTableFullScreen = !isTableFullScreen"
-        >
-          {{ isTableFullScreen ? '✕ Zamknij pełny ekran' : '⛶ Tabela na pełnym ekranie (Poziom)' }}
-        </button>
 
         <!-- 3 ZAKŁADKI TEMATYCZNE DLA KART NA MOBILCE -->
-        <div v-if="mobileViewMode === 'cards'" class="mac-topic-tabs" role="tablist">
+        <div class="mac-topic-tabs" role="tablist">
           <button
             type="button"
             class="mac-topic-tab"
             :class="{ active: mobileStatTab === 'basics' }"
             @click="mobileStatTab = 'basics'"
           >
-            📊 Forma & Pkt
+            📊 Forma i punkty
           </button>
           <button
             type="button"
@@ -653,13 +629,13 @@ const getTrendPath = (athleteName: string) => {
             :class="{ active: mobileStatTab === 'hills' }"
             @click="mobileStatTab = 'hills'"
           >
-            🏔️ Zakres & Skocznie
+            🏔️ Skocznie i zakres
           </button>
         </div>
       </div>
 
       <!-- KARTY ANALITYCZNE NA MOBILCE (<= 768px) -->
-      <div v-if="mobileViewMode === 'cards'" class="analytics-mobile-list mobile-only">
+      <div class="analytics-mobile-list mobile-only">
         <div v-if="filteredAnalytics.length === 0" class="no-data-msg">
           Brak zawodników spełniających nałożone kryteria filtrów.
         </div>
@@ -804,20 +780,8 @@ const getTrendPath = (athleteName: string) => {
         </div>
       </div>
 
-      <!-- TABELA ANALITYCZNA Z PRZYPIĘTYMI NAGŁÓWKAMI I PIERWSZĄ KOLUMNĄ -->
-      <div
-        class="analytics-table-wrapper"
-        :class="{
-          'desktop-only': mobileViewMode === 'cards',
-          'analytics-fullscreen': isTableFullScreen,
-        }"
-      >
-        <div v-if="isTableFullScreen" class="analytics-fs-bar">
-          <strong>📊 Statystyki — pełny ekran</strong>
-          <button type="button" class="analytics-fs-close" @click="isTableFullScreen = false">
-            ✕ Zamknij
-          </button>
-        </div>
+      <!-- TABELA ANALITYCZNA (WYŁĄCZNIE DESKTOP / WIĘKSZY EKRAN) -->
+      <div class="analytics-table-wrapper desktop-only">
         <table class="analytics-table">
           <thead>
             <tr>
@@ -2325,38 +2289,42 @@ const getTrendPath = (athleteName: string) => {
     flex-wrap: wrap;
     gap: 6px;
   }
-}
 
-.analytics-fullscreen {
-  position: fixed;
-  inset: 0;
-  z-index: 10500;
-  background: #ffffff;
-  overflow: auto;
-}
+  .mobile-desktop-hint {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    line-height: 1.35;
+  }
 
-.analytics-fs-bar {
-  position: sticky;
-  top: 0;
-  left: 0;
-  z-index: 25;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: #0f172a;
-  color: #ffffff;
-  font-size: 0.8rem;
-}
+  .amc-kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
 
-.analytics-fs-close {
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 0.74rem;
-  font-weight: 700;
-  cursor: pointer;
+  .amc-rates-grid {
+    grid-template-columns: 1fr !important;
+    gap: 7px !important;
+  }
+
+  .amc-rate-item {
+    flex-direction: row !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px !important;
+  }
+
+  .amc-rate-lbl {
+    min-width: 68px;
+    font-size: 0.76rem !important;
+  }
+
+  .rate-cell {
+    flex: 1;
+  }
 }
 </style>

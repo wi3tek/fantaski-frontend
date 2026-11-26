@@ -1345,9 +1345,9 @@ onMounted(async () => {
                 type="button"
                 class="mpc-switch-btn"
                 :class="{ active: mobileViewMode === 'cards' }"
-                @click="mobileViewMode = 'cards'; isTableFullScreen = false"
+                @click="mobileViewMode = 'cards'"
               >
-                🪪 Lista
+                🪪 Karty
               </button>
               <button
                 type="button"
@@ -1355,28 +1355,17 @@ onMounted(async () => {
                 :class="{ active: mobileViewMode === 'table' }"
                 @click="mobileViewMode = 'table'"
               >
-                📋 Pełna tabela
+                📋 Tabela
               </button>
             </div>
-            <button
-              v-if="mobileViewMode === 'table'"
-              type="button"
-              class="mpc-fs-btn"
-              @click="isTableFullScreen = !isTableFullScreen"
-            >
-              {{ isTableFullScreen ? '✕ Zamknij pełny ekran' : '⛶ Pełny ekran (Poziom)' }}
-            </button>
           </div>
 
-          <!-- KOMPAKTOWA LISTA PROGNOZ NA MOBILCE (<= 768px) -->
-          <div v-if="mobileViewMode === 'cards'" class="pred-mobile-list mobile-only">
-            <div class="pml-col-head">
-              <span>Poz.</span>
-              <span>Zawodnik</span>
-              <span class="pml-h-right">Top30 / Pod.</span>
-              <span class="pml-h-right">Prognoza</span>
-            </div>
+          <div class="mobile-desktop-hint mobile-only">
+            💻 Pełną, wielokolumnową tabelę prognoz i detali zobaczysz na większym ekranie (komputerze).
+          </div>
 
+          <!-- CZYTELNE KARTY PROGNOZ NA MOBILCE (<= 768px) -->
+          <div v-if="mobileViewMode === 'cards'" class="pred-mobile-list mobile-only">
             <div
               v-for="ath in filteredPredictions"
               :key="'m_' + ath.fis_code"
@@ -1386,33 +1375,65 @@ onMounted(async () => {
                 'row-silver': ath.predicted_rank === 2,
                 'row-bronze': ath.predicted_rank === 3,
                 'row-top10': ath.predicted_rank > 3 && ath.predicted_rank <= 10,
-                'is-expanded': expandedPredRow === String(ath.fis_code),
               }"
-              @click="toggleExpandedPredRow(ath.fis_code)"
             >
-              <div class="pmc-compact-row">
-                <span class="rank-badge" :class="'rank-' + ath.predicted_rank">
-                  {{ ath.predicted_rank }}
-                </span>
-
-                <div class="pmc-compact-ident">
-                  <CountryFlag :code="ath.country" size="xs" />
-                  <RouterLink
-                    :to="'/athletes/' + ath.fis_code"
-                    class="athlete-link pmc-name"
-                    @click.stop
-                  >
-                    {{ ath.name }}
-                  </RouterLink>
-                  <span
-                    v-if="ath.is_tier_debutant && selectedCompetitionType === 'WC'"
-                    class="debutant-pill pmc-debut"
-                  >
-                    DEB
+              <div class="pmc-top">
+                <div class="pmc-identity">
+                  <span class="rank-badge" :class="'rank-' + ath.predicted_rank">
+                    {{ ath.predicted_rank }}
                   </span>
+                  <CountryFlag :code="ath.country" size="sm" />
+                  <div class="pmc-name-wrap">
+                    <RouterLink :to="'/athletes/' + ath.fis_code" class="athlete-link pmc-name">
+                      {{ ath.name }}
+                    </RouterLink>
+                    <div class="pmc-sub-tags">
+                      <span class="country-tag">{{ ath.country }}</span>
+                      <span
+                        v-if="ath.is_tier_debutant && selectedCompetitionType === 'WC'"
+                        class="debutant-pill pmc-debut"
+                      >
+                        DEBIUTANT
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div class="pmc-right-top">
+                  <span v-if="ath.price !== null && ath.price !== undefined" class="price-badge">
+                    {{ Number(ath.price).toFixed(1) }}
+                  </span>
+                  <button
+                    class="btn-row-remove pmc-remove"
+                    @click="removeAthlete(ath.fis_code)"
+                    title="Usuń z listy startowej"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <div class="pmc-metrics-grid">
+                <div class="pmc-metric">
+                  <span class="pmc-m-label">Dystans</span>
+                  <div class="pmc-dist-val">
+                    <strong class="dist-num">{{ ath.predicted_distance.toFixed(1) }} m</strong>
+                    <span
+                      v-if="ath.effective_headwind !== undefined"
+                      class="wind-micro-badge"
+                      :class="ath.effective_headwind >= 0 ? 'wind-head' : 'wind-tail'"
+                    >
+                      {{ ath.effective_headwind >= 0 ? '↗+' : '↘' }}{{ ath.effective_headwind }}
+                    </span>
+                  </div>
                 </div>
 
-                <div class="pmc-compact-chances font-mono">
+                <div class="pmc-metric">
+                  <span class="pmc-m-label">Punkty</span>
+                  <strong class="pts-bold">{{ ath.predicted_points.toFixed(1) }} <small class="pts-unit">pkt</small></strong>
+                </div>
+
+                <div class="pmc-metric">
+                  <span class="pmc-m-label">Top 30</span>
                   <span
                     class="top30-badge"
                     :class="{
@@ -1423,63 +1444,48 @@ onMounted(async () => {
                   >
                     {{ ath.top30_probability != null ? ath.top30_probability : 0 }}%
                   </span>
-                  <small v-if="ath.podium_probability != null && ath.podium_probability > 0" class="pmc-pod-sub">
-                    🏆{{ ath.podium_probability }}%
-                  </small>
                 </div>
 
-                <div class="pmc-compact-dist font-mono">
-                  <strong>{{ ath.predicted_distance.toFixed(1) }}m</strong>
-                  <small class="pmc-pts-sub">{{ ath.predicted_points.toFixed(0) }} pkt</small>
+                <div class="pmc-metric">
+                  <span class="pmc-m-label">Podium</span>
+                  <strong class="chance-val" v-if="ath.podium_probability != null && ath.podium_probability > 0">
+                    {{ ath.podium_probability }}%
+                  </strong>
+                  <span v-else class="chance-zero">&lt;1%</span>
                 </div>
               </div>
 
-              <!-- ROZWIJANE SZCZEGÓŁY PO DOTKNIĘCIU -->
-              <div
-                v-if="expandedPredRow === String(ath.fis_code)"
-                class="pmc-expanded-details"
-                @click.stop
-              >
-                <div class="pmc-exp-top">
-                  <div class="pmc-form-stab">
-                    <span class="pmc-mini-label">Forma:</span>
+              <div class="pmc-footer">
+                <div class="pmc-form-stab">
+                  <span class="pmc-mini-label">Forma:</span>
+                  <span
+                    class="form-pill"
+                    :class="{
+                      'form-high': ath.form_score >= 95,
+                      'form-med': ath.form_score >= 88 && ath.form_score < 95,
+                      'form-low': ath.form_score < 88
+                    }"
+                  >
+                    {{ ath.form_score }}%
+                  </span>
+                  <span
+                    v-if="ath.recent_form_score"
+                    class="recent-form-tag"
+                    :class="ath.recent_form_score >= ath.form_score ? 'trend-up' : 'trend-down'"
+                  >
+                    {{ ath.recent_form_score >= ath.form_score ? '▲' : '▼' }}{{ ath.recent_form_score }}%
+                  </span>
+                  <span class="pmc-sep">&bull;</span>
+                  <span class="pmc-mini-label">Stabilność:</span>
+                  <span class="repeat-box">
                     <span
-                      class="form-pill"
-                      :class="{
-                        'form-high': ath.form_score >= 95,
-                        'form-med': ath.form_score >= 88 && ath.form_score < 95,
-                        'form-low': ath.form_score < 88
+                      class="repeat-circle"
+                      :style="{
+                        background: ath.consistency_score >= 80 ? '#10b981' : ath.consistency_score >= 50 ? '#3b82f6' : '#f59e0b'
                       }"
-                    >
-                      {{ ath.form_score }}%
-                    </span>
-                    <span
-                      v-if="ath.recent_form_score"
-                      class="recent-form-tag"
-                      :class="ath.recent_form_score >= ath.form_score ? 'trend-up' : 'trend-down'"
-                    >
-                      {{ ath.recent_form_score >= ath.form_score ? '▲' : '▼' }}{{ ath.recent_form_score }}%
-                    </span>
-                    <span class="pmc-sep">&bull;</span>
-                    <span class="pmc-mini-label">Stab:</span>
+                    ></span>
                     <span class="repeat-num">{{ ath.consistency_score.toFixed(0) }}%</span>
-                  </div>
-
-                  <div class="pmc-right-top">
-                    <span v-if="ath.effective_headwind !== undefined" class="wind-micro-badge" :class="ath.effective_headwind >= 0 ? 'wind-head' : 'wind-tail'">
-                      {{ ath.effective_headwind >= 0 ? '↗+' : '↘' }}{{ ath.effective_headwind }} m/s
-                    </span>
-                    <span v-if="ath.price !== null && ath.price !== undefined" class="price-badge">
-                      {{ Number(ath.price).toFixed(1) }}
-                    </span>
-                    <button
-                      class="btn-row-remove pmc-remove"
-                      @click="removeAthlete(ath.fis_code)"
-                      title="Usuń z listy startowej"
-                    >
-                      ✕
-                    </button>
-                  </div>
+                  </span>
                 </div>
 
                 <div v-if="ath.profiles && ath.profiles.length > 0" class="profiles-flex">
@@ -1488,6 +1494,7 @@ onMounted(async () => {
                     :key="prof.code"
                     class="profile-tag"
                     :class="prof.tag_class"
+                    :title="prof.description"
                   >
                     {{ prof.icon }} {{ prof.label }}
                   </span>
@@ -1496,19 +1503,7 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div
-            class="table-responsive"
-            :class="{
-              'desktop-only': mobileViewMode === 'cards',
-              'pred-table-fullscreen': isTableFullScreen,
-            }"
-          >
-            <div v-if="isTableFullScreen" class="pred-fs-bar">
-              <strong>📋 Pełna tabela prognoz ({{ filteredPredictions.length }})</strong>
-              <button type="button" class="btn-pred-fs-close" @click="isTableFullScreen = false">
-                ✕ Zamknij
-              </button>
-            </div>
+          <div class="table-responsive" :class="{ 'desktop-only': mobileViewMode === 'cards' }">
             <table class="predictions-table">
               <thead>
                 <tr>
@@ -4503,6 +4498,17 @@ onMounted(async () => {
   }
   .rwb-txt {
     display: none;
+  }
+  .mobile-desktop-hint {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 8px 11px;
+    margin: 8px 10px 2px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    line-height: 1.35;
   }
 }
 </style>

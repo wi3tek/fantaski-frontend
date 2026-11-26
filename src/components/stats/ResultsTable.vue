@@ -35,8 +35,6 @@ const rowStart = ref(0)
 const rowsWindowSize = 15
 const colStart = ref(0)
 const athletesWindowSize = ref(1)
-const mobileViewMode = ref<'cards' | 'matrix'>('cards')
-const isFullScreenMatrix = ref(false)
 const showViewFiltersMobile = ref(false)
 
 const tableWrapperRef = ref<HTMLElement | null>(null)
@@ -174,45 +172,9 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
       </div>
     </div>
 
-    <div
-      v-if="groupedRows.length > 0"
-      class="results-container"
-      :class="{ 'matrix-fullscreen': isFullScreenMatrix }"
-    >
-      <div v-if="isFullScreenMatrix" class="fullscreen-bar">
-        <strong>📋 Porównywarka — tryb pełnego ekranu</strong>
-        <button type="button" class="btn-exit-fs" @click="isFullScreenMatrix = false">
-          ✕ Zamknij pełny ekran
-        </button>
-      </div>
-
-      <div class="mobile-rt-modebar">
-        <div class="rt-switch-group">
-          <button
-            type="button"
-            class="rt-switch-btn"
-            :class="{ active: mobileViewMode === 'cards' }"
-            @click="mobileViewMode = 'cards'; isFullScreenMatrix = false"
-          >
-            🪪 Konkursy
-          </button>
-          <button
-            type="button"
-            class="rt-switch-btn"
-            :class="{ active: mobileViewMode === 'matrix' }"
-            @click="mobileViewMode = 'matrix'"
-          >
-            📋 Macierz (Poziom)
-          </button>
-        </div>
-        <button
-          v-if="mobileViewMode === 'matrix'"
-          type="button"
-          class="rt-fs-btn"
-          @click="isFullScreenMatrix = !isFullScreenMatrix"
-        >
-          {{ isFullScreenMatrix ? '✕ Wyjdź' : '⛶ Pełny ekran' }}
-        </button>
+    <div v-if="groupedRows.length > 0" class="results-container">
+      <div class="mobile-desktop-hint mobile-only-block">
+        💻 Na większym ekranie (komputerze) zobaczysz pełną macierz porównawczą w jednej tabeli.
       </div>
 
       <div class="nav-horizontal">
@@ -253,13 +215,7 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
         </div>
       </div>
 
-      <div
-        class="table-layout-wrapper"
-        :class="{
-          'desktop-only': mobileViewMode === 'cards',
-          'matrix-mobile-active': mobileViewMode === 'matrix',
-        }"
-      >
+      <div class="table-layout-wrapper desktop-only">
         <div class="nav-vertical nav-left">
           <div class="sticky-nav-buttons">
             <button
@@ -382,7 +338,7 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
         </div>
       </div>
 
-      <div v-if="mobileViewMode === 'cards'" class="mobile-layout-wrapper mobile-only">
+      <div class="mobile-layout-wrapper mobile-only">
         <div class="m-card" v-for="(row, idx) in displayedRows" :key="idx">
 
           <div class="m-card-header">
@@ -393,41 +349,36 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
             <div class="m-title">
               {{ row.meta.place }} HS{{ row.meta.hill_size || '?' }}
               <span class="m-sep">|</span> {{ getSessionName(row.meta.session_type) }}
-              <small class="m-round">(S{{ row.meta.round }})</small>
+            </div>
+            <div class="m-subtitle">
+              {{ getCategoryName(row.meta.category) }} · Seria {{ row.meta.round }}
             </div>
           </div>
 
           <div class="m-card-body">
-            <div class="m-athlete-row m-compact-row" v-for="athlete in displayedAthletes" :key="athlete.name">
-              <div class="m-ath-left">
-                <button @click="excludeAthlete(athlete.name)" class="m-btn-close" title="Usuń">✕</button>
-                <span class="m-ath-name" :title="athlete.name">{{ athlete.name }}</span>
+            <div class="m-athlete-row" v-for="athlete in displayedAthletes" :key="athlete.name">
+              <div class="m-ath-info">
+                <button @click="excludeAthlete(athlete.name)" class="m-btn-close" title="Ukryj">✕</button>
+                <span v-if="athlete.price" class="badge price-header-badge">{{ Number(athlete.price).toFixed(1) }}</span>
+                <span class="m-ath-name">{{ athlete.name }}</span>
               </div>
 
-              <template v-if="row.athletes[athlete.name]">
-                <span
-                  class="m-c-rank"
-                  :class="[
-                    getHighlightClass(row.athletes[athlete.name].jump_rank),
-                    getStatClass(row.athletes[athlete.name].jump_rank, row.minRank, row.maxRank),
-                  ]"
-                >
-                  #{{ row.athletes[athlete.name].jump_rank }}
-                </span>
-                <span
-                  class="m-c-dist"
-                  :class="getStatClass(row.athletes[athlete.name].distance, row.maxDist, row.minDist)"
-                >
-                  {{ row.athletes[athlete.name].distance }}m
-                </span>
-                <span
-                  class="m-c-pts"
-                  :class="getStatClass(row.athletes[athlete.name].points, row.maxPoints, row.minPoints)"
-                >
-                  {{ row.athletes[athlete.name].points }}
-                </span>
-              </template>
-              <span v-else class="m-no-jump-compact">—</span>
+              <div class="m-ath-results">
+                <template v-if="row.athletes[athlete.name]">
+                  <div :class="['m-jump-data', getHighlightClass(row.athletes[athlete.name].jump_rank)]">
+                    <div class="m-stat" :class="getStatClass(row.athletes[athlete.name].jump_rank, row.minRank, row.maxRank)">
+                      Miejsce: <strong>{{ row.athletes[athlete.name].jump_rank }}.</strong>
+                    </div>
+                    <div class="m-stat" :class="getStatClass(row.athletes[athlete.name].distance, row.maxDist, row.minDist)">
+                      Odległość: <strong>{{ row.athletes[athlete.name].distance }} m</strong>
+                    </div>
+                    <div class="m-stat" :class="getStatClass(row.athletes[athlete.name].points, row.maxPoints, row.minPoints)">
+                      Nota: <strong>{{ row.athletes[athlete.name].points }}</strong>
+                    </div>
+                  </div>
+                </template>
+                <div v-else class="m-no-jump">Brak startu w tej serii</div>
+              </div>
             </div>
           </div>
         </div>
@@ -728,8 +679,23 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
 }
 
 .vf-mobile-toggle,
-.mobile-rt-modebar {
+.mobile-only-block {
   display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-only-block {
+    display: block;
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+    line-height: 1.4;
+  }
 }
 
 /* ============================================== */

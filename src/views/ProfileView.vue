@@ -12,14 +12,15 @@ const router = useRouter()
 const {
   notifications: notifHistory,
   unreadCount: notifUnreadCount,
+  lastDraftEvent,
   isLoadingNotifs,
   fetchNotifications,
   markAsRead,
   markAllAsRead,
 } = useNotifications()
 
-type ProfileTab = 'edit' | 'esm' | 'plan' | 'notifications'
-const validTabs: ProfileTab[] = ['edit', 'esm', 'plan', 'notifications']
+type ProfileTab = 'edit' | 'esm' | 'plan' | 'notifications' | 'messages'
+const validTabs: ProfileTab[] = ['edit', 'esm', 'plan', 'notifications', 'messages']
 const initialTab = validTabs.includes(route.query.tab as ProfileTab)
   ? (route.query.tab as ProfileTab)
   : 'edit'
@@ -128,7 +129,56 @@ onMounted(() => {
   loadEsmStatus()
   searchDirectory()
   fetchNotifications(100)
+  loadSupportThread(activeProfileTab.value === 'messages')
 })
+
+watch(activeProfileTab, (tab) => {
+  if (tab === 'messages') {
+    loadSupportThread(true)
+  }
+})
+
+watch(lastDraftEvent, (ev) => {
+  if (ev && ev.event === 'notification') {
+    loadSupportThread(activeProfileTab.value === 'messages')
+  }
+})
+
+// --- KOMUNIKATOR Z ADMINISTRATOREM ---
+const supportThread = ref<any>(null)
+const supportMessages = computed(() => supportThread.value?.messages || [])
+const supportUnreadUser = computed(() => Number(supportThread.value?.unread_by_user || 0))
+const isLoadingSupport = ref(false)
+const isSendingSupportMsg = ref(false)
+const supportReplyText = ref('')
+const supportReplyError = ref('')
+
+const loadSupportThread = async (markRead = false) => {
+  if (!auth.isAuthenticated.value) return
+  isLoadingSupport.value = true
+  try {
+    supportThread.value = await api.get<any>(`/support/my-thread?mark_read=${markRead ? 'true' : 'false'}`)
+  } catch {
+    // cichy fallback
+  } finally {
+    isLoadingSupport.value = false
+  }
+}
+
+const sendSupportReply = async () => {
+  const clean = supportReplyText.value.trim()
+  if (!clean || isSendingSupportMsg.value) return
+  isSendingSupportMsg.value = true
+  supportReplyError.value = ''
+  try {
+    supportThread.value = await api.post<any>('/support/messages', { message: clean })
+    supportReplyText.value = ''
+  } catch (e: any) {
+    supportReplyError.value = e?.message || 'Nie udało się wysłać wiadomości.'
+  } finally {
+    isSendingSupportMsg.value = false
+  }
+}
 
 const openHistoryNotification = async (n: any) => {
   if (!n.is_read) {
@@ -416,6 +466,17 @@ const formatDate = (isoString?: string) => {
         >
           <span>🔔 Powiadomienia</span>
           <span v-if="notifUnreadCount > 0" class="profile-tab-badge">{{ notifUnreadCount }}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeProfileTab === 'messages'"
+          class="profile-tab-btn"
+          :class="{ active: activeProfileTab === 'messages' }"
+          @click="setProfileTab('messages')"
+        >
+          <span>💬 Admin</span>
+          <span v-if="supportUnreadUser > 0" class="profile-tab-badge">{{ supportUnreadUser }}</span>
         </button>
       </div>
 
@@ -920,6 +981,57 @@ const formatDate = (isoString?: string) => {
           </div>
         </div>
       </div>
+
+      <!-- ZAKŁADKA 5: WIADOMOŚCI DO ADMINISTRATORA -->
+      <div v-if="activeProfileTab === 'messages'" class="card support-chat-card">
+        <div class="card-header esm-header-row">
+          <div>
+            <h3>💬 Komunikator z Administratorem</h3>
+            <p class="subtitle">Zadaj pytanie o pakiet PRO, integrację ESM lub zgłoś problem — odpowiedź pojawi się tutaj i w dzwoneczku.</p>
+          </div>
+          <button type="button" class="btn-secondary" :disabled="isLoadingSupport" @click="loadSupportThread(true)">
+            🔄 Odśwież
+          </button>
+        </div>
+
+        <div class="card-body">
+          <div v-if="isLoadingSupport && supportMessages.length === 0" class="field-hint">
+            Ładowanie rozmowy...
+          </div>
+          <div v-else-if="supportMessages.length === 0" class="field-hint">
+            Nie wysłałeś jeszcze żadnej wiadomości. Napisz poniżej, aby rozpocząć rozmowę z administratorem.
+          </div>
+          <div v-else class="support-messages-list">
+            <div
+              v-for="m in supportMessages"
+              :key="m.id"
+              class="support-bubble"
+              :class="m.sender_role === 'ADMIN' ? 'bubble-admin' : 'bubble-user'"
+            >
+              <div class="sb-meta">
+                <strong>{{ m.sender_role === 'ADMIN' ? '🛡️ Administrator' : 'Ty' }}</strong>
+                <span>{{ m.created_at ? new Date(m.created_at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' }) : '' }}</span>
+              </div>
+              <div v-if="m.context" class="sb-ctx">{{ m.context }}</div>
+              <p class="sb-text">{{ m.text }}</p>
+            </div>
+          </div>
+
+          <form @submit.prevent="sendSupportReply" class="support-reply-form">
+            <textarea
+              v-model="supportReplyText"
+              rows="3"
+              maxlength="1500"
+              class="form-input"
+              placeholder="Napisz wiadomość do administratora..."
+            ></textarea>
+            <div v-if="supportReplyError" class="alert-box error">{{ supportReplyError }}</div>
+            <button type="submit" class="btn-primary" :disabled="isSendingSupportMsg || !supportReplyText.trim()">
+              {{ isSendingSupportMsg ? 'Wysyłanie...' : '📩 Wyślij wiadomość' }}
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -942,7 +1054,7 @@ const formatDate = (isoString?: string) => {
 /* ZAKŁADKI PROFILU */
 .profile-tabs-bar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -2165,5 +2277,69 @@ const formatDate = (isoString?: string) => {
     justify-content: center;
     min-height: 40px;
   }
+}
+
+.support-messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.support-bubble {
+  max-width: 85%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.bubble-user {
+  align-self: flex-end;
+  background: #f0f9ff;
+  border-color: #bae6fd;
+}
+
+.bubble-admin {
+  align-self: flex-start;
+  background: #ffffff;
+  border-color: #cbd5e1;
+}
+
+.sb-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.74rem;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.sb-ctx {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #0369a1;
+  margin-bottom: 4px;
+}
+
+.sb-text {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #0f172a;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+.support-reply-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
 }
 </style>

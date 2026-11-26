@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fantaski-pwa-v1'
+const CACHE_NAME = 'fantaski-pwa-v2'
 const PRECACHE_ASSETS = [
   '/manifest.webmanifest',
   '/logo.png',

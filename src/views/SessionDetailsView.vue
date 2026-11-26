@@ -733,9 +733,9 @@ onMounted(() => {
                 type="button"
                 class="s-switch-btn"
                 :class="{ active: mobileViewMode === 'cards' }"
-                @click="mobileViewMode = 'cards'; isTableFullScreen = false"
+                @click="mobileViewMode = 'cards'"
               >
-                🪪 Lista
+                🪪 Karty
               </button>
               <button
                 type="button"
@@ -743,37 +743,25 @@ onMounted(() => {
                 :class="{ active: mobileViewMode === 'table' }"
                 @click="mobileViewMode = 'table'"
               >
-                📋 Pełna tabela
+                📋 Tabela
               </button>
             </div>
-            <button
-              v-if="mobileViewMode === 'table'"
-              type="button"
-              class="s-fs-btn mobile-only"
-              @click="isTableFullScreen = !isTableFullScreen"
-            >
-              {{ isTableFullScreen ? '✕ Zamknij pełny ekran' : '⛶ Pełny ekran (Poziom)' }}
-            </button>
           </div>
+        </div>
+
+        <div class="mobile-desktop-hint mobile-only">
+          💻 Pełną tabelę wyników wszystkich serii i szczegółów zobaczysz na większym ekranie (komputerze).
         </div>
 
         <p v-if="session.results_data?.is_cancelled" class="cancelled-alert">
           ⚠️ Uwaga: Ta sesja została oficjalnie odwołana lub przerwana.
         </p>
 
-        <!-- KOMPAKTOWA LISTA MOBILNA WYNIKÓW SESJI (<= 768px) -->
+        <!-- CZYTELNE KARTY MOBILNE WYNIKÓW SESJI (<= 768px) -->
         <div
           v-if="mobileViewMode === 'cards' && session.results_data?.results?.length > 0"
           class="session-mobile-list mobile-only"
         >
-          <div class="sml-col-head">
-            <span class="sml-h-chk">📦</span>
-            <span class="sml-h-pos">Poz.</span>
-            <span class="sml-h-name">Zawodnik</span>
-            <span class="sml-h-jumps">Skoki</span>
-            <span class="sml-h-total">Nota</span>
-          </div>
-
           <div
             v-for="(athlete, aIdx) in session.results_data.results"
             :key="'m_' + (athlete.fis_code || `${athlete.name}_${aIdx}`)"
@@ -785,102 +773,87 @@ onMounted(() => {
               'podium-gold': athlete.rank === 1,
               'podium-silver': athlete.rank === 2,
               'podium-bronze': athlete.rank === 3,
-              'is-expanded': expandedSessionRow === String(athlete.fis_code || `${athlete.name}_${aIdx}`),
             }"
-            @click="toggleExpandedRow(String(athlete.fis_code || `${athlete.name}_${aIdx}`))"
+            @click="toggleAthlete(athlete.name)"
           >
-            <div class="sml-compact-row">
-              <div class="sml-chk" @click.stop>
+            <div class="smr-top">
+              <div class="smr-left">
                 <input
                   type="checkbox"
                   :checked="isAthleteSelected(athlete.name)"
                   @change="toggleAthlete(athlete.name)"
+                  @click.stop
                   :disabled="!isAthleteSelected(athlete.name) && selectedAthletes.length >= 8"
                   class="smart-checkbox"
                   :aria-label="'Wybierz ' + athlete.name"
                 />
+                <span v-if="athlete.rank === 1" class="rank-badge gold">🥇 1</span>
+                <span v-else-if="athlete.rank === 2" class="rank-badge silver">🥈 2</span>
+                <span v-else-if="athlete.rank === 3" class="rank-badge bronze">🥉 3</span>
+                <strong v-else class="rank-normal smr-rank">#{{ athlete.rank || '-' }}</strong>
+
+                <CountryFlag v-if="athlete.country" :code="athlete.country" size="sm" />
+                <div class="smr-name-wrap">
+                  <RouterLink
+                    v-if="athlete.fis_code"
+                    :to="`/athletes/${athlete.fis_code}`"
+                    class="athlete-link smr-name"
+                    @click.stop
+                  >
+                    {{ athlete.name }}
+                  </RouterLink>
+                  <span v-else class="athlete-name-plain smr-name">{{ athlete.name }}</span>
+                  <div class="smr-tags">
+                    <span v-if="athlete.bib" class="bib-tag">Bib {{ athlete.bib }}</span>
+                    <span v-if="athlete.status && athlete.status !== 'Classified'" class="status-dns">
+                      {{ athlete.status }}
+                    </span>
+                    <span v-if="isEsmStarter(athlete)" class="esm-badge esm-starter">⭐ ESM</span>
+                    <span v-else-if="isEsmBench(athlete)" class="esm-badge esm-bench">🪑 ESM (R)</span>
+                  </div>
+                </div>
               </div>
 
-              <div class="sml-rank">
-                <span v-if="athlete.rank === 1" class="rank-badge gold">🥇</span>
-                <span v-else-if="athlete.rank === 2" class="rank-badge silver">🥈</span>
-                <span v-else-if="athlete.rank === 3" class="rank-badge bronze">🥉</span>
-                <strong v-else class="rank-normal">{{ athlete.rank || '-' }}</strong>
-              </div>
-
-              <div class="sml-identity">
-                <CountryFlag v-if="athlete.country" :code="athlete.country" size="xs" />
-                <RouterLink
-                  v-if="athlete.fis_code"
-                  :to="`/athletes/${athlete.fis_code}`"
-                  class="athlete-link sml-name"
-                  @click.stop
+              <div class="smr-right">
+                <span v-if="getAthletePrice(athlete) != null" class="price-chip">
+                  {{ getAthletePrice(athlete)!.toFixed(1) }}
+                </span>
+                <span
+                  v-if="athlete.competition_points > 0"
+                  class="comp-pts-chip active"
                 >
-                  {{ athlete.name }}
-                </RouterLink>
-                <span v-else class="athlete-name-plain sml-name">{{ athlete.name }}</span>
-                <span v-if="isEsmStarter(athlete)" class="esm-dot" title="ESM podstawowy">⭐</span>
-                <span v-else-if="isEsmBench(athlete)" class="esm-dot" title="ESM rezerwowy">🪑</span>
-              </div>
-
-              <div class="sml-jumps font-mono">
-                <template v-if="athlete.jumps && athlete.jumps.length > 0">
-                  <span v-for="rNum in maxRoundsCount" :key="'mr_' + rNum" class="sml-j-chip">
-                    <template v-if="athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].distance">
-                      {{ athlete.jumps[rNum - 1].distance }}
-                    </template>
-                    <template v-else-if="athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].status">
-                      {{ athlete.jumps[rNum - 1].status }}
-                    </template>
-                    <template v-else>-</template>
-                  </span>
-                </template>
-                <span v-else class="dim-dash">—</span>
-              </div>
-
-              <div class="sml-total font-mono">
-                <strong>{{ athlete.total_points != null ? athlete.total_points : '-' }}</strong>
+                  +{{ athlete.competition_points }} PŚ
+                </span>
               </div>
             </div>
 
-            <!-- ROZWIJANE SZCZEGÓŁY PO DOTKNIĘCIU WIERSZA -->
-            <div
-              v-if="expandedSessionRow === String(athlete.fis_code || `${athlete.name}_${aIdx}`)"
-              class="sml-expanded-details"
-              @click.stop
-            >
-              <div class="sml-exp-meta">
-                <span v-if="athlete.bib" class="bib-tag">Bib {{ athlete.bib }}</span>
-                <span v-if="athlete.status && athlete.status !== 'Classified'" class="status-dns">
-                  {{ athlete.status }}
+            <div class="smr-jumps-row">
+              <div
+                v-for="rNum in maxRoundsCount"
+                :key="'mr_' + rNum"
+                class="smr-jump-box"
+              >
+                <span class="smr-j-label">
+                  {{ (session.session_type === 'TRAINING' || session.session_type === 'TRIAL') ? `Skok ${rNum}` : `Seria ${rNum}` }}
                 </span>
-                <span v-if="getAthletePrice(athlete) != null" class="price-chip">
-                  💰 {{ getAthletePrice(athlete)!.toFixed(1) }} mln
+                <template v-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].distance">
+                  <strong class="distance-main font-mono">{{ athlete.jumps[rNum - 1].distance }} m</strong>
+                  <small class="jump-sub">
+                    <template v-if="athlete.jumps[rNum - 1].points != null">{{ athlete.jumps[rNum - 1].points }} pkt</template>
+                    <template v-if="athlete.jumps[rNum - 1].rank != null"> ({{ athlete.jumps[rNum - 1].rank }}.)</template>
+                  </small>
+                </template>
+                <span v-else-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].status" class="status-dns">
+                  {{ athlete.jumps[rNum - 1].status }}
                 </span>
-                <span v-if="athlete.competition_points > 0" class="comp-pts-chip active">
-                  +{{ athlete.competition_points }} pkt PŚ
-                </span>
-                <span v-if="isEsmStarter(athlete)" class="esm-badge esm-starter">⭐ ESM</span>
-                <span v-else-if="isEsmBench(athlete)" class="esm-badge esm-bench">🪑 ESM (R)</span>
+                <span v-else class="dim-dash">-</span>
               </div>
 
-              <div class="smr-jumps-row">
-                <div v-for="rNum in maxRoundsCount" :key="'exp_' + rNum" class="smr-jump-box">
-                  <span class="smr-j-label">
-                    {{ (session.session_type === 'TRAINING' || session.session_type === 'TRIAL') ? `Skok ${rNum}` : `Seria ${rNum}` }}
-                  </span>
-                  <template v-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].distance">
-                    <strong class="distance-main font-mono">{{ athlete.jumps[rNum - 1].distance }} m</strong>
-                    <small class="jump-sub">
-                      <template v-if="athlete.jumps[rNum - 1].points != null">{{ athlete.jumps[rNum - 1].points }} pkt</template>
-                      <template v-if="athlete.jumps[rNum - 1].rank != null"> ({{ athlete.jumps[rNum - 1].rank }}.)</template>
-                    </small>
-                  </template>
-                  <span v-else-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].status" class="status-dns">
-                    {{ athlete.jumps[rNum - 1].status }}
-                  </span>
-                  <span v-else class="dim-dash">-</span>
-                </div>
+              <div class="smr-jump-box smr-total-box">
+                <span class="smr-j-label">Nota łączna</span>
+                <strong class="font-mono smr-total-val">
+                  {{ athlete.total_points != null ? athlete.total_points : '-' }}
+                </strong>
               </div>
             </div>
           </div>
@@ -888,18 +861,9 @@ onMounted(() => {
 
         <div
           class="table-responsive"
-          :class="{
-            'desktop-only': mobileViewMode === 'cards',
-            'session-table-fullscreen': isTableFullScreen,
-          }"
+          :class="{ 'desktop-only': mobileViewMode === 'cards' }"
           v-if="session.results_data?.results?.length > 0"
         >
-          <div v-if="isTableFullScreen" class="session-fs-bar">
-            <strong>📋 {{ session.event_place }} — Pełna tabela wyników</strong>
-            <button type="button" class="btn-session-fs-close" @click="isTableFullScreen = false">
-              ✕ Zamknij
-            </button>
-          </div>
           <table class="results-table">
             <thead>
               <tr>
@@ -2548,5 +2512,20 @@ onMounted(() => {
   background: #e2e8f0;
   color: #334155;
   white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .mobile-desktop-hint {
+    display: block;
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 8px 11px;
+    margin-bottom: 10px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    line-height: 1.35;
+  }
 }
 </style>
