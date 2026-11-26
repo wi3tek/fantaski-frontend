@@ -20,7 +20,9 @@ const isLoadingNotifs = ref<boolean>(false)
 const activeToast = ref<DraftNotification | null>(null)
 const lastDraftEvent = ref<{ event: string; league_id?: string; ts: number } | null>(null)
 
-let eventSource: EventSource | null = null
+let sseAbortController: AbortController | null = null
+let sseReconnectTimer: any = null
+let sseReconnectAttempt = 0
 let toastTimer: any = null
 
 export function useNotifications() {
@@ -63,56 +65,118 @@ export function useNotifications() {
   }
 
   const stopEventStream = () => {
-    if (eventSource) {
-      eventSource.close()
-      eventSource = null
+    if (sseReconnectTimer) {
+      clearTimeout(sseReconnectTimer)
+      sseReconnectTimer = null
+    }
+    if (sseAbortController) {
+      sseAbortController.abort()
+      sseAbortController = null
+    }
+    sseReconnectAttempt = 0
+  }
+
+  const handleSsePayload = (rawJson: string) => {
+    try {
+      const data = JSON.parse(rawJson)
+      if (!data || data.event === 'connected') return
+
+      if (data.event === 'notification') {
+        const item: DraftNotification = {
+          id: data.id,
+          type: data.type,
+          title: data.title,
+          message: data.message,
+          league_id: data.league_id,
+          link: data.link || '/draft',
+          is_read: false,
+          created_at: data.created_at,
+        }
+        if (!notifications.value.some((n) => n.id === item.id)) {
+          notifications.value = [item, ...notifications.value].slice(0, 100)
+          unreadCount.value += 1
+        }
+        showToast(item)
+        lastDraftEvent.value = { event: 'notification', league_id: data.league_id, ts: Date.now() }
+      } else if (data.event === 'league_update' || data.event === 'league_deleted') {
+        lastDraftEvent.value = { event: data.event, league_id: data.league_id, ts: Date.now() }
+        fetchNotifications()
+      }
+    } catch {
+      // ignore parse errors
     }
   }
 
-  const startEventStream = () => {
+  const scheduleReconnect = () => {
+    if (!auth.isAuthenticated.value || !auth.token.value) return
+    if (sseReconnectTimer) return
+    const delayMs = Math.min(30000, 3000 * Math.pow(2, sseReconnectAttempt))
+    sseReconnectAttempt = Math.min(sseReconnectAttempt + 1, 4)
+    sseReconnectTimer = setTimeout(() => {
+      sseReconnectTimer = null
+      startEventStream()
+    }, delayMs)
+  }
+
+  const startEventStream = async () => {
     if (typeof window === 'undefined' || !auth.token.value || !auth.isAuthenticated.value) {
       stopEventStream()
       return
     }
-    if (eventSource) return
+    if (sseAbortController) return
 
-    const url = `${API_BASE_URL}/draft/events/stream?token=${encodeURIComponent(auth.token.value)}`
-    eventSource = new EventSource(url)
+    const controller = new AbortController()
+    sseAbortController = controller
 
-    eventSource.onmessage = (ev) => {
-      try {
-        const data = JSON.parse(ev.data)
-        if (!data || data.event === 'connected') return
+    try {
+      const response = await fetch(`${API_BASE_URL}/draft/events/stream`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${auth.token.value}`,
+          Accept: 'text/event-stream',
+        },
+        signal: controller.signal,
+      })
 
-        if (data.event === 'notification') {
-          const item: DraftNotification = {
-            id: data.id,
-            type: data.type,
-            title: data.title,
-            message: data.message,
-            league_id: data.league_id,
-            link: data.link || '/draft',
-            is_read: false,
-            created_at: data.created_at,
-          }
-          if (!notifications.value.some((n) => n.id === item.id)) {
-            notifications.value = [item, ...notifications.value].slice(0, 100)
-            unreadCount.value += 1
-          }
-          showToast(item)
-          lastDraftEvent.value = { event: 'notification', league_id: data.league_id, ts: Date.now() }
-        } else if (data.event === 'league_update' || data.event === 'league_deleted') {
-          lastDraftEvent.value = { event: data.event, league_id: data.league_id, ts: Date.now() }
-          fetchNotifications()
-        }
-      } catch {
-        // ignore parse errors
-      }
-    }
-
-    eventSource.onerror = () => {
-      if (!auth.isAuthenticated.value) {
+      if (response.status === 401) {
         stopEventStream()
+        return
+      }
+      if (!response.ok || !response.body) {
+        sseAbortController = null
+        scheduleReconnect()
+        return
+      }
+
+      sseReconnectAttempt = 0
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let buffer = ''
+
+      while (!controller.signal.aborted) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const frames = buffer.split(/\r?\n\r?\n/)
+        buffer = frames.pop() || ''
+        for (const frame of frames) {
+          const dataLines = frame
+            .split(/\r?\n/)
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart())
+          if (dataLines.length > 0) {
+            handleSsePayload(dataLines.join('\n'))
+          }
+        }
+      }
+    } catch {
+      // Połączenie przerwane lub wyłączone przez AbortController
+    } finally {
+      if (sseAbortController === controller) {
+        sseAbortController = null
+        if (!controller.signal.aborted && auth.isAuthenticated.value && auth.token.value) {
+          scheduleReconnect()
+        }
       }
     }
   }

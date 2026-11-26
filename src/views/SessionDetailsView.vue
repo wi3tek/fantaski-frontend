@@ -420,6 +420,12 @@ const maxRoundsCount = computed(() => {
 })
 
 const mobileViewMode = ref<'cards' | 'table'>('cards')
+const expandedSessionRow = ref<string | null>(null)
+const isTableFullScreen = ref(false)
+
+const toggleExpandedRow = (key: string) => {
+  expandedSessionRow.value = expandedSessionRow.value === key ? null : key
+}
 
 onMounted(() => {
   loadPackagesFromStorage()
@@ -727,9 +733,9 @@ onMounted(() => {
                 type="button"
                 class="s-switch-btn"
                 :class="{ active: mobileViewMode === 'cards' }"
-                @click="mobileViewMode = 'cards'"
+                @click="mobileViewMode = 'cards'; isTableFullScreen = false"
               >
-                🪪 Karty
+                🪪 Lista
               </button>
               <button
                 type="button"
@@ -737,9 +743,17 @@ onMounted(() => {
                 :class="{ active: mobileViewMode === 'table' }"
                 @click="mobileViewMode = 'table'"
               >
-                📋 Tabela
+                📋 Pełna tabela
               </button>
             </div>
+            <button
+              v-if="mobileViewMode === 'table'"
+              type="button"
+              class="s-fs-btn mobile-only"
+              @click="isTableFullScreen = !isTableFullScreen"
+            >
+              {{ isTableFullScreen ? '✕ Zamknij pełny ekran' : '⛶ Pełny ekran (Poziom)' }}
+            </button>
           </div>
         </div>
 
@@ -747,11 +761,19 @@ onMounted(() => {
           ⚠️ Uwaga: Ta sesja została oficjalnie odwołana lub przerwana.
         </p>
 
-        <!-- KARTY MOBILNE WYNIKÓW SESJI (<= 768px) -->
+        <!-- KOMPAKTOWA LISTA MOBILNA WYNIKÓW SESJI (<= 768px) -->
         <div
           v-if="mobileViewMode === 'cards' && session.results_data?.results?.length > 0"
           class="session-mobile-list mobile-only"
         >
+          <div class="sml-col-head">
+            <span class="sml-h-chk">📦</span>
+            <span class="sml-h-pos">Poz.</span>
+            <span class="sml-h-name">Zawodnik</span>
+            <span class="sml-h-jumps">Skoki</span>
+            <span class="sml-h-total">Nota</span>
+          </div>
+
           <div
             v-for="(athlete, aIdx) in session.results_data.results"
             :key="'m_' + (athlete.fis_code || `${athlete.name}_${aIdx}`)"
@@ -763,87 +785,102 @@ onMounted(() => {
               'podium-gold': athlete.rank === 1,
               'podium-silver': athlete.rank === 2,
               'podium-bronze': athlete.rank === 3,
+              'is-expanded': expandedSessionRow === String(athlete.fis_code || `${athlete.name}_${aIdx}`),
             }"
-            @click="toggleAthlete(athlete.name)"
+            @click="toggleExpandedRow(String(athlete.fis_code || `${athlete.name}_${aIdx}`))"
           >
-            <div class="smr-top">
-              <div class="smr-left">
+            <div class="sml-compact-row">
+              <div class="sml-chk" @click.stop>
                 <input
                   type="checkbox"
                   :checked="isAthleteSelected(athlete.name)"
                   @change="toggleAthlete(athlete.name)"
-                  @click.stop
                   :disabled="!isAthleteSelected(athlete.name) && selectedAthletes.length >= 8"
                   class="smart-checkbox"
                   :aria-label="'Wybierz ' + athlete.name"
                 />
-                <span v-if="athlete.rank === 1" class="rank-badge gold">🥇 1</span>
-                <span v-else-if="athlete.rank === 2" class="rank-badge silver">🥈 2</span>
-                <span v-else-if="athlete.rank === 3" class="rank-badge bronze">🥉 3</span>
-                <strong v-else class="rank-normal smr-rank">#{{ athlete.rank || '-' }}</strong>
-
-                <CountryFlag v-if="athlete.country" :code="athlete.country" size="sm" />
-                <div class="smr-name-wrap">
-                  <RouterLink
-                    v-if="athlete.fis_code"
-                    :to="`/athletes/${athlete.fis_code}`"
-                    class="athlete-link smr-name"
-                    @click.stop
-                  >
-                    {{ athlete.name }}
-                  </RouterLink>
-                  <span v-else class="athlete-name-plain smr-name">{{ athlete.name }}</span>
-                  <div class="smr-tags">
-                    <span v-if="athlete.bib" class="bib-tag">Bib {{ athlete.bib }}</span>
-                    <span v-if="athlete.status && athlete.status !== 'Classified'" class="status-dns">
-                      {{ athlete.status }}
-                    </span>
-                    <span v-if="isEsmStarter(athlete)" class="esm-badge esm-starter">⭐ ESM</span>
-                    <span v-else-if="isEsmBench(athlete)" class="esm-badge esm-bench">🪑 ESM (R)</span>
-                  </div>
-                </div>
               </div>
 
-              <div class="smr-right">
-                <span v-if="getAthletePrice(athlete) != null" class="price-chip">
-                  {{ getAthletePrice(athlete)!.toFixed(1) }}
-                </span>
-                <span
-                  v-if="athlete.competition_points > 0"
-                  class="comp-pts-chip active"
+              <div class="sml-rank">
+                <span v-if="athlete.rank === 1" class="rank-badge gold">🥇</span>
+                <span v-else-if="athlete.rank === 2" class="rank-badge silver">🥈</span>
+                <span v-else-if="athlete.rank === 3" class="rank-badge bronze">🥉</span>
+                <strong v-else class="rank-normal">{{ athlete.rank || '-' }}</strong>
+              </div>
+
+              <div class="sml-identity">
+                <CountryFlag v-if="athlete.country" :code="athlete.country" size="xs" />
+                <RouterLink
+                  v-if="athlete.fis_code"
+                  :to="`/athletes/${athlete.fis_code}`"
+                  class="athlete-link sml-name"
+                  @click.stop
                 >
-                  +{{ athlete.competition_points }} PŚ
-                </span>
+                  {{ athlete.name }}
+                </RouterLink>
+                <span v-else class="athlete-name-plain sml-name">{{ athlete.name }}</span>
+                <span v-if="isEsmStarter(athlete)" class="esm-dot" title="ESM podstawowy">⭐</span>
+                <span v-else-if="isEsmBench(athlete)" class="esm-dot" title="ESM rezerwowy">🪑</span>
+              </div>
+
+              <div class="sml-jumps font-mono">
+                <template v-if="athlete.jumps && athlete.jumps.length > 0">
+                  <span v-for="rNum in maxRoundsCount" :key="'mr_' + rNum" class="sml-j-chip">
+                    <template v-if="athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].distance">
+                      {{ athlete.jumps[rNum - 1].distance }}
+                    </template>
+                    <template v-else-if="athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].status">
+                      {{ athlete.jumps[rNum - 1].status }}
+                    </template>
+                    <template v-else>-</template>
+                  </span>
+                </template>
+                <span v-else class="dim-dash">—</span>
+              </div>
+
+              <div class="sml-total font-mono">
+                <strong>{{ athlete.total_points != null ? athlete.total_points : '-' }}</strong>
               </div>
             </div>
 
-            <div class="smr-jumps-row">
-              <div
-                v-for="rNum in maxRoundsCount"
-                :key="'mr_' + rNum"
-                class="smr-jump-box"
-              >
-                <span class="smr-j-label">
-                  {{ (session.session_type === 'TRAINING' || session.session_type === 'TRIAL') ? `Skok ${rNum}` : `Seria ${rNum}` }}
+            <!-- ROZWIJANE SZCZEGÓŁY PO DOTKNIĘCIU WIERSZA -->
+            <div
+              v-if="expandedSessionRow === String(athlete.fis_code || `${athlete.name}_${aIdx}`)"
+              class="sml-expanded-details"
+              @click.stop
+            >
+              <div class="sml-exp-meta">
+                <span v-if="athlete.bib" class="bib-tag">Bib {{ athlete.bib }}</span>
+                <span v-if="athlete.status && athlete.status !== 'Classified'" class="status-dns">
+                  {{ athlete.status }}
                 </span>
-                <template v-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].distance">
-                  <strong class="distance-main font-mono">{{ athlete.jumps[rNum - 1].distance }} m</strong>
-                  <small class="jump-sub">
-                    <template v-if="athlete.jumps[rNum - 1].points != null">{{ athlete.jumps[rNum - 1].points }} pkt</template>
-                    <template v-if="athlete.jumps[rNum - 1].rank != null"> ({{ athlete.jumps[rNum - 1].rank }}.)</template>
-                  </small>
-                </template>
-                <span v-else-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].status" class="status-dns">
-                  {{ athlete.jumps[rNum - 1].status }}
+                <span v-if="getAthletePrice(athlete) != null" class="price-chip">
+                  💰 {{ getAthletePrice(athlete)!.toFixed(1) }} mln
                 </span>
-                <span v-else class="dim-dash">-</span>
+                <span v-if="athlete.competition_points > 0" class="comp-pts-chip active">
+                  +{{ athlete.competition_points }} pkt PŚ
+                </span>
+                <span v-if="isEsmStarter(athlete)" class="esm-badge esm-starter">⭐ ESM</span>
+                <span v-else-if="isEsmBench(athlete)" class="esm-badge esm-bench">🪑 ESM (R)</span>
               </div>
 
-              <div class="smr-jump-box smr-total-box">
-                <span class="smr-j-label">Nota</span>
-                <strong class="font-mono smr-total-val">
-                  {{ athlete.total_points != null ? athlete.total_points : '-' }}
-                </strong>
+              <div class="smr-jumps-row">
+                <div v-for="rNum in maxRoundsCount" :key="'exp_' + rNum" class="smr-jump-box">
+                  <span class="smr-j-label">
+                    {{ (session.session_type === 'TRAINING' || session.session_type === 'TRIAL') ? `Skok ${rNum}` : `Seria ${rNum}` }}
+                  </span>
+                  <template v-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].distance">
+                    <strong class="distance-main font-mono">{{ athlete.jumps[rNum - 1].distance }} m</strong>
+                    <small class="jump-sub">
+                      <template v-if="athlete.jumps[rNum - 1].points != null">{{ athlete.jumps[rNum - 1].points }} pkt</template>
+                      <template v-if="athlete.jumps[rNum - 1].rank != null"> ({{ athlete.jumps[rNum - 1].rank }}.)</template>
+                    </small>
+                  </template>
+                  <span v-else-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].status" class="status-dns">
+                    {{ athlete.jumps[rNum - 1].status }}
+                  </span>
+                  <span v-else class="dim-dash">-</span>
+                </div>
               </div>
             </div>
           </div>
@@ -851,9 +888,18 @@ onMounted(() => {
 
         <div
           class="table-responsive"
-          :class="{ 'desktop-only': mobileViewMode === 'cards' }"
+          :class="{
+            'desktop-only': mobileViewMode === 'cards',
+            'session-table-fullscreen': isTableFullScreen,
+          }"
           v-if="session.results_data?.results?.length > 0"
         >
+          <div v-if="isTableFullScreen" class="session-fs-bar">
+            <strong>📋 {{ session.event_place }} — Pełna tabela wyników</strong>
+            <button type="button" class="btn-session-fs-close" @click="isTableFullScreen = false">
+              ✕ Zamknij
+            </button>
+          </div>
           <table class="results-table">
             <thead>
               <tr>
@@ -2358,6 +2404,140 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.s-fs-btn {
+  width: 100%;
+  border: 1px solid #bae6fd;
+  background: #f0f9ff;
+  color: #0369a1;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.sml-col-head {
+  display: grid;
+  grid-template-columns: 24px 32px minmax(0, 1fr) 76px 50px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #64748b;
+}
+
+.sml-h-jumps,
+.sml-h-total {
+  text-align: right;
+}
+
+.sml-compact-row {
+  display: grid;
+  grid-template-columns: 24px 32px minmax(0, 1fr) 76px 50px;
+  align-items: center;
+  gap: 6px;
+}
+
+.sml-chk {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sml-rank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+}
+
+.sml-identity {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.sml-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.esm-dot {
+  font-size: 0.72rem;
+  flex-shrink: 0;
+}
+
+.sml-jumps {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.72rem;
+  color: #334155;
+  line-height: 1.25;
+}
+
+.sml-total {
+  text-align: right;
+  font-size: 0.8rem;
+  color: #0f172a;
+}
+
+.sml-expanded-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 7px;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.sml-exp-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.session-table-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 10500;
+  background: #ffffff;
+  overflow: auto;
+}
+
+.session-fs-bar {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 0.8rem;
+}
+
+.btn-session-fs-close {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .squad-origin-tag {

@@ -21,7 +21,7 @@ const isLoading = ref(true)
 const searchSearchQuery = ref('') // Filtr tekstowy do szybkiego szukania w tabeli
 
 // --- Stan Filtrów (Wysłany do MongoDB) ---
-const selectedSeason = ref(new Date().getFullYear().toString())
+const selectedSeason = ref((new Date().getFullYear() + 1).toString())
 const selectedCategory = ref('WC')
 
 // Słownik kategorii (spójny z main.py)

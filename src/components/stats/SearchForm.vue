@@ -12,6 +12,8 @@ const props = defineProps<{
   priceMode: boolean
   priceMin: number
   priceMax: number
+  collapsed?: boolean
+  hasResults?: boolean
   availableNames: string[]
   athletesWithPrices: any[]
   dictionaries: any
@@ -24,8 +26,24 @@ const emit = defineEmits([
   'update:priceMode',
   'update:priceMin',
   'update:priceMax',
+  'update:collapsed',
   'execute-search',
 ])
+
+const isCollapsed = computed({
+  get: () => Boolean(props.collapsed),
+  set: (v: boolean) => emit('update:collapsed', v),
+})
+
+const selectedNamesPreview = computed(() => {
+  if (localPriceMode.value && localNames.value.length === 0) {
+    return `Przedział cenowy ${Number(localPriceMin.value).toFixed(1)}–${Number(localPriceMax.value).toFixed(1)}`
+  }
+  if (localNames.value.length === 0) return 'Brak wybranych skoczków'
+  const firstTwo = localNames.value.slice(0, 2).join(', ')
+  const extra = localNames.value.length - 2
+  return extra > 0 ? `${firstTwo} (+${extra})` : firstTwo
+})
 
 const localForm = computed({
   get: () => props.searchForm,
@@ -346,7 +364,22 @@ const submitSearch = () => {
 </script>
 
 <template>
-  <div class="card search-card">
+  <!-- ZWINIĘTY PASEK PODSUMOWANIA FILTRÓW NA MOBILCE -->
+  <div v-if="isCollapsed" class="card search-collapsed-bar">
+    <div class="scb-info">
+      <span class="scb-title">🔍 {{ selectedNamesPreview }}</span>
+      <span v-if="activeFiltersList.length > 0" class="scb-meta">
+        · {{ activeFiltersList.length }} aktywnych filtrów
+      </span>
+    </div>
+    <div class="scb-actions">
+      <button type="button" class="btn-scb-edit" @click="isCollapsed = false">
+        ⚙️ Edytuj filtry
+      </button>
+    </div>
+  </div>
+
+  <div v-show="!isCollapsed" class="card search-card">
     <div class="card-header header-flex-row">
       <div>
         <h3>🔍 Kryteria Wyszukiwania i Porównywarki</h3>
@@ -354,9 +387,19 @@ const submitSearch = () => {
           Wybierz skoczków (lub zapisany skład) i pobierz wyniki historyczne.
         </p>
       </div>
-      <button type="button" class="preset-chip reset-chip" @click="clearFilters">
-        🔄 Wyczyść wszystko
-      </button>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <button
+          v-if="hasResults"
+          type="button"
+          class="preset-chip mobile-only-inline"
+          @click="isCollapsed = true"
+        >
+          ▲ Zwiń filtry
+        </button>
+        <button type="button" class="preset-chip reset-chip" @click="clearFilters">
+          🔄 Wyczyść wszystko
+        </button>
+      </div>
     </div>
 
     <form @submit.prevent="submitSearch" class="search-form">
@@ -1223,5 +1266,61 @@ const submitSearch = () => {
 .btn-del-set:hover {
   background: #fee2e2;
   color: #b91c1c;
+}
+
+.search-collapsed-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: #ffffff;
+  border: 1px solid #bae6fd;
+  border-left: 4px solid #0284c7;
+}
+
+.scb-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.scb-title {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scb-meta {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.btn-scb-edit {
+  border: 1px solid #bae6fd;
+  background: #f0f9ff;
+  color: #0369a1;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 7px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mobile-only-inline {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-only-inline {
+    display: inline-flex;
+  }
 }
 </style>

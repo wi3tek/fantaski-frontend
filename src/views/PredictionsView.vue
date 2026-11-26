@@ -175,6 +175,81 @@ const weather = ref<WeatherState>({
 const isFetchingWeather = ref(false)
 const weatherMessage = ref<string | null>(null)
 const weatherCorridor = ref<WeatherCorridor | null>(null)
+const isWeatherCollapsed = ref(typeof window !== 'undefined' ? window.innerWidth <= 768 : false)
+const showModelTechDetails = ref(false)
+
+// --- Wybór zawodów z kalendarza FIS ---
+const showCalendarModal = ref(false)
+const calendarSeason = ref('2027')
+const calendarCategory = ref('WC')
+const calendarEvents = ref<any[]>([])
+const isLoadingCalendar = ref(false)
+const calendarError = ref<string | null>(null)
+
+const fetchCalendarForModal = async () => {
+  isLoadingCalendar.value = true
+  calendarError.value = null
+  try {
+    const data = await api.get<any>(
+      `/stats/calendar?season=${encodeURIComponent(calendarSeason.value)}&category=${encodeURIComponent(calendarCategory.value)}`
+    )
+    calendarEvents.value = data.events || []
+  } catch (e: any) {
+    calendarError.value = e?.message || 'Nie udało się pobrać kalendarza FIS.'
+  } finally {
+    isLoadingCalendar.value = false
+  }
+}
+
+const openCalendarModal = () => {
+  showCalendarModal.value = true
+  if (calendarEvents.value.length === 0) {
+    fetchCalendarForModal()
+  }
+}
+
+const applyCalendarEvent = async (ev: any) => {
+  const place = String(ev?.place || '').trim()
+  const sessions = Array.isArray(ev?.sessions) ? ev.sessions.filter((s: any) => !s?.is_cancelled) : []
+  const targetSess =
+    sessions.find((s: any) => s.session_type === 'COMPETITION') ||
+    sessions.find((s: any) => s.session_type === 'QUA') ||
+    sessions[0] ||
+    null
+
+  const targetHillSize = targetSess?.hillSize ? Number(targetSess.hillSize) : null
+  const placeLow = place.toLowerCase()
+  const candidates = hills.value.filter((h) => String(h.place || '').trim().toLowerCase() === placeLow)
+  const matchedHill =
+    (targetHillSize ? candidates.find((h) => Number(h.size) === targetHillSize) : null) ||
+    candidates[0] ||
+    null
+
+  if (matchedHill) {
+    selectedHillId.value = matchedHill.hill_id
+    isCustomHill.value = false
+  } else if (place) {
+    isCustomHill.value = true
+    customPlace.value = place
+    customHillSize.value = targetHillSize || 140
+    customHillType.value = (targetSess?.hillType || (targetHillSize && targetHillSize >= 185 ? 'FLYING' : 'LARGE')) as string
+  }
+
+  if (ev?.category_code) {
+    selectedCompetitionType.value = ev.category_code
+  }
+  if (targetSess?.date) {
+    selectedDate.value = String(targetSess.date).slice(0, 10)
+  } else if (ev?.end_date) {
+    selectedDate.value = String(ev.end_date).slice(0, 10)
+  }
+  if (targetSess?.time) {
+    selectedTime.value = String(targetSess.time).slice(0, 5)
+  }
+
+  showCalendarModal.value = false
+  await fetchWeatherForecast()
+}
 
 // --- Stan Listy Startowej (Zarządzanie skoczkami z wyceną) ---
 const availableAthletes = ref<AvailableAthlete[]>([])
@@ -183,6 +258,13 @@ const showStartListManager = ref(false)
 const athleteSearchQuery = ref('')
 const showAutocomplete = ref(false)
 const showLegendModal = ref(false)
+const expandedPredRow = ref<string | null>(null)
+const isTableFullScreen = ref(false)
+
+const toggleExpandedPredRow = (code: string | number) => {
+  const key = String(code)
+  expandedPredRow.value = expandedPredRow.value === key ? null : key
+}
 
 // --- Stan Predykcji i Modelu ---
 const isPredicting = ref(false)
@@ -581,31 +663,41 @@ onMounted(async () => {
       <div class="hero-content">
         <div class="hero-badge">
           <span class="badge-icon">🔮</span>
-          <span>NEURAL NETWORK FIS ANALYTICS</span>
+          <span>PROGNOZY AI NA KONKURS</span>
         </div>
         <h1 class="hero-title">Prognozy</h1>
         <p class="hero-desc">
-          Model sieci neuronowej z hierarchią sesji (konkurs > kwalifikacje > trening), normalizacją jakości obsady, wskaźnikiem powtarzalności skoków, profilami psychologii presji, doświadczeniem kariery i wektorową kompensacją wiatru FIS (K-wind).
+          Sztuczna inteligencja ocenia aktualną formę skoczków, wyniki na wybranej skoczni, pogodę i powtarzalność skoków, aby oszacować szanse w nadchodzącym konkursie.
         </p>
 
-        <div class="model-meta-bar" v-if="modelMeta">
+        <div class="hero-meta-toggle-row" v-if="modelMeta">
+          <button
+            type="button"
+            class="hero-details-btn"
+            @click="showModelTechDetails = !showModelTechDetails"
+          >
+            {{ showModelTechDetails ? '▲ Ukryj szczegóły modelu AI' : 'ℹ️ Jak działają prognozy AI?' }}
+          </button>
+        </div>
+
+        <div class="model-meta-bar" v-if="modelMeta && showModelTechDetails">
           <div class="meta-item">
-            <span class="meta-label">Próbek treningowych:</span>
+            <span class="meta-label">Historia nauki AI:</span>
             <strong class="meta-val">{{ modelMeta.sample_count?.toLocaleString() || '69 500+' }} skoków</strong>
           </div>
           <div class="meta-divider">|</div>
           <div class="meta-item">
-            <span class="meta-label">Błąd odległości MAE:</span>
-            <strong class="meta-val">~{{ modelMeta.mae_distance_meters_approx }} m</strong>
+            <span class="meta-label">Średnia dokładność dystansu:</span>
+            <strong class="meta-val">±{{ modelMeta.mae_distance_meters_approx }} m</strong>
           </div>
           <div class="meta-divider">|</div>
           <div class="meta-item">
-            <span class="meta-label">Cechy wejściowe sieci:</span>
-            <strong class="meta-val">25 parametrów sportowo-fizycznych</strong>
+            <span class="meta-label">Analizowane czynniki:</span>
+            <strong class="meta-val">forma, skocznia, wiatr, presja zawodów</strong>
           </div>
           <div class="meta-divider">|</div>
           <div class="meta-item">
-            <span class="meta-label">Ostatni trening:</span>
+            <span class="meta-label">Aktualizacja:</span>
             <strong class="meta-val">{{ formattedTrainedDate }}</strong>
           </div>
         </div>
@@ -650,11 +742,16 @@ onMounted(async () => {
       <section class="control-grid">
         <!-- KARTA 1: WYBÓR SKOCZNI I TERMINU -->
         <div class="card setup-card">
-          <div class="card-header">
+          <div class="card-header setup-header-wrap">
             <h3>🏔️ Skocznia i Termin</h3>
-            <button class="text-btn" @click="isCustomHill = !isCustomHill">
-              {{ isCustomHill ? 'Wybierz z bazy' : '+ Własna skocznia' }}
-            </button>
+            <div class="setup-header-actions">
+              <button type="button" class="btn-cal-picker" @click="openCalendarModal">
+                📅 Wybierz z kalendarza
+              </button>
+              <button type="button" class="text-btn" @click="isCustomHill = !isCustomHill">
+                {{ isCustomHill ? 'Wybierz z bazy' : '+ Własna skocznia' }}
+              </button>
+            </div>
           </div>
 
           <div class="card-body">
@@ -761,105 +858,184 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- KARTA 2: POGODA I SYMULATOR ("CO JEŚLI?") -->
-        <div class="card weather-card">
+        <!-- ROZWIJANY PANEL ZARZĄDZANIA LISTĄ STARTOWĄ (od razu pod Skocznią na mobile!) -->
+        <div v-if="showStartListManager" class="card start-list-manager-card">
           <div class="card-header">
-            <h3>🌤️ Warunki Pogodowe & Symulator</h3>
-            <button
-              class="refresh-weather-btn"
-              @click="fetchWeatherForecast"
-              :disabled="isFetchingWeather"
-              title="Pobierz świeże dane z Open-Meteo"
-            >
-              <span :class="{ spinning: isFetchingWeather }">🔄</span>
-              Pobierz z Open-Meteo
-            </button>
+            <h3>👥 Lista Startowa ({{ selectedFisCodes.length }} wybranych)</h3>
+            <div class="manager-presets">
+              <button class="small-preset-btn" :class="{ active: currentPreset === 'priced' }" @click="applyAthletePreset('priced')">Wszyscy wycenieni</button>
+              <button class="small-preset-btn highlight-gold" :class="{ active: currentPreset === 'scored' }" @click="applyAthletePreset('scored')">⚡ Punktowali w sezonie ({{ scoredCount }})</button>
+              <button class="small-preset-btn" :class="{ active: currentPreset === 'top30' }" @click="applyAthletePreset('top30')">TOP 30 Wycenionych</button>
+              <button class="small-preset-btn" :class="{ active: currentPreset === 'pol' }" @click="applyAthletePreset('pol')">Tylko Polacy 🇵🇱</button>
+              <button class="small-preset-btn danger" @click="applyAthletePreset('clear')">Wyczyść listę</button>
+            </div>
           </div>
 
           <div class="card-body">
-            <!-- Pasek źródła -->
-            <div class="weather-source-bar">
-              <span class="source-tag">{{ weather.source || 'Open-Meteo API' }}</span>
-              <span v-if="weatherMessage" class="source-msg">{{ weatherMessage }}</span>
-            </div>
-
-            <!-- Szybkie presety -->
-            <div class="weather-presets">
-              <span class="presets-label">Szybkie scenariusze:</span>
-              <button class="preset-btn" @click="applyWeatherPreset('headwind')">🌪️ Pod narty (+2.2m/s)</button>
-              <button class="preset-btn" @click="applyWeatherPreset('tailwind')">💨 W plecy (-1.8m/s)</button>
-              <button class="preset-btn" @click="applyWeatherPreset('calm')">❄️ Cisza (-8°C)</button>
-              <button class="preset-btn" @click="applyWeatherPreset('thaw')">☀️ Odwilż (+4.5°C)</button>
-            </div>
-
-            <!-- Suwaki interaktywne -->
-            <div class="sliders-container">
-              <!-- Wiatr pod narty / w plecy (kluczowy parametr) -->
-              <div class="slider-box highlight">
-                <div class="slider-header">
-                  <span class="s-title">Kompensacja wiatru (w osi zeskoku):</span>
-                  <span
-                    class="s-value"
-                    :class="{
-                      positive: weather.headwind_component > 0,
-                      negative: weather.headwind_component < 0
-                    }"
-                  >
-                    {{ weather.headwind_component > 0 ? '+' : '' }}{{ weather.headwind_component.toFixed(1) }} m/s
-                    <small>({{ weather.headwind_component > 0 ? 'pod narty 🚀' : weather.headwind_component < 0 ? 'w plecy 🔻' : 'bezwietrznie' }})</small>
-                  </span>
-                </div>
+            <div class="add-athlete-wrapper">
+              <label>Dodaj skoczka z bazy do prognozy:</label>
+              <div class="search-box-relative">
                 <input
-                  type="range"
-                  v-model.number="weather.headwind_component"
-                  min="-2.5"
-                  max="3.0"
-                  step="0.1"
-                  class="range-slider headwind-slider"
+                  v-model="athleteSearchQuery"
+                  @focus="showAutocomplete = true"
+                  type="text"
+                  class="custom-input"
+                  placeholder="Wpisz nazwisko skoczka (np. Stoch, Kubacki, Prevc, Kraft)..."
                 />
-                <div class="slider-scale">
-                  <span>-2.5 (W plecy)</span>
-                  <span>0.0 (Cisza)</span>
-                  <span>+3.0 (Pod narty)</span>
-                </div>
-              </div>
-
-              <!-- Pozostałe parametry -->
-              <div class="sliders-row">
-                <div class="slider-box mini">
-                  <div class="slider-header">
-                    <span>Prędkość ogólna:</span>
-                    <strong>{{ weather.wind_speed.toFixed(1) }} m/s</strong>
+                <div v-if="showAutocomplete && filteredAvailableAthletes.length > 0" class="autocomplete-dropdown">
+                  <div
+                    v-for="ath in filteredAvailableAthletes"
+                    :key="ath.fis_code"
+                    class="autocomplete-item"
+                    @click="addAthlete(ath)"
+                  >
+                    <CountryFlag :code="ath.country_code" size="xs" />
+                    <span class="ath-name">{{ ath.full_name }}</span>
+                    <span class="ath-country">({{ ath.country_code }})</span>
+                    <span v-if="ath.price" class="ath-price-tag">💰 {{ Number(ath.price).toFixed(1) }}</span>
+                    <span v-if="ath.has_wc" class="ath-wc-tag">PŚ</span>
+                    <span class="ath-add-plus">+ Dodaj</span>
                   </div>
-                  <input type="range" v-model.number="weather.wind_speed" min="0" max="8" step="0.2" class="range-slider" />
-                </div>
-
-                <div class="slider-box mini">
-                  <div class="slider-header">
-                    <span>Temperatura:</span>
-                    <strong>{{ weather.temperature.toFixed(1) }} °C</strong>
-                  </div>
-                  <input type="range" v-model.number="weather.temperature" min="-20" max="15" step="0.5" class="range-slider" />
-                </div>
-
-                <div class="slider-box mini">
-                  <div class="slider-header">
-                    <span>Ciśnienie pow.:</span>
-                    <strong>{{ Math.round(weather.surface_pressure) }} hPa</strong>
-                  </div>
-                  <input type="range" v-model.number="weather.surface_pressure" min="900" max="1025" step="1" class="range-slider" />
                 </div>
               </div>
             </div>
 
-            <!-- Przycisk GENERUJ PREDYKCJE -->
+            <div class="selected-chips-grid">
+              <div
+                v-for="ath in selectedAthletesDetails"
+                :key="ath.fis_code"
+                class="athlete-chip"
+              >
+                <CountryFlag :code="ath.country_code" size="xs" />
+                <span class="chip-name">{{ ath.full_name }}</span>
+                <span v-if="ath.price" class="chip-price">💰 {{ Number(ath.price).toFixed(1) }}</span>
+                <button
+                  class="chip-remove"
+                  @click.stop="removeAthlete(ath.fis_code)"
+                  title="Usuń z listy startowej"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- KARTA 2: POGODA I SYMULATOR ("CO JEŚLI?") -->
+        <div class="card weather-card">
+          <div class="card-header weather-header-wrap">
+            <div class="weather-title-col">
+              <h3>🌤️ Warunki Pogodowe</h3>
+              <span class="weather-mini-summary">
+                {{ weather.headwind_component >= 0 ? '+' : '' }}{{ weather.headwind_component.toFixed(1) }} m/s · {{ weather.temperature.toFixed(1) }}°C · {{ Math.round(weather.surface_pressure) }} hPa
+              </span>
+            </div>
+            <div class="weather-header-btns">
+              <button
+                class="refresh-weather-btn"
+                @click="fetchWeatherForecast"
+                :disabled="isFetchingWeather"
+                title="Pobierz świeże dane z Open-Meteo"
+              >
+                <span :class="{ spinning: isFetchingWeather }">🔄</span>
+                <span class="rwb-txt">Open-Meteo</span>
+              </button>
+              <button
+                type="button"
+                class="weather-collapse-btn"
+                @click="isWeatherCollapsed = !isWeatherCollapsed"
+              >
+                {{ isWeatherCollapsed ? 'Rozwiń ▼' : 'Zwiń ▲' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <div v-show="!isWeatherCollapsed" class="weather-collapsible-content">
+              <!-- Pasek źródła -->
+              <div class="weather-source-bar">
+                <span class="source-tag">{{ weather.source || 'Open-Meteo API' }}</span>
+                <span v-if="weatherMessage" class="source-msg">{{ weatherMessage }}</span>
+              </div>
+
+              <!-- Szybkie presety -->
+              <div class="weather-presets">
+                <span class="presets-label">Szybkie scenariusze:</span>
+                <button class="preset-btn" @click="applyWeatherPreset('headwind')">🌪️ Pod narty (+2.2m/s)</button>
+                <button class="preset-btn" @click="applyWeatherPreset('tailwind')">💨 W plecy (-1.8m/s)</button>
+                <button class="preset-btn" @click="applyWeatherPreset('calm')">❄️ Cisza (-8°C)</button>
+                <button class="preset-btn" @click="applyWeatherPreset('thaw')">☀️ Odwilż (+4.5°C)</button>
+              </div>
+
+              <!-- Suwaki interaktywne -->
+              <div class="sliders-container">
+                <!-- Wiatr pod narty / w plecy (kluczowy parametr) -->
+                <div class="slider-box highlight">
+                  <div class="slider-header">
+                    <span class="s-title">Kompensacja wiatru (w osi zeskoku):</span>
+                    <span
+                      class="s-value"
+                      :class="{
+                        positive: weather.headwind_component > 0,
+                        negative: weather.headwind_component < 0
+                      }"
+                    >
+                      {{ weather.headwind_component > 0 ? '+' : '' }}{{ weather.headwind_component.toFixed(1) }} m/s
+                      <small>({{ weather.headwind_component > 0 ? 'pod narty 🚀' : weather.headwind_component < 0 ? 'w plecy 🔻' : 'bezwietrznie' }})</small>
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    v-model.number="weather.headwind_component"
+                    min="-2.5"
+                    max="3.0"
+                    step="0.1"
+                    class="range-slider headwind-slider"
+                  />
+                  <div class="slider-scale">
+                    <span>-2.5 (W plecy)</span>
+                    <span>0.0 (Cisza)</span>
+                    <span>+3.0 (Pod narty)</span>
+                  </div>
+                </div>
+
+                <!-- Pozostałe parametry -->
+                <div class="sliders-row">
+                  <div class="slider-box mini">
+                    <div class="slider-header">
+                      <span>Prędkość ogólna:</span>
+                      <strong>{{ weather.wind_speed.toFixed(1) }} m/s</strong>
+                    </div>
+                    <input type="range" v-model.number="weather.wind_speed" min="0" max="8" step="0.2" class="range-slider" />
+                  </div>
+
+                  <div class="slider-box mini">
+                    <div class="slider-header">
+                      <span>Temperatura:</span>
+                      <strong>{{ weather.temperature.toFixed(1) }} °C</strong>
+                    </div>
+                    <input type="range" v-model.number="weather.temperature" min="-20" max="15" step="0.5" class="range-slider" />
+                  </div>
+
+                  <div class="slider-box mini">
+                    <div class="slider-header">
+                      <span>Ciśnienie pow.:</span>
+                      <strong>{{ Math.round(weather.surface_pressure) }} hPa</strong>
+                    </div>
+                    <input type="range" v-model.number="weather.surface_pressure" min="900" max="1025" step="1" class="range-slider" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Przycisk GENERUJ PREDYKCJE (zawsze widoczny nawet gdy pogoda zwinięta) -->
             <button
               class="run-prediction-btn"
               @click="runPrediction"
               :disabled="isPredicting"
             >
-              <span v-if="!isPredicting">🚀 GENERUJ PROGNOZY ({{ selectedFisCodes.length }} SKOCZKÓW)</span>
-              <span v-else>Przetwarzanie przez sieć neuronową...</span>
+              <span v-if="!isPredicting">🚀 Generuj prognozy ({{ selectedFisCodes.length }} skoczków)</span>
+              <span v-else>Obliczanie prognozy...</span>
             </button>
           </div>
         </div>
@@ -883,71 +1059,6 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- ROZWIJANY PANEL ZARZĄDZANIA LISTĄ STARTOWĄ -->
-      <section v-if="showStartListManager" class="card start-list-manager-card">
-        <div class="card-header">
-          <h3>👥 Zarządzanie Listą Startową (Dodawaj i usuwaj skoczków)</h3>
-          <div class="manager-presets">
-            <button class="small-preset-btn" :class="{ active: currentPreset === 'priced' }" @click="applyAthletePreset('priced')">Wszyscy wycenieni</button>
-            <button class="small-preset-btn highlight-gold" :class="{ active: currentPreset === 'scored' }" @click="applyAthletePreset('scored')">⚡ Punktowali w sezonie ({{ scoredCount }})</button>
-            <button class="small-preset-btn" :class="{ active: currentPreset === 'top30' }" @click="applyAthletePreset('top30')">TOP 30 Wycenionych</button>
-            <button class="small-preset-btn" :class="{ active: currentPreset === 'pol' }" @click="applyAthletePreset('pol')">Tylko Polacy 🇵🇱</button>
-            <button class="small-preset-btn danger" @click="applyAthletePreset('clear')">Wyczyść listę</button>
-          </div>
-        </div>
-
-        <div class="card-body">
-          <!-- Wyszukiwarka do dodawania skoczka -->
-          <div class="add-athlete-wrapper">
-            <label>Dodaj dowolnego aktywnego skoczka z bazy do listy:</label>
-            <div class="search-box-relative">
-              <input
-                v-model="athleteSearchQuery"
-                @focus="showAutocomplete = true"
-                type="text"
-                class="custom-input"
-                placeholder="Wpisz nazwisko skoczka (np. Stoch, Kubacki, Prevc, Kraft)..."
-              />
-              <div v-if="showAutocomplete && filteredAvailableAthletes.length > 0" class="autocomplete-dropdown">
-                <div
-                  v-for="ath in filteredAvailableAthletes"
-                  :key="ath.fis_code"
-                  class="autocomplete-item"
-                  @click="addAthlete(ath)"
-                >
-                  <CountryFlag :code="ath.country_code" size="xs" />
-                  <span class="ath-name">{{ ath.full_name }}</span>
-                  <span class="ath-country">({{ ath.country_code }})</span>
-                  <span v-if="ath.price" class="ath-price-tag">💰 {{ Number(ath.price).toFixed(1) }}</span>
-                  <span v-if="ath.has_wc" class="ath-wc-tag">PŚ</span>
-                  <span class="ath-add-plus">+ Dodaj</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Siatka aktualnie wybranych skoczków z cenami i przyciskami ✕ -->
-          <div class="selected-chips-grid">
-            <div
-              v-for="ath in selectedAthletesDetails"
-              :key="ath.fis_code"
-              class="athlete-chip"
-            >
-              <CountryFlag :code="ath.country_code" size="xs" />
-              <span class="chip-name">{{ ath.full_name }}</span>
-              <span v-if="ath.price" class="chip-price">💰 {{ Number(ath.price).toFixed(1) }}</span>
-              <button
-                class="chip-remove"
-                @click.stop="removeAthlete(ath.fis_code)"
-                title="Usuń z listy startowej"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <!-- KOMUNIKAT BŁĘDU -->
       <div v-if="errorMsg" class="error-banner">
         ⚠️ {{ errorMsg }}
@@ -956,7 +1067,7 @@ onMounted(async () => {
       <!-- LOADER PODCZAS GENEROWANIA -->
       <div v-if="isPredicting" class="loader-box">
         <SkiLoader>
-          Sieć neuronowa analizuje parametry skoczni, pogodę, powtarzalność i formę {{ selectedFisCodes.length }} skoczków...
+          Obliczanie prognozy dla {{ selectedFisCodes.length }} skoczków na podstawie formy, skoczni i pogody...
         </SkiLoader>
       </div>
 
@@ -1180,15 +1291,15 @@ onMounted(async () => {
               <div class="legend-grid">
                 <div class="legend-item">
                   <span class="badge-item badge-clutch">🔥 Zwierzę konkursowe</span>
-                  <p>Zyskuje statystycznie $\ge 2.5$ pozycji w konkursie w porównaniu do treningów i kwalifikacji. Doskonale radzi sobie z presją.</p>
+                  <p>Zyskuje statystycznie ≥ 2,5 pozycji w konkursie w porównaniu do treningów i kwalifikacji. Doskonale radzi sobie z presją.</p>
                 </div>
                 <div class="legend-item">
                   <span class="badge-item badge-choker">📉 Syndrom treningów</span>
-                  <p>W seriach próbnych osiąga wyższe lokaty niż w konkursie głównym (średni spadek o $\ge 3$ pozycje pod presją).</p>
+                  <p>W seriach próbnych osiąga wyższe lokaty niż w konkursie głównym (średni spadek o ≥ 3 pozycje pod presją).</p>
                 </div>
                 <div class="legend-item">
                   <span class="badge-item badge-metronome">🎯 Metronom</span>
-                  <p>Wysoka powtarzalność prób ($>80\%$). Minimalna wariancja odległości między seriami treningowymi i konkursowymi.</p>
+                  <p>Wysoka powtarzalność prób (&gt; 80%). Minimalna różnica odległości między seriami treningowymi i konkursowymi.</p>
                 </div>
                 <div class="legend-item">
                   <span class="badge-item badge-volatile">🎲 Chwiejny</span>
@@ -1234,9 +1345,9 @@ onMounted(async () => {
                 type="button"
                 class="mpc-switch-btn"
                 :class="{ active: mobileViewMode === 'cards' }"
-                @click="mobileViewMode = 'cards'"
+                @click="mobileViewMode = 'cards'; isTableFullScreen = false"
               >
-                🪪 Karty
+                🪪 Lista
               </button>
               <button
                 type="button"
@@ -1244,13 +1355,28 @@ onMounted(async () => {
                 :class="{ active: mobileViewMode === 'table' }"
                 @click="mobileViewMode = 'table'"
               >
-                📋 Tabela
+                📋 Pełna tabela
               </button>
             </div>
+            <button
+              v-if="mobileViewMode === 'table'"
+              type="button"
+              class="mpc-fs-btn"
+              @click="isTableFullScreen = !isTableFullScreen"
+            >
+              {{ isTableFullScreen ? '✕ Zamknij pełny ekran' : '⛶ Pełny ekran (Poziom)' }}
+            </button>
           </div>
 
-          <!-- WIDOK KART MOBILNYCH (<= 768px) -->
+          <!-- KOMPAKTOWA LISTA PROGNOZ NA MOBILCE (<= 768px) -->
           <div v-if="mobileViewMode === 'cards'" class="pred-mobile-list mobile-only">
+            <div class="pml-col-head">
+              <span>Poz.</span>
+              <span>Zawodnik</span>
+              <span class="pml-h-right">Top30 / Pod.</span>
+              <span class="pml-h-right">Prognoza</span>
+            </div>
+
             <div
               v-for="ath in filteredPredictions"
               :key="'m_' + ath.fis_code"
@@ -1260,65 +1386,33 @@ onMounted(async () => {
                 'row-silver': ath.predicted_rank === 2,
                 'row-bronze': ath.predicted_rank === 3,
                 'row-top10': ath.predicted_rank > 3 && ath.predicted_rank <= 10,
+                'is-expanded': expandedPredRow === String(ath.fis_code),
               }"
+              @click="toggleExpandedPredRow(ath.fis_code)"
             >
-              <div class="pmc-top">
-                <div class="pmc-identity">
-                  <span class="rank-badge" :class="'rank-' + ath.predicted_rank">
-                    {{ ath.predicted_rank }}
-                  </span>
-                  <CountryFlag :code="ath.country" size="sm" />
-                  <div class="pmc-name-wrap">
-                    <RouterLink :to="'/athletes/' + ath.fis_code" class="athlete-link pmc-name">
-                      {{ ath.name }}
-                    </RouterLink>
-                    <div class="pmc-sub-tags">
-                      <span class="country-tag">{{ ath.country }}</span>
-                      <span
-                        v-if="ath.is_tier_debutant && selectedCompetitionType === 'WC'"
-                        class="debutant-pill pmc-debut"
-                      >
-                        DEBIUTANT
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div class="pmc-right-top">
-                  <span v-if="ath.price !== null && ath.price !== undefined" class="price-badge">
-                    {{ Number(ath.price).toFixed(1) }}
-                  </span>
-                  <button
-                    class="btn-row-remove pmc-remove"
-                    @click="removeAthlete(ath.fis_code)"
-                    title="Usuń z listy startowej"
+              <div class="pmc-compact-row">
+                <span class="rank-badge" :class="'rank-' + ath.predicted_rank">
+                  {{ ath.predicted_rank }}
+                </span>
+
+                <div class="pmc-compact-ident">
+                  <CountryFlag :code="ath.country" size="xs" />
+                  <RouterLink
+                    :to="'/athletes/' + ath.fis_code"
+                    class="athlete-link pmc-name"
+                    @click.stop
                   >
-                    ✕
-                  </button>
-                </div>
-              </div>
-
-              <div class="pmc-metrics-grid">
-                <div class="pmc-metric">
-                  <span class="pmc-m-label">Dystans</span>
-                  <div class="pmc-dist-val">
-                    <strong class="dist-num">{{ ath.predicted_distance.toFixed(1) }} m</strong>
-                    <span
-                      v-if="ath.effective_headwind !== undefined"
-                      class="wind-micro-badge"
-                      :class="ath.effective_headwind >= 0 ? 'wind-head' : 'wind-tail'"
-                    >
-                      {{ ath.effective_headwind >= 0 ? '↗+' : '↘' }}{{ ath.effective_headwind }}
-                    </span>
-                  </div>
+                    {{ ath.name }}
+                  </RouterLink>
+                  <span
+                    v-if="ath.is_tier_debutant && selectedCompetitionType === 'WC'"
+                    class="debutant-pill pmc-debut"
+                  >
+                    DEB
+                  </span>
                 </div>
 
-                <div class="pmc-metric">
-                  <span class="pmc-m-label">Punkty</span>
-                  <strong class="pts-bold">{{ ath.predicted_points.toFixed(1) }} <small class="pts-unit">pkt</small></strong>
-                </div>
-
-                <div class="pmc-metric">
-                  <span class="pmc-m-label">Top 30</span>
+                <div class="pmc-compact-chances font-mono">
                   <span
                     class="top30-badge"
                     :class="{
@@ -1329,48 +1423,63 @@ onMounted(async () => {
                   >
                     {{ ath.top30_probability != null ? ath.top30_probability : 0 }}%
                   </span>
+                  <small v-if="ath.podium_probability != null && ath.podium_probability > 0" class="pmc-pod-sub">
+                    🏆{{ ath.podium_probability }}%
+                  </small>
                 </div>
 
-                <div class="pmc-metric">
-                  <span class="pmc-m-label">Podium</span>
-                  <strong class="chance-val" v-if="ath.podium_probability != null && ath.podium_probability > 0">
-                    {{ ath.podium_probability }}%
-                  </strong>
-                  <span v-else class="chance-zero">&lt;1%</span>
+                <div class="pmc-compact-dist font-mono">
+                  <strong>{{ ath.predicted_distance.toFixed(1) }}m</strong>
+                  <small class="pmc-pts-sub">{{ ath.predicted_points.toFixed(0) }} pkt</small>
                 </div>
               </div>
 
-              <div class="pmc-footer">
-                <div class="pmc-form-stab">
-                  <span class="pmc-mini-label">Forma:</span>
-                  <span
-                    class="form-pill"
-                    :class="{
-                      'form-high': ath.form_score >= 95,
-                      'form-med': ath.form_score >= 88 && ath.form_score < 95,
-                      'form-low': ath.form_score < 88
-                    }"
-                  >
-                    {{ ath.form_score }}%
-                  </span>
-                  <span
-                    v-if="ath.recent_form_score"
-                    class="recent-form-tag"
-                    :class="ath.recent_form_score >= ath.form_score ? 'trend-up' : 'trend-down'"
-                  >
-                    {{ ath.recent_form_score >= ath.form_score ? '▲' : '▼' }}{{ ath.recent_form_score }}%
-                  </span>
-                  <span class="pmc-sep">&bull;</span>
-                  <span class="pmc-mini-label">Stab:</span>
-                  <span class="repeat-box">
+              <!-- ROZWIJANE SZCZEGÓŁY PO DOTKNIĘCIU -->
+              <div
+                v-if="expandedPredRow === String(ath.fis_code)"
+                class="pmc-expanded-details"
+                @click.stop
+              >
+                <div class="pmc-exp-top">
+                  <div class="pmc-form-stab">
+                    <span class="pmc-mini-label">Forma:</span>
                     <span
-                      class="repeat-circle"
-                      :style="{
-                        background: ath.consistency_score >= 80 ? '#10b981' : ath.consistency_score >= 50 ? '#3b82f6' : '#f59e0b'
+                      class="form-pill"
+                      :class="{
+                        'form-high': ath.form_score >= 95,
+                        'form-med': ath.form_score >= 88 && ath.form_score < 95,
+                        'form-low': ath.form_score < 88
                       }"
-                    ></span>
+                    >
+                      {{ ath.form_score }}%
+                    </span>
+                    <span
+                      v-if="ath.recent_form_score"
+                      class="recent-form-tag"
+                      :class="ath.recent_form_score >= ath.form_score ? 'trend-up' : 'trend-down'"
+                    >
+                      {{ ath.recent_form_score >= ath.form_score ? '▲' : '▼' }}{{ ath.recent_form_score }}%
+                    </span>
+                    <span class="pmc-sep">&bull;</span>
+                    <span class="pmc-mini-label">Stab:</span>
                     <span class="repeat-num">{{ ath.consistency_score.toFixed(0) }}%</span>
-                  </span>
+                  </div>
+
+                  <div class="pmc-right-top">
+                    <span v-if="ath.effective_headwind !== undefined" class="wind-micro-badge" :class="ath.effective_headwind >= 0 ? 'wind-head' : 'wind-tail'">
+                      {{ ath.effective_headwind >= 0 ? '↗+' : '↘' }}{{ ath.effective_headwind }} m/s
+                    </span>
+                    <span v-if="ath.price !== null && ath.price !== undefined" class="price-badge">
+                      {{ Number(ath.price).toFixed(1) }}
+                    </span>
+                    <button
+                      class="btn-row-remove pmc-remove"
+                      @click="removeAthlete(ath.fis_code)"
+                      title="Usuń z listy startowej"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
 
                 <div v-if="ath.profiles && ath.profiles.length > 0" class="profiles-flex">
@@ -1379,7 +1488,6 @@ onMounted(async () => {
                     :key="prof.code"
                     class="profile-tag"
                     :class="prof.tag_class"
-                    :title="prof.description"
                   >
                     {{ prof.icon }} {{ prof.label }}
                   </span>
@@ -1388,7 +1496,19 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div class="table-responsive" :class="{ 'desktop-only': mobileViewMode === 'cards' }">
+          <div
+            class="table-responsive"
+            :class="{
+              'desktop-only': mobileViewMode === 'cards',
+              'pred-table-fullscreen': isTableFullScreen,
+            }"
+          >
+            <div v-if="isTableFullScreen" class="pred-fs-bar">
+              <strong>📋 Pełna tabela prognoz ({{ filteredPredictions.length }})</strong>
+              <button type="button" class="btn-pred-fs-close" @click="isTableFullScreen = false">
+                ✕ Zamknij
+              </button>
+            </div>
             <table class="predictions-table">
               <thead>
                 <tr>
@@ -1664,6 +1784,66 @@ onMounted(async () => {
         </div>
       </section>
     </div>
+
+    <!-- MODAL WYBORU ZAWODÓW Z KALENDARZA FIS -->
+    <div v-if="showCalendarModal" class="cal-modal-overlay" @click.self="showCalendarModal = false">
+      <div class="cal-modal">
+        <div class="cal-modal-header">
+          <h3>📅 Wybierz zawody z kalendarza FIS</h3>
+          <button type="button" class="cal-close-btn" @click="showCalendarModal = false">✕</button>
+        </div>
+
+        <div class="cal-modal-filters">
+          <select v-model="calendarSeason" class="custom-select" @change="fetchCalendarForModal">
+            <option value="2027">Sezon 2026/2027</option>
+            <option value="2026">Sezon 2025/2026</option>
+            <option value="2025">Sezon 2024/2025</option>
+          </select>
+          <select v-model="calendarCategory" class="custom-select" @change="fetchCalendarForModal">
+            <option value="WC">Puchar Świata (WC)</option>
+            <option value="GP">Letnie Grand Prix (GP)</option>
+            <option value="WSC">Mistrzostwa Świata (WSC)</option>
+            <option value="OWG">Igrzyska Olimpijskie (OWG)</option>
+            <option value="SFWC">MŚ w Lotach (SFWC)</option>
+          </select>
+        </div>
+
+        <div class="cal-modal-body">
+          <div v-if="isLoadingCalendar" class="cal-status-box">Pobieranie kalendarza FIS...</div>
+          <div v-else-if="calendarError" class="cal-status-box error">{{ calendarError }}</div>
+          <div v-else-if="calendarEvents.length === 0" class="cal-status-box">Brak przystanków w tym cyklu.</div>
+          <div v-else class="cal-events-list">
+            <button
+              v-for="ev in calendarEvents"
+              :key="ev.event_id || `${ev.place}_${ev.date_label}`"
+              type="button"
+              class="cal-event-item"
+              :class="{ 'cal-cancelled': ev.status === 'CANCELLED' }"
+              @click="applyCalendarEvent(ev)"
+            >
+              <div class="cal-ev-left">
+                <CountryFlag :code="ev.country" size="sm" />
+                <div>
+                  <strong class="cal-ev-place">{{ ev.place }}</strong>
+                  <span class="cal-ev-date">{{ ev.date_label }}</span>
+                </div>
+              </div>
+              <span class="cal-ev-status" :class="`st-${(ev.status || '').toLowerCase()}`">
+                {{
+                  ev.status === 'COMPLETED'
+                    ? 'Rozegrane'
+                    : ev.status === 'IN_PROGRESS'
+                      ? 'Trwa'
+                      : ev.status === 'CANCELLED'
+                        ? 'Odwołane'
+                        : 'Zaplanowane'
+                }}
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1796,9 +1976,31 @@ onMounted(async () => {
   margin-bottom: 24px;
 }
 
+.setup-card {
+  order: 1;
+}
+
+.weather-card {
+  order: 2;
+}
+
+.start-list-manager-card {
+  order: 3;
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 900px) {
   .control-grid {
     grid-template-columns: 1fr;
+  }
+  .setup-card {
+    order: 1;
+  }
+  .start-list-manager-card {
+    order: 2;
+  }
+  .weather-card {
+    order: 3;
   }
 }
 
@@ -2370,14 +2572,18 @@ onMounted(async () => {
 /* RUN PREDICTION BUTTON */
 .run-prediction-btn {
   width: 100%;
-  padding: 14px;
+  padding: 13px 16px;
   background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
   color: white;
   border: none;
   border-radius: 10px;
-  font-size: 1.05rem;
+  font-size: 0.98rem;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  white-space: normal;
+  word-break: break-word;
+  text-align: center;
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
   transition: all 0.2s;
@@ -3936,6 +4142,367 @@ onMounted(async () => {
   }
   .small-preset-btn {
     flex-shrink: 0;
+  }
+}
+
+/* NOWE STYLE: HERO META TOGGLE, KALENDARZ MODAL, ZWIJANA POGODA, KOMPAKTOWA LISTA MOBILNA */
+.hero-meta-toggle-row {
+  margin-top: 8px;
+}
+
+.hero-details-btn {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #e0f2fe;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.setup-header-wrap,
+.weather-header-wrap {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setup-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-cal-picker {
+  border: 1px solid #bae6fd;
+  background: #f0f9ff;
+  color: #0369a1;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.weather-title-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weather-mini-summary {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #0369a1;
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-header-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.weather-collapse-btn {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.weather-collapsible-content {
+  margin-bottom: 12px;
+}
+
+.mpc-fs-btn {
+  width: 100%;
+  border: 1px solid #bae6fd;
+  background: #f0f9ff;
+  color: #0369a1;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.pml-col-head {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 70px 68px;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.pml-h-right {
+  text-align: right;
+}
+
+.pmc-compact-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 70px 68px;
+  align-items: center;
+  gap: 6px;
+}
+
+.pmc-compact-ident {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pmc-compact-ident .pmc-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pmc-compact-chances,
+.pmc-compact-dist {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pmc-pod-sub,
+.pmc-pts-sub {
+  font-size: 0.67rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.pmc-compact-dist strong {
+  font-size: 0.8rem;
+  color: #0f172a;
+}
+
+.pmc-expanded-details {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 7px;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.pmc-exp-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pred-table-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 10500;
+  background: #ffffff;
+  overflow: auto;
+}
+
+.pred-fs-bar {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 0.8rem;
+}
+
+.btn-pred-fs-close {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* MODAL KALENDARZA */
+.cal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 11000;
+  background: rgba(15, 23, 42, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.cal-modal {
+  background: #ffffff;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 540px;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.35);
+}
+
+.cal-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.cal-modal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.cal-close-btn {
+  border: none;
+  background: #f1f5f9;
+  color: #334155;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cal-modal-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.cal-modal-body {
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+.cal-status-box {
+  text-align: center;
+  padding: 24px 12px;
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+.cal-status-box.error {
+  color: #b91c1c;
+}
+
+.cal-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.cal-event-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.cal-event-item:hover {
+  border-color: #0284c7;
+  background: #f0f9ff;
+}
+
+.cal-event-item.cal-cancelled {
+  opacity: 0.65;
+}
+
+.cal-ev-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cal-ev-place {
+  display: block;
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+
+.cal-ev-date {
+  display: block;
+  font-size: 0.76rem;
+  color: #64748b;
+}
+
+.cal-ev-status {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.cal-ev-status.st-completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.cal-ev-status.st-in_progress {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.cal-ev-status.st-upcoming {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.cal-ev-status.st-cancelled {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+@media (max-width: 768px) {
+  .run-prediction-btn {
+    font-size: 0.9rem;
+    padding: 12px;
+  }
+  .pred-m-card {
+    padding: 8px 10px !important;
+    gap: 6px !important;
+  }
+  .rwb-txt {
+    display: none;
   }
 }
 </style>

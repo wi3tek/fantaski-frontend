@@ -43,6 +43,7 @@ const results = shallowRef<any[]>([])
 const searchedNames = ref<string[]>([])
 const excludedNames = ref<string[]>([])
 const loading = ref(false)
+const isFiltersCollapsed = ref(false)
 
 // --- LOGIKA URL ---
 const isSyncingFromUrl = ref(false)
@@ -176,6 +177,9 @@ const performSearch = async (payload: any, finalNames: string[]) => {
 
   try {
     results.value = await api.post('/stats/search', safePayload)
+    if (typeof window !== 'undefined' && window.innerWidth <= 768 && results.value.length > 0) {
+      isFiltersCollapsed.value = true
+    }
   } catch (e: any) {
     notice.showNotice({
       title: 'Błąd pobierania danych',
@@ -314,6 +318,8 @@ onMounted(async () => {
       v-model:priceMode="priceMode"
       v-model:priceMin="priceMin"
       v-model:priceMax="priceMax"
+      v-model:collapsed="isFiltersCollapsed"
+      :hasResults="results.length > 0"
       :availableNames="availableNames"
       :athletesWithPrices="athletesWithPrices"
       :dictionaries="dictionaries"

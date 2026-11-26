@@ -12,6 +12,8 @@ const sortOrder = ref<'asc' | 'desc'>('desc')
 const hoveredAthlete = ref<any | null>(null)
 const expandedAthlete = ref<string | null>(null)
 const mobileViewMode = ref<'cards' | 'table'>('cards')
+const mobileStatTab = ref<'basics' | 'rates' | 'hills'>('basics')
+const isTableFullScreen = ref(false)
 
 const mobileSortOptions = [
   { key: 'pointsPerPrice', label: 'Efektywność (Pkt / Cena)' },
@@ -605,9 +607,9 @@ const getTrendPath = (athleteName: string) => {
             type="button"
             class="mac-switch-btn"
             :class="{ active: mobileViewMode === 'cards' }"
-            @click="mobileViewMode = 'cards'"
+            @click="mobileViewMode = 'cards'; isTableFullScreen = false"
           >
-            🪪 Karty
+            🪪 Karty (3 zakładki)
           </button>
           <button
             type="button"
@@ -616,6 +618,42 @@ const getTrendPath = (athleteName: string) => {
             @click="mobileViewMode = 'table'"
           >
             📋 Tabela
+          </button>
+        </div>
+        <button
+          v-if="mobileViewMode === 'table'"
+          type="button"
+          class="mac-fs-btn"
+          @click="isTableFullScreen = !isTableFullScreen"
+        >
+          {{ isTableFullScreen ? '✕ Zamknij pełny ekran' : '⛶ Tabela na pełnym ekranie (Poziom)' }}
+        </button>
+
+        <!-- 3 ZAKŁADKI TEMATYCZNE DLA KART NA MOBILCE -->
+        <div v-if="mobileViewMode === 'cards'" class="mac-topic-tabs" role="tablist">
+          <button
+            type="button"
+            class="mac-topic-tab"
+            :class="{ active: mobileStatTab === 'basics' }"
+            @click="mobileStatTab = 'basics'"
+          >
+            📊 Forma & Pkt
+          </button>
+          <button
+            type="button"
+            class="mac-topic-tab"
+            :class="{ active: mobileStatTab === 'rates' }"
+            @click="mobileStatTab = 'rates'"
+          >
+            🎯 Skuteczność
+          </button>
+          <button
+            type="button"
+            class="mac-topic-tab"
+            :class="{ active: mobileStatTab === 'hills' }"
+            @click="mobileStatTab = 'hills'"
+          >
+            🏔️ Zakres & Skocznie
           </button>
         </div>
       </div>
@@ -649,7 +687,8 @@ const getTrendPath = (athleteName: string) => {
           </div>
 
           <template v-if="stat.hasData">
-            <div class="amc-kpi-grid">
+            <!-- ZAKŁADKA 1: FORMA & PUNKTY -->
+            <div v-if="mobileStatTab === 'basics'" class="amc-kpi-grid">
               <div class="amc-kpi-box">
                 <span class="amc-kpi-label">Śr. msc</span>
                 <strong class="amc-kpi-val">{{ stat.avgRank?.toFixed(1) || '-' }}</strong>
@@ -676,7 +715,8 @@ const getTrendPath = (athleteName: string) => {
               </div>
             </div>
 
-            <div class="amc-rates-grid">
+            <!-- ZAKŁADKA 2: SKUTECZNOŚĆ % -->
+            <div v-else-if="mobileStatTab === 'rates'" class="amc-rates-grid">
               <div class="amc-rate-item">
                 <span class="amc-rate-lbl">Top 30</span>
                 <div class="rate-cell">
@@ -706,34 +746,37 @@ const getTrendPath = (athleteName: string) => {
               </div>
             </div>
 
-            <div class="amc-chips-row">
-              <span class="amc-chip">Mediana: <strong>{{ stat.medianRank?.toFixed(1) || '-' }}</strong></span>
-              <span v-if="stat.bestRank !== null" class="amc-chip">
-                Zakres: <strong>{{ stat.bestRank }}.–{{ stat.worstRank }}.</strong>
-              </span>
-              <span
-                class="stat-badge"
-                :class="
-                  stat.stdDev != null && stat.stdDev < 5
-                    ? 'good'
-                    : stat.stdDev != null && stat.stdDev > 8
-                      ? 'bad'
-                      : 'neutral'
-                "
-              >
-                σ {{ stat.stdDev != null ? '±' + stat.stdDev.toFixed(1) : '-' }}
-              </span>
-              <span class="hill-note-tag">
-                {{
-                  stat.hillBreakdown.preferenceText.includes('mamut')
-                    ? '🦅 Mamuty'
-                    : stat.hillBreakdown.preferenceText.includes('dużych')
-                      ? '⛷️ Duże'
-                      : stat.hillBreakdown.preferenceText.includes('Brak')
-                        ? '—'
-                        : '⚖️ Równy'
-                }}
-              </span>
+            <!-- ZAKŁADKA 3: ZAKRES & SKOCZNIE -->
+            <div v-else class="amc-hills-tab">
+              <div class="amc-chips-row" style="border-top: none; padding-top: 0;">
+                <span class="amc-chip">Mediana: <strong>{{ stat.medianRank?.toFixed(1) || '-' }}</strong></span>
+                <span v-if="stat.bestRank !== null" class="amc-chip">
+                  Zakres: <strong>{{ stat.bestRank }}.–{{ stat.worstRank }}.</strong>
+                </span>
+                <span
+                  class="stat-badge"
+                  :class="
+                    stat.stdDev != null && stat.stdDev < 5
+                      ? 'good'
+                      : stat.stdDev != null && stat.stdDev > 8
+                        ? 'bad'
+                        : 'neutral'
+                  "
+                >
+                  σ {{ stat.stdDev != null ? '±' + stat.stdDev.toFixed(1) : '-' }}
+                </span>
+              </div>
+              <div class="amc-hill-detail-row">
+                <span v-if="stat.hillBreakdown.flyingAvg !== null" class="amc-chip">
+                  🦅 Mamuty: <strong>{{ stat.hillBreakdown.flyingAvg.toFixed(1) }}</strong> ({{ stat.hillBreakdown.flyingCount }})
+                </span>
+                <span v-if="stat.hillBreakdown.largeAvg !== null" class="amc-chip">
+                  ⛷️ Duże: <strong>{{ stat.hillBreakdown.largeAvg.toFixed(1) }}</strong> ({{ stat.hillBreakdown.largeCount }})
+                </span>
+                <span v-if="stat.hillBreakdown.normalAvg !== null" class="amc-chip">
+                  🏔️ Norm.: <strong>{{ stat.hillBreakdown.normalAvg.toFixed(1) }}</strong> ({{ stat.hillBreakdown.normalCount }})
+                </span>
+              </div>
             </div>
 
             <!-- Wykres trendu po kliknięciu karty -->
@@ -762,7 +805,19 @@ const getTrendPath = (athleteName: string) => {
       </div>
 
       <!-- TABELA ANALITYCZNA Z PRZYPIĘTYMI NAGŁÓWKAMI I PIERWSZĄ KOLUMNĄ -->
-      <div class="analytics-table-wrapper" :class="{ 'desktop-only': mobileViewMode === 'cards' }">
+      <div
+        class="analytics-table-wrapper"
+        :class="{
+          'desktop-only': mobileViewMode === 'cards',
+          'analytics-fullscreen': isTableFullScreen,
+        }"
+      >
+        <div v-if="isTableFullScreen" class="analytics-fs-bar">
+          <strong>📊 Statystyki — pełny ekran</strong>
+          <button type="button" class="analytics-fs-close" @click="isTableFullScreen = false">
+            ✕ Zamknij
+          </button>
+        </div>
         <table class="analytics-table">
           <thead>
             <tr>
@@ -2217,5 +2272,91 @@ const getTrendPath = (athleteName: string) => {
   .comparison-cards-grid {
     grid-template-columns: 1fr !important;
   }
+
+  .mac-fs-btn {
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: 7px;
+    border: 1px solid #bae6fd;
+    background: #f0f9ff;
+    color: #0369a1;
+    font-size: 0.74rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .mac-topic-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    background: #e2e8f0;
+    padding: 3px;
+    border-radius: 8px;
+  }
+
+  .mac-topic-tab {
+    border: none;
+    background: transparent;
+    color: #475569;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 6px 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mac-topic-tab.active {
+    background: #ffffff;
+    color: #0284c7;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+
+  .amc-hills-tab {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .amc-hill-detail-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+.analytics-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 10500;
+  background: #ffffff;
+  overflow: auto;
+}
+
+.analytics-fs-bar {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 0.8rem;
+}
+
+.analytics-fs-close {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 </style>

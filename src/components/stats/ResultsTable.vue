@@ -35,6 +35,9 @@ const rowStart = ref(0)
 const rowsWindowSize = 15
 const colStart = ref(0)
 const athletesWindowSize = ref(1)
+const mobileViewMode = ref<'cards' | 'matrix'>('cards')
+const isFullScreenMatrix = ref(false)
+const showViewFiltersMobile = ref(false)
 
 const tableWrapperRef = ref<HTMLElement | null>(null)
 let resizeObserver: ResizeObserver | null = null
@@ -130,15 +133,24 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
 
 <template>
   <div>
-    <div class="card view-filters-card" style="margin-bottom: 25px">
-      <div class="card-header">
-        <h3>⚡ Filtry Widoku (Na żywo - Krok 2)</h3>
-        <p class="subtitle">
-          Te filtry natychmiast modyfikują poniższą tabelę (nie wymagają pobierania z bazy).
-        </p>
+    <div class="card view-filters-card" style="margin-bottom: 16px">
+      <div class="card-header vf-header-row">
+        <div>
+          <h3>⚡ Filtry Widoku</h3>
+          <p class="subtitle">
+            Modyfikują tabelę na żywo (Top {{ localHighlightTopN }}{{ localHideEmpty ? ', ukryj puste' : '' }}{{ localOnlyCommon ? ', tylko wspólne' : '' }}).
+          </p>
+        </div>
+        <button
+          type="button"
+          class="vf-mobile-toggle"
+          @click="showViewFiltersMobile = !showViewFiltersMobile"
+        >
+          {{ showViewFiltersMobile ? 'Zwiń ▲' : 'Opcje ▼' }}
+        </button>
       </div>
 
-      <div class="frontend-filters-row">
+      <div class="frontend-filters-row" :class="{ 'vf-collapsed-mobile': !showViewFiltersMobile }">
         <div class="filter-group filter-topn-group">
           <label>Wyróżnij miejsca do (Top X)</label>
           <input type="number" v-model="localHighlightTopN" min="1" max="100" />
@@ -162,7 +174,47 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
       </div>
     </div>
 
-    <div v-if="groupedRows.length > 0" class="results-container">
+    <div
+      v-if="groupedRows.length > 0"
+      class="results-container"
+      :class="{ 'matrix-fullscreen': isFullScreenMatrix }"
+    >
+      <div v-if="isFullScreenMatrix" class="fullscreen-bar">
+        <strong>📋 Porównywarka — tryb pełnego ekranu</strong>
+        <button type="button" class="btn-exit-fs" @click="isFullScreenMatrix = false">
+          ✕ Zamknij pełny ekran
+        </button>
+      </div>
+
+      <div class="mobile-rt-modebar">
+        <div class="rt-switch-group">
+          <button
+            type="button"
+            class="rt-switch-btn"
+            :class="{ active: mobileViewMode === 'cards' }"
+            @click="mobileViewMode = 'cards'; isFullScreenMatrix = false"
+          >
+            🪪 Konkursy
+          </button>
+          <button
+            type="button"
+            class="rt-switch-btn"
+            :class="{ active: mobileViewMode === 'matrix' }"
+            @click="mobileViewMode = 'matrix'"
+          >
+            📋 Macierz (Poziom)
+          </button>
+        </div>
+        <button
+          v-if="mobileViewMode === 'matrix'"
+          type="button"
+          class="rt-fs-btn"
+          @click="isFullScreenMatrix = !isFullScreenMatrix"
+        >
+          {{ isFullScreenMatrix ? '✕ Wyjdź' : '⛶ Pełny ekran' }}
+        </button>
+      </div>
+
       <div class="nav-horizontal">
         <div class="nav-info-group" style="display: flex; gap: 30px; flex-wrap: wrap">
           <span class="nav-label"
@@ -201,7 +253,13 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
         </div>
       </div>
 
-      <div class="table-layout-wrapper desktop-only">
+      <div
+        class="table-layout-wrapper"
+        :class="{
+          'desktop-only': mobileViewMode === 'cards',
+          'matrix-mobile-active': mobileViewMode === 'matrix',
+        }"
+      >
         <div class="nav-vertical nav-left">
           <div class="sticky-nav-buttons">
             <button
@@ -324,50 +382,52 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
         </div>
       </div>
 
-      <div class="mobile-layout-wrapper mobile-only">
+      <div v-if="mobileViewMode === 'cards'" class="mobile-layout-wrapper mobile-only">
         <div class="m-card" v-for="(row, idx) in displayedRows" :key="idx">
 
           <div class="m-card-header">
             <div class="m-date-row">
-              <span class="m-date">{{ row.meta.date }}</span>
-              <span class="m-time">{{ row.meta.time }}</span>
+              <span class="m-date">{{ row.meta.date }} <small v-if="row.meta.time" class="m-time">· {{ row.meta.time }}</small></span>
+              <RouterLink :to="`/sessions/${row.meta.session_id}`" class="m-link">Szczegóły ↗</RouterLink>
             </div>
             <div class="m-title">
               {{ row.meta.place }} HS{{ row.meta.hill_size || '?' }}
-              <span style="color: #64748b; font-weight: normal;">|</span> {{ getSessionName(row.meta.session_type) }}
+              <span class="m-sep">|</span> {{ getSessionName(row.meta.session_type) }}
+              <small class="m-round">(S{{ row.meta.round }})</small>
             </div>
-            <div class="m-subtitle">
-              {{ getCategoryName(row.meta.category) }} | Seria: <strong>{{ row.meta.round }}</strong>
-            </div>
-            <RouterLink :to="`/sessions/${row.meta.session_id}`" class="m-link">Zobacz szczegóły konkursu ↗</RouterLink>
           </div>
 
           <div class="m-card-body">
-            <div class="m-athlete-row" v-for="athlete in displayedAthletes" :key="athlete.name">
-
-              <div class="m-ath-info">
-                <button @click="excludeAthlete(athlete.name)" class="m-btn-close" title="Usuń">✖</button>
-                <span v-if="athlete.price" class="badge price-header-badge">{{ Number(athlete.price).toFixed(1) }}</span>
-                <span class="m-ath-name">{{ athlete.name }}</span>
+            <div class="m-athlete-row m-compact-row" v-for="athlete in displayedAthletes" :key="athlete.name">
+              <div class="m-ath-left">
+                <button @click="excludeAthlete(athlete.name)" class="m-btn-close" title="Usuń">✕</button>
+                <span class="m-ath-name" :title="athlete.name">{{ athlete.name }}</span>
               </div>
 
-              <div class="m-ath-results">
-                <template v-if="row.athletes[athlete.name]">
-                  <div :class="['m-jump-data', getHighlightClass(row.athletes[athlete.name].jump_rank)]">
-                    <div class="m-stat" :class="getStatClass(row.athletes[athlete.name].jump_rank, row.minRank, row.maxRank)">
-                      Poz: <strong>{{ row.athletes[athlete.name].jump_rank }}</strong>
-                    </div>
-                    <div class="m-stat" :class="getStatClass(row.athletes[athlete.name].distance, row.maxDist, row.minDist)">
-                      Odl: <strong>{{ row.athletes[athlete.name].distance }}m</strong>
-                    </div>
-                    <div class="m-stat" :class="getStatClass(row.athletes[athlete.name].points, row.maxPoints, row.minPoints)">
-                      Nota: <strong>{{ row.athletes[athlete.name].points }}</strong>
-                    </div>
-                  </div>
-                </template>
-                <div v-else class="m-no-jump">Brak startu</div>
-              </div>
-
+              <template v-if="row.athletes[athlete.name]">
+                <span
+                  class="m-c-rank"
+                  :class="[
+                    getHighlightClass(row.athletes[athlete.name].jump_rank),
+                    getStatClass(row.athletes[athlete.name].jump_rank, row.minRank, row.maxRank),
+                  ]"
+                >
+                  #{{ row.athletes[athlete.name].jump_rank }}
+                </span>
+                <span
+                  class="m-c-dist"
+                  :class="getStatClass(row.athletes[athlete.name].distance, row.maxDist, row.minDist)"
+                >
+                  {{ row.athletes[athlete.name].distance }}m
+                </span>
+                <span
+                  class="m-c-pts"
+                  :class="getStatClass(row.athletes[athlete.name].points, row.maxPoints, row.minPoints)"
+                >
+                  {{ row.athletes[athlete.name].points }}
+                </span>
+              </template>
+              <span v-else class="m-no-jump-compact">—</span>
             </div>
           </div>
         </div>
@@ -667,6 +727,11 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
   margin-bottom: auto;
 }
 
+.vf-mobile-toggle,
+.mobile-rt-modebar {
+  display: none;
+}
+
 /* ============================================== */
 /* MEDIA QUERIES (Smartfony i małe ekrany)        */
 /* ============================================== */
@@ -802,5 +867,195 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
   }
   .m-stat { color: #475569; }
   .m-no-jump { color: #94a3b8; font-style: italic; font-size: 0.9em; text-align: center; width: 100%; }
+
+  .vf-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .vf-mobile-toggle {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #0369a1;
+    border-radius: 7px;
+    padding: 5px 10px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .vf-collapsed-mobile {
+    display: none !important;
+  }
+
+  .mobile-rt-modebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .rt-switch-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    flex: 1;
+    background: #e2e8f0;
+    padding: 3px;
+    border-radius: 8px;
+  }
+
+  .rt-switch-btn {
+    border: none;
+    background: transparent;
+    color: #475569;
+    font-size: 0.74rem;
+    font-weight: 700;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .rt-switch-btn.active {
+    background: #ffffff;
+    color: #0284c7;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+
+  .rt-fs-btn {
+    border: 1px solid #bae6fd;
+    background: #f0f9ff;
+    color: #0369a1;
+    border-radius: 7px;
+    padding: 6px 9px;
+    font-size: 0.73rem;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .matrix-mobile-active {
+    display: flex !important;
+  }
+
+  .matrix-mobile-active .nav-vertical {
+    display: none;
+  }
+
+  .matrix-mobile-active .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .m-card-header {
+    padding: 9px 12px;
+  }
+
+  .m-title {
+    font-size: 0.92rem;
+    margin: 2px 0 0;
+  }
+
+  .m-sep {
+    color: #94a3b8;
+    font-weight: 400;
+  }
+
+  .m-round {
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  .m-compact-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 44px 54px 54px;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+  }
+
+  .m-ath-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .m-ath-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-c-rank,
+  .m-c-dist,
+  .m-c-pts {
+    text-align: right;
+    font-size: 0.78rem;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+
+  .m-c-rank {
+    text-align: center;
+    border-radius: 5px;
+    padding: 2px 4px;
+  }
+
+  .m-no-jump-compact {
+    grid-column: 2 / 5;
+    text-align: right;
+    font-size: 0.74rem;
+    color: #94a3b8;
+    font-style: italic;
+  }
+}
+
+.matrix-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 10500;
+  background: #ffffff;
+  overflow: auto;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.fullscreen-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 0.8rem;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.btn-exit-fs {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 </style>
