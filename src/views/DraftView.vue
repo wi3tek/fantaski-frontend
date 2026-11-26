@@ -117,6 +117,31 @@ const athleteCountry = ref('')
 const activeAthletes = ref<any[]>([])
 const isLoadingAthletes = ref(false)
 const pendingPickAthlete = ref<any>(null)
+const failedAthleteAvatars = ref<Record<string, boolean>>({})
+
+const getAthleteAvatarUrl = (ath: any): string | null => {
+  if (!ath) return null
+  const key = String(ath.fis_code || ath.full_name || '')
+  if (key && failedAthleteAvatars.value[key]) return null
+  if (ath.competitor_id_from_url) {
+    return `https://data.fis-ski.com/general/load-competitor-picture/${ath.competitor_id_from_url}.html`
+  }
+  return null
+}
+
+const markAthleteAvatarFailed = (ath: any) => {
+  const key = String(ath?.fis_code || ath?.full_name || '')
+  if (key) {
+    failedAthleteAvatars.value = { ...failedAthleteAvatars.value, [key]: true }
+  }
+}
+
+const getAthleteInitials = (fullName?: string): string => {
+  const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '⛷'
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
+  return `${parts[0]!.charAt(0)}${parts[parts.length - 1]!.charAt(0)}`.toUpperCase()
+}
 
 // Wielokrotne rozwijanie graczy w tabeli klasyfikacji
 const expandedStandingUserIds = ref<string[]>([])
@@ -1456,6 +1481,17 @@ onUnmounted(() => {
                     <div v-else v-for="ath in activeAthletes" :key="ath.fis_code" class="pool-athlete-row">
                       <div class="ath-meta">
                         <CountryFlag :code="ath.country_code" size="sm" />
+                        <span class="ath-mini-avatar-wrap">
+                          <img
+                            v-if="getAthleteAvatarUrl(ath)"
+                            :src="getAthleteAvatarUrl(ath)!"
+                            :alt="ath.full_name"
+                            class="ath-mini-avatar"
+                            loading="lazy"
+                            @error="markAthleteAvatarFailed(ath)"
+                          />
+                          <span v-else class="ath-mini-avatar-fallback">{{ getAthleteInitials(ath.full_name) }}</span>
+                        </span>
                         <div>
                           <strong>{{ ath.full_name }}</strong>
                           <small class="hint-text">FIS: {{ ath.fis_code }}<template v-if="ath.price != null"> • Cena ESM: {{ Number(ath.price).toFixed(1) }}</template></small>
@@ -1712,6 +1748,16 @@ onUnmounted(() => {
         <p class="confirm-player-line">
           Czy na pewno chcesz wybrać zawodnika
           <CountryFlag :code="pendingPickAthlete.country_code" size="sm" :show-code="true" />
+          <span class="ath-mini-avatar-wrap small">
+            <img
+              v-if="getAthleteAvatarUrl(pendingPickAthlete)"
+              :src="getAthleteAvatarUrl(pendingPickAthlete)!"
+              :alt="pendingPickAthlete.full_name"
+              class="ath-mini-avatar"
+              @error="markAthleteAvatarFailed(pendingPickAthlete)"
+            />
+            <span v-else class="ath-mini-avatar-fallback">{{ getAthleteInitials(pendingPickAthlete.full_name) }}</span>
+          </span>
           <strong>{{ pendingPickAthlete.full_name }}</strong>
           (kod FIS: {{ pendingPickAthlete.fis_code }})?
         </p>
@@ -2638,8 +2684,42 @@ onUnmounted(() => {
 .ath-meta {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
+}
+
+.ath-mini-avatar-wrap {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1.5px solid #cbd5e1;
+  background: #f1f5f9;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ath-mini-avatar-wrap.small {
+  width: 24px;
+  height: 24px;
+}
+
+.ath-mini-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+}
+
+.ath-mini-avatar-fallback {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #475569;
+  line-height: 1;
+  letter-spacing: 0.02em;
 }
 
 .ath-meta > div {

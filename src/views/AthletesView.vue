@@ -1258,7 +1258,7 @@ onUnmounted(() => {
     flex: 1;
   }
   .amc-name {
-    font-size: 0.96rem;
+    font-size: 0.88rem;
     font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
@@ -1267,8 +1267,8 @@ onUnmounted(() => {
   .amc-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    font-size: 0.8rem;
+    gap: 8px;
+    font-size: 0.74rem;
     color: #64748b;
   }
   .amc-club {
@@ -1288,19 +1288,19 @@ onUnmounted(() => {
     color: #334155;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
-    padding: 8px;
-    font-size: 0.85rem;
+    padding: 6px 8px;
+    font-size: 0.78rem;
     font-weight: 600;
     text-align: center;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 40px;
+    min-height: 36px;
   }
   .amc-btn-stats {
-    padding: 8px;
-    font-size: 0.85rem;
-    min-height: 40px;
+    padding: 6px 8px;
+    font-size: 0.78rem;
+    min-height: 36px;
     border-radius: 6px;
   }
 }

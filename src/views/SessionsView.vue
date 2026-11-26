@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import { api } from '@/api/client'
 
 interface SessionLight {
@@ -151,9 +151,14 @@ const clearFilters = () => {
   fetchSessions(false)
 }
 
+const route = useRoute()
+
 onMounted(() => {
   fetchCountries()
   fetchSessions()
+  if (route.query.tab === 'calendar') {
+    openCalendarTab()
+  }
 })
 </script>
 
@@ -940,18 +945,18 @@ onMounted(() => {
     width: 100%;
   }
   .view-tab-btn {
-    padding: 9px 10px;
-    font-size: 0.8rem;
+    padding: 8px 8px;
+    font-size: 0.76rem;
     text-align: center;
     white-space: normal;
     line-height: 1.2;
-    min-height: 42px;
+    min-height: 38px;
   }
   .filters-toolbar {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    padding: 12px;
+    gap: 8px;
+    padding: 10px;
     align-items: end;
   }
   .filter-item {
@@ -965,21 +970,22 @@ onMounted(() => {
   }
   .btn-clear-sm {
     width: 100%;
-    height: 40px;
-    min-height: 40px;
+    height: 36px;
+    min-height: 36px;
+    font-size: 0.78rem;
   }
   .mobile-cards-list {
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
   .session-m-card {
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
-    padding: 12px;
+    padding: 10px 12px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04);
   }
   .session-m-card.cal-card-expanded {
@@ -990,32 +996,35 @@ onMounted(() => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex-wrap: wrap;
   }
   .smc-date-wrap {
     display: flex;
     align-items: baseline;
-    gap: 6px;
+    gap: 5px;
   }
   .smc-date {
-    font-size: 0.88rem;
+    font-size: 0.8rem;
     color: #0f172a;
   }
   .smc-badges {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     flex-wrap: wrap;
+    font-size: 0.78rem;
   }
   .smc-location {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
     flex-wrap: wrap;
+    font-size: 0.86rem;
   }
   .smc-subtitle {
     margin-top: -2px;
+    font-size: 0.74rem;
   }
   .smc-actions {
     display: flex;

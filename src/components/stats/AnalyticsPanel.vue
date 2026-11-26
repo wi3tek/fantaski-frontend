@@ -1951,13 +1951,16 @@ const getTrendPath = (athleteName: string) => {
   .analytics-filters-toolbar {
     flex-direction: column;
     align-items: stretch;
-    padding: 12px;
-    gap: 10px;
+    padding: 10px;
+    gap: 8px;
   }
   .filter-search-box {
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
+  }
+  .filter-search-input {
+    font-size: 0.8rem !important;
   }
   .filter-toggles-row {
     display: grid;
@@ -1967,24 +1970,23 @@ const getTrendPath = (athleteName: string) => {
   }
   .filter-checkbox-label {
     grid-column: span 2;
+    font-size: 0.76rem;
   }
-  .filter-select-wrapper {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 4px;
-    min-width: 0;
+  .select-prefix {
+    font-size: 0.68rem;
   }
   .filter-inline-select {
     width: 100%;
+    font-size: 0.78rem !important;
   }
   .mobile-analytics-controls {
     flex-direction: column;
-    gap: 8px;
-    padding: 10px 12px;
+    gap: 6px;
+    padding: 9px 10px;
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
   .mac-sort-row {
     display: flex;
@@ -1993,7 +1995,7 @@ const getTrendPath = (athleteName: string) => {
     width: 100%;
   }
   .mac-sort-row label {
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 700;
     color: #475569;
     white-space: nowrap;
@@ -2001,28 +2003,29 @@ const getTrendPath = (athleteName: string) => {
   .mac-select {
     flex: 1;
     min-width: 0;
-    padding: 6px 8px;
+    padding: 5px 8px;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
     background: #ffffff;
     color: #0f172a;
+    font-size: 0.8rem !important;
     font-weight: 600;
   }
   .mac-order-btn {
-    padding: 6px 10px;
+    padding: 5px 9px;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
     background: #ffffff;
     color: #0369a1;
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     font-weight: 700;
-    min-height: 38px;
+    min-height: 34px;
     flex-shrink: 0;
   }
   .mac-view-switch {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 6px;
+    gap: 4px;
     background: #e2e8f0;
     padding: 3px;
     border-radius: 8px;
@@ -2031,11 +2034,11 @@ const getTrendPath = (athleteName: string) => {
     border: none;
     background: transparent;
     color: #475569;
-    padding: 6px 8px;
+    padding: 5px 8px;
     border-radius: 6px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 700;
-    min-height: 36px;
+    min-height: 32px;
     cursor: pointer;
   }
   .mac-switch-btn.active {
@@ -2045,16 +2048,16 @@ const getTrendPath = (athleteName: string) => {
   }
   .analytics-mobile-list {
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
   .analytics-m-card {
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
-    padding: 12px;
+    padding: 10px 11px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04);
   }
   .analytics-m-card.is-expanded {
@@ -2076,7 +2079,7 @@ const getTrendPath = (athleteName: string) => {
     flex: 1;
   }
   .amc-athlete-name {
-    font-size: 0.95rem;
+    font-size: 0.87rem;
     color: #0f172a;
     white-space: nowrap;
     overflow: hidden;
@@ -2089,7 +2092,7 @@ const getTrendPath = (athleteName: string) => {
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    padding: 8px;
+    padding: 7px 6px;
   }
   .amc-kpi-box {
     display: flex;
@@ -2099,13 +2102,13 @@ const getTrendPath = (athleteName: string) => {
     gap: 1px;
   }
   .amc-kpi-label {
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     text-transform: uppercase;
     font-weight: 700;
     color: #64748b;
   }
   .amc-kpi-val {
-    font-size: 0.9rem;
+    font-size: 0.84rem;
     color: #0f172a;
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;

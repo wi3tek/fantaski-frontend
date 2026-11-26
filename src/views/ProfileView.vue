@@ -50,42 +50,36 @@ const isSaving = ref(false)
 const successMsg = ref('')
 const errorMsg = ref('')
 
-// Predefiniowane szablony awatarów
+// Predefiniowane style awatarów
 const avatarStyles = [
-  { id: 'bottts', name: '🤖 Roboty' },
-  { id: 'avataaars', name: '👤 Postacie' },
-  { id: 'identicon', name: '🔷 Wzory' },
-  { id: 'thumbs', name: '👍 Emotikony' },
-  { id: 'lorelei', name: '🎨 Ilustracje' }
+  { id: 'bottts', name: 'Roboty' },
+  { id: 'avataaars', name: 'Postacie' },
+  { id: 'identicon', name: 'Wzory' },
+  { id: 'thumbs', name: 'Emotikony' },
+  { id: 'lorelei', name: 'Ilustracje' }
 ]
 const selectedStyle = ref('bottts')
 const randomSeed = ref('')
 
-const skiThemes = [
-  { label: '⛷️ Skoczek', seed: 'skijumper' },
-  { label: '🏔️ Skocznia', seed: 'skigroove' },
-  { label: '🦅 Orzeł', seed: 'goldeneagle' },
-  { label: '👑 Mistrz', seed: 'champion' },
-  { label: '❄️ Śnieżynka', seed: 'winterflyer' },
-  { label: '🎿 Narty & Gogle', seed: 'goggles' },
-  { label: '🔥 Zwierzę Konkursowe', seed: 'clutch' },
-  { label: '🎯 Metronom', seed: 'metronome' }
-]
+const avatarPreviewSeeds = ['s1', 's2', 's3', 's4', 's5', 's6']
+
+const getAvatarUrl = (styleId: string, seed: string) =>
+  `https://api.dicebear.com/7.x/${styleId}/svg?seed=${encodeURIComponent(seed)}`
 
 const rollRandomSeed = () => {
   randomSeed.value = Math.random().toString(36).substring(2, 9)
-  avatarInput.value = `https://api.dicebear.com/7.x/${selectedStyle.value}/svg?seed=${randomSeed.value}`
+  avatarInput.value = getAvatarUrl(selectedStyle.value, randomSeed.value)
 }
 
-const selectSkiTheme = (seed: string) => {
+const selectAvatarSeed = (seed: string) => {
   randomSeed.value = seed
-  avatarInput.value = `https://api.dicebear.com/7.x/${selectedStyle.value}/svg?seed=${seed}`
+  avatarInput.value = getAvatarUrl(selectedStyle.value, seed)
 }
 
 const selectStyle = (styleId: string) => {
   selectedStyle.value = styleId
   const seed = randomSeed.value || auth.user.value?.email || 'skijump'
-  avatarInput.value = `https://api.dicebear.com/7.x/${styleId}/svg?seed=${seed}`
+  avatarInput.value = getAvatarUrl(styleId, seed)
 }
 
 // Obsługa wgrywania pliku
@@ -387,7 +381,7 @@ const formatDate = (isoString?: string) => {
           :class="{ active: activeProfileTab === 'edit' }"
           @click="setProfileTab('edit')"
         >
-          <span>✏️ Profil i Awatar</span>
+          <span>✏️ Profil</span>
         </button>
         <button
           type="button"
@@ -397,7 +391,7 @@ const formatDate = (isoString?: string) => {
           :class="{ active: activeProfileTab === 'esm' }"
           @click="setProfileTab('esm')"
         >
-          <span>🏆 esmManager &amp; Znajomi</span>
+          <span>🏆 esmManager</span>
           <span v-if="esmStatus?.incoming_requests?.length" class="profile-tab-badge">
             {{ esmStatus.incoming_requests.length }}
           </span>
@@ -410,7 +404,7 @@ const formatDate = (isoString?: string) => {
           :class="{ active: activeProfileTab === 'plan' }"
           @click="setProfileTab('plan')"
         >
-          <span>💎 Pakiet i dostęp</span>
+          <span>💎 Pakiet</span>
         </button>
         <button
           type="button"
@@ -460,7 +454,7 @@ const formatDate = (isoString?: string) => {
                   :class="{ active: activeAvatarTab === 'presets' }"
                   @click="activeAvatarTab = 'presets'"
                 >
-                  🎲 Generator & Motywy
+                  🎨 Generator
                 </button>
                 <button
                   type="button"
@@ -468,7 +462,7 @@ const formatDate = (isoString?: string) => {
                   :class="{ active: activeAvatarTab === 'upload' }"
                   @click="activeAvatarTab = 'upload'"
                 >
-                  📁 Wgraj plik z dysku
+                  📁 Plik z dysku
                 </button>
                 <button
                   type="button"
@@ -476,14 +470,32 @@ const formatDate = (isoString?: string) => {
                   :class="{ active: activeAvatarTab === 'url' }"
                   @click="activeAvatarTab = 'url'"
                 >
-                  🔗 Własny adres URL
+                  🔗 Adres URL
                 </button>
               </div>
 
-              <!-- OPCJA 1: GENERATOR & PRESETY -->
+              <!-- OPCJA 1: GENERATOR -->
               <div v-if="activeAvatarTab === 'presets'" class="tab-pane">
+                <div class="avatar-preview-strip">
+                  <img
+                    v-if="avatarInput || auth.user.value?.picture"
+                    :src="avatarInput || auth.user.value?.picture"
+                    class="avatar-preview-crisp"
+                    alt="Podgląd awatara"
+                  />
+                  <div v-else class="avatar-preview-fallback">👤</div>
+                  <div class="avatar-preview-actions">
+                    <button type="button" class="btn-secondary" @click="rollRandomSeed">
+                      🎲 Losuj inny
+                    </button>
+                    <button type="button" class="btn-secondary" @click="resetToDefault">
+                      🔄 Domyślny
+                    </button>
+                  </div>
+                </div>
+
                 <div class="styles-selector">
-                  <span class="sub-label">Styl ilustracji:</span>
+                  <span class="sub-label">Styl:</span>
                   <div class="style-chips">
                     <button
                       v-for="st in avatarStyles"
@@ -499,27 +511,19 @@ const formatDate = (isoString?: string) => {
                 </div>
 
                 <div class="themes-selector">
-                  <span class="sub-label">Szybkie motywy skokowe:</span>
-                  <div class="theme-buttons">
+                  <span class="sub-label">Wybierz wariant:</span>
+                  <div class="avatar-thumbs-grid">
                     <button
-                      v-for="th in skiThemes"
-                      :key="th.seed"
+                      v-for="seed in avatarPreviewSeeds"
+                      :key="seed"
                       type="button"
-                      class="theme-btn"
-                      @click="selectSkiTheme(th.seed)"
+                      class="avatar-thumb-btn"
+                      :class="{ active: avatarInput === getAvatarUrl(selectedStyle, seed) }"
+                      @click="selectAvatarSeed(seed)"
                     >
-                      {{ th.label }}
+                      <img :src="getAvatarUrl(selectedStyle, seed)" alt="Wariant awatara" class="avatar-thumb-img" />
                     </button>
                   </div>
-                </div>
-
-                <div class="generator-actions">
-                  <button type="button" class="btn-secondary" @click="rollRandomSeed">
-                    🎲 Wylosuj inny awatar
-                  </button>
-                  <button type="button" class="btn-text" @click="resetToDefault">
-                    🔄 Przywróć domyślny
-                  </button>
                 </div>
               </div>
 
@@ -937,38 +941,31 @@ const formatDate = (isoString?: string) => {
 
 /* ZAKŁADKI PROFILU */
 .profile-tabs-bar {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   padding: 8px;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-
-.profile-tabs-bar::-webkit-scrollbar {
-  display: none;
 }
 
 .profile-tab-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 9px 14px;
-  border: 1px solid transparent;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid #e2e8f0;
   background: #f8fafc;
   color: #475569;
   border-radius: 9px;
-  font-size: 0.86rem;
+  font-size: 0.84rem;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
-  flex-shrink: 0;
+  min-width: 0;
   transition: all 0.18s ease;
 }
 
@@ -979,6 +976,7 @@ const formatDate = (isoString?: string) => {
 
 .profile-tab-btn.active {
   background: #0284c7;
+  border-color: #0284c7;
   color: #ffffff;
   box-shadow: 0 2px 8px rgba(2, 132, 199, 0.25);
 }
@@ -1290,6 +1288,77 @@ const formatDate = (isoString?: string) => {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.avatar-preview-strip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.avatar-preview-crisp {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #ffffff;
+  border: 2px solid #0284c7;
+  flex-shrink: 0;
+}
+
+.avatar-preview-fallback {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.avatar-preview-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.avatar-thumbs-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.avatar-thumb-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.avatar-thumb-btn:hover {
+  border-color: #7dd3fc;
+  background: #f0f9ff;
+}
+
+.avatar-thumb-btn.active {
+  border-color: #0284c7;
+  background: #e0f2fe;
+}
+
+.avatar-thumb-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
 }
 
 .style-chip {
@@ -2004,17 +2073,18 @@ const formatDate = (isoString?: string) => {
     display: none;
   }
   .profile-tabs-bar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     padding: 6px;
     gap: 6px;
     border-radius: 10px;
-    position: sticky;
-    top: calc(var(--header-height, 56px) + 4px);
-    z-index: 40;
   }
   .profile-tab-btn {
-    padding: 8px 12px;
+    padding: 9px 8px;
     font-size: 0.82rem;
-    min-height: 40px;
+    min-height: 42px;
+    width: 100%;
+    justify-content: center;
   }
   .card-header {
     padding: 14px 14px 10px;
@@ -2025,15 +2095,19 @@ const formatDate = (isoString?: string) => {
   }
   .avatar-tabs {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
   }
   .avatar-tab-btn {
-    font-size: 0.76rem;
+    font-size: 0.78rem;
     padding: 8px 6px;
     text-align: center;
-    white-space: normal;
-    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .avatar-thumbs-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .generator-actions {
     flex-direction: column;

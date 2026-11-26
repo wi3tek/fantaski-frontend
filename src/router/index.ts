@@ -20,6 +20,12 @@ const router = createRouter({
       component: () => import('@/views/LoginView.vue'),
     },
     {
+      path: '/dashboard',
+      name: 'dashboard',
+      component: () => import('@/views/DashboardView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/athletes',
       name: 'athletes',
       component: AthletesView,
@@ -114,7 +120,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if ((to.path === '/login' || to.path === '/') && auth.isAuthenticated.value) {
-    return next('/athletes')
+    return next('/dashboard')
   }
 
   const handleBlockedRoute = (title: string, message: string, badge?: string, requiresLogin = false) => {
@@ -127,7 +133,7 @@ router.beforeEach(async (to, from, next) => {
     if (from.name) {
       return next(false)
     }
-    return next('/athletes')
+    return next(auth.isAuthenticated.value ? '/dashboard' : '/athletes')
   }
 
   // Admin route protection

@@ -1927,11 +1927,11 @@ onMounted(() => {
     border: none;
     background: transparent;
     color: #475569;
-    padding: 6px 8px;
+    padding: 5px 8px;
     border-radius: 6px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 700;
-    min-height: 36px;
+    min-height: 32px;
     cursor: pointer;
   }
   .s-switch-btn.active {
@@ -1941,16 +1941,16 @@ onMounted(() => {
   }
   .session-mobile-list {
     flex-direction: column;
-    gap: 8px;
+    gap: 7px;
   }
   .session-m-res-card {
     background: #ffffff;
     border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 10px 12px;
+    border-radius: 9px;
+    padding: 9px 10px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 7px;
     cursor: pointer;
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
   }
@@ -2001,7 +2001,7 @@ onMounted(() => {
     min-width: 0;
   }
   .smr-name {
-    font-size: 0.92rem;
+    font-size: 0.85rem;
     line-height: 1.2;
   }
   .smr-tags {
@@ -2045,7 +2045,7 @@ onMounted(() => {
     text-align: right;
   }
   .smr-total-val {
-    font-size: 0.95rem;
+    font-size: 0.86rem;
     color: #0f172a;
   }
 

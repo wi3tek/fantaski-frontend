@@ -24,7 +24,7 @@ const safeRedirectTarget = computed(() => {
   if (raw && raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/login')) {
     return raw
   }
-  return '/athletes'
+  return '/dashboard'
 })
 
 const redirectAfterLogin = () => {

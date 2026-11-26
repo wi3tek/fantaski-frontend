@@ -1109,11 +1109,36 @@ const submitSearch = () => {
 /* Responsive Form */
 @media (max-width: 768px) {
   .form-grid {
-    grid-template-columns: 1fr; /* Wszystko w jednej kolumnie */
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .quick-presets-bar {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .preset-chip {
+    font-size: 0.74rem;
+    padding: 4px 9px;
+  }
+  .toggle-esm {
+    padding: 5px 10px;
+    font-size: 0.76rem;
+  }
+  .advanced-filters-toggle {
+    padding: 8px 10px;
+  }
+  .toggle-text,
+  .toggle-icon {
+    font-size: 0.76rem;
+  }
+  .dropdown-trigger {
+    font-size: 0.82rem;
+    padding: 7px 9px;
   }
   .price-sliders-container {
     flex-direction: column;
-    gap: 20px;
+    gap: 14px;
+    padding: 10px 12px;
   }
   .form-actions {
     flex-direction: column;
@@ -1122,14 +1147,17 @@ const submitSearch = () => {
   .btn-clear,
   .btn-submit {
     width: 100%;
-    padding: 16px; /* Większy obszar kliknięcia dla palca */
+    padding: 12px;
+    font-size: 0.9rem;
   }
   .chips-box {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
   }
   .chip {
-    justify-content: space-between;
+    font-size: 0.76rem;
+    padding: 3px 8px;
   }
   .saved-sets-toolbar {
     flex-direction: column;

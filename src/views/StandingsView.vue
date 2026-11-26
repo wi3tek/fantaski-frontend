@@ -435,8 +435,8 @@ onMounted(() => {
   .filters-container {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    padding: 12px;
+    gap: 8px;
+    padding: 10px;
     align-items: end;
   }
   .filter-box {
@@ -449,17 +449,17 @@ onMounted(() => {
   }
   .standings-mobile-list {
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
   }
   .standing-m-card {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
-    padding: 10px 12px;
+    gap: 8px;
+    padding: 8px 10px;
     background: #ffffff;
     border: 1px solid #e2e8f0;
-    border-radius: 10px;
+    border-radius: 9px;
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
   }
   .standing-m-card.podium-gold {
@@ -477,17 +477,18 @@ onMounted(() => {
   .st-m-left {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     min-width: 0;
     flex: 1;
   }
   .st-rank-num {
-    min-width: 28px;
+    min-width: 26px;
     text-align: center;
     background: #f1f5f9;
-    padding: 3px 6px;
-    border-radius: 6px;
+    padding: 2px 5px;
+    border-radius: 5px;
     font-weight: 700;
+    font-size: 0.76rem;
   }
   .st-m-identity {
     display: flex;
@@ -495,14 +496,14 @@ onMounted(() => {
     min-width: 0;
   }
   .st-m-name {
-    font-size: 0.92rem;
+    font-size: 0.85rem;
     font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .st-m-meta {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: #64748b;
   }
   .st-m-points {
@@ -514,15 +515,15 @@ onMounted(() => {
     font-variant-numeric: tabular-nums;
     background: #f8fafc;
     border: 1px solid #e2e8f0;
-    padding: 4px 9px;
-    border-radius: 8px;
+    padding: 3px 8px;
+    border-radius: 7px;
   }
   .st-m-points strong {
-    font-size: 1rem;
+    font-size: 0.88rem;
     color: #0f172a;
   }
   .st-m-points small {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     color: #64748b;
   }
 }

@@ -3681,17 +3681,21 @@ onMounted(async () => {
   }
   .pill-btn {
     flex-shrink: 0;
+    font-size: 0.74rem;
+    padding: 5px 11px;
   }
   .search-input {
     width: 100%;
     box-sizing: border-box;
+    font-size: 0.82rem;
+    padding: 7px 10px;
   }
 
   /* Pasek sortowania i przełącznik Karty / Tabela na mobilce */
   .mobile-pred-controls {
     flex-direction: column;
     gap: 8px;
-    padding: 10px 12px;
+    padding: 9px 12px;
     background: #f8fafc;
     border-top: 1px solid #e2e8f0;
     border-bottom: 1px solid #e2e8f0;
@@ -3703,7 +3707,7 @@ onMounted(async () => {
     width: 100%;
   }
   .mpc-sort-group label {
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 700;
     color: #475569;
     white-space: nowrap;
@@ -3711,28 +3715,29 @@ onMounted(async () => {
   .mpc-select {
     flex: 1;
     min-width: 0;
-    padding: 6px 8px;
+    padding: 5px 8px;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
     background: #ffffff;
     color: #0f172a;
+    font-size: 0.8rem;
     font-weight: 600;
   }
   .mpc-order-btn {
-    padding: 6px 10px;
+    padding: 5px 9px;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
     background: #ffffff;
     color: #0369a1;
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     font-weight: 700;
-    min-height: 38px;
+    min-height: 34px;
     flex-shrink: 0;
   }
   .mpc-view-switch {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 6px;
+    gap: 4px;
     background: #e2e8f0;
     padding: 3px;
     border-radius: 8px;
@@ -3741,11 +3746,11 @@ onMounted(async () => {
     border: none;
     background: transparent;
     color: #475569;
-    padding: 6px 8px;
+    padding: 5px 8px;
     border-radius: 6px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 700;
-    min-height: 36px;
+    min-height: 32px;
     cursor: pointer;
   }
   .mpc-switch-btn.active {
@@ -3757,18 +3762,18 @@ onMounted(async () => {
   /* Karty prognoz mobilnych */
   .pred-mobile-list {
     flex-direction: column;
-    gap: 10px;
-    padding: 12px;
+    gap: 8px;
+    padding: 10px;
     background: #f8fafc;
   }
   .pred-m-card {
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 10px;
-    padding: 12px;
+    padding: 10px 11px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04);
   }
   .pmc-top {
@@ -3780,7 +3785,7 @@ onMounted(async () => {
   .pmc-identity {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
     min-width: 0;
     flex: 1;
   }
@@ -3791,7 +3796,7 @@ onMounted(async () => {
     gap: 2px;
   }
   .pmc-name {
-    font-size: 0.94rem;
+    font-size: 0.86rem;
     line-height: 1.25;
   }
   .pmc-sub-tags {

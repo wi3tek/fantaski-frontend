@@ -4,6 +4,13 @@
     --touch-target-min: 44px;
     --header-height: 56px;
 
+    /* Skala typografii (Minor Third 1.2) */
+    --text-xs: 0.72rem;
+    --text-sm: 0.8125rem;
+    --text-base: 0.875rem;
+    --text-md: 0.9375rem;
+    --text-lg: 1.125rem;
+
     /* Spójna paleta kolorów FantaSKI (Winter / Alpine Sky Theme) */
     --color-primary: #0284c7;
     --color-primary-hover: #0369a1;
@@ -42,6 +49,7 @@ html, body, #app {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     line-height: 1.5;
+    touch-action: manipulation;
 }
 
 /* Dostępność klawiatury (WCAG Focus Visible) */
@@ -434,11 +442,15 @@ th:hover {
     pointer-events: none;
 }
 
-/* Dotykowy komfort na urządzeniach mobilnych */
+/* Dotykowy komfort i zwarte proporcje typografii na urządzeniach mobilnych */
 @media (max-width: 768px) {
-    /* iOS Safari auto-zoom prevention + zapobieganie rozpychaniu siatki przez date/select */
+    html, body {
+        font-size: 15px;
+    }
+
+    /* Zgrabniejsza typografia formularzy i filtrów na mobilce (zamiast ciężkich 16px) */
     input, select, textarea {
-        font-size: 16px !important;
+        font-size: 0.85rem !important;
         min-width: 0;
         max-width: 100%;
     }
@@ -448,6 +460,40 @@ th:hover {
         font-size: inherit !important;
     }
 
+    .filter-group label,
+    .filter-box label,
+    .filter-item label {
+        font-size: 0.68rem !important;
+    }
+
+    .filter-input,
+    .filter-input-sm,
+    .filter-group input,
+    .filter-group select {
+        font-size: 0.82rem !important;
+        padding: 7px 9px;
+    }
+
+    /* Kompaktowe czcionki i odstępy w tabelach na mobilce */
+    table.results-table th,
+    table.sessions-table th,
+    table.predictions-table th,
+    table.analytics-table th,
+    table.history-table th {
+        font-size: 0.68rem;
+        padding: 6px 6px;
+    }
+
+    table.results-table td,
+    table.sessions-table td,
+    table.predictions-table td,
+    table.analytics-table td,
+    table.history-table td {
+        font-size: 0.77rem;
+        padding: 7px 6px;
+        line-height: 1.3;
+    }
+
     .btn,
     .btn-primary,
     .btn-secondary,
@@ -455,7 +501,7 @@ th:hover {
     .btn-details,
     .btn-load-more,
     .nav-links a {
-        min-height: var(--touch-target-min);
+        min-height: 40px;
     }
 
     .card {

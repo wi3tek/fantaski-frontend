@@ -27,6 +27,10 @@ const isMenuOpen = ref<boolean>(false)
 const isStatsDropdownOpen = ref<boolean>(false)
 const isUserDropdownOpen = ref<boolean>(false)
 const isNotifDropdownOpen = ref<boolean>(false)
+const deferredInstallPrompt = ref<any>(null)
+const isAppInstalled = ref<boolean>(false)
+const showInstallGuideModal = ref<boolean>(false)
+const isIosDevice = ref<boolean>(false)
 let notifPollTimer: any = null
 const devEmail = ref<string>('')
 const devName = ref<string>('')
@@ -121,6 +125,44 @@ const handleLogout = () => {
   router.replace('/')
 }
 
+const detectStandaloneMode = () => {
+  if (typeof window === 'undefined') return false
+  return Boolean(
+    window.matchMedia?.('(display-mode: standalone)').matches ||
+      (window.navigator as any)?.standalone === true,
+  )
+}
+
+const handleBeforeInstallPrompt = (e: Event) => {
+  e.preventDefault()
+  deferredInstallPrompt.value = e
+}
+
+const handleAppInstalled = () => {
+  deferredInstallPrompt.value = null
+  isAppInstalled.value = true
+  showInstallGuideModal.value = false
+}
+
+const triggerPwaInstall = async () => {
+  if (deferredInstallPrompt.value) {
+    try {
+      await deferredInstallPrompt.value.prompt()
+      const choice = await deferredInstallPrompt.value.userChoice
+      if (choice?.outcome === 'accepted') {
+        isAppInstalled.value = true
+      }
+      deferredInstallPrompt.value = null
+    } catch {
+      showInstallGuideModal.value = true
+    }
+    closeNavigation()
+    return
+  }
+  closeNavigation()
+  showInstallGuideModal.value = true
+}
+
 // Inicjalizacja Google One Tap / Button
 const initGoogleSignIn = () => {
   if (typeof window === 'undefined') return
@@ -195,6 +237,10 @@ watch(
 onMounted(async () => {
   document.addEventListener('click', closeDropdown)
   window.addEventListener('auth:expired', handleAutoExpiredRedirect)
+  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+  window.addEventListener('appinstalled', handleAppInstalled)
+  isAppInstalled.value = detectStandaloneMode()
+  isIosDevice.value = /iphone|ipad|ipod/i.test(navigator.userAgent || '')
   if (auth.sessionExpiredReason.value === 'expired' && isProtectedRoute(router.currentRoute.value)) {
     handleAutoExpiredRedirect()
     return
@@ -216,6 +262,8 @@ onMounted(async () => {
 onUnmounted(() => {
   document.removeEventListener('click', closeDropdown)
   window.removeEventListener('auth:expired', handleAutoExpiredRedirect)
+  window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+  window.removeEventListener('appinstalled', handleAppInstalled)
   stopEventStream()
   if (notifPollTimer) clearInterval(notifPollTimer)
 })
@@ -225,7 +273,7 @@ onUnmounted(() => {
   <div class="app-layout">
     <header class="app-header">
       <div class="header-container">
-        <RouterLink to="/" @click="closeNavigation" class="brand-link">
+        <RouterLink :to="auth.isAuthenticated.value ? '/dashboard' : '/'" @click="closeNavigation" class="brand-link">
           <div class="logo">
             <img src="/logo.png" alt="FantaSKI Logo" class="brand-logo-img" />
             <span class="logo-text">Fanta<strong>SKI</strong></span>
@@ -260,6 +308,10 @@ onUnmounted(() => {
               🚀 Zaloguj się na konto
             </button>
           </div>
+
+          <RouterLink v-if="auth.isAuthenticated.value" to="/dashboard" @click="closeNavigation">
+            🏠 Pulpit
+          </RouterLink>
 
           <div class="drawer-section-label">Bazy Danych</div>
           <RouterLink to="/athletes" @click="closeNavigation">🎿 Baza skoczków</RouterLink>
@@ -330,6 +382,13 @@ onUnmounted(() => {
             </RouterLink>
             <button class="logout-menu-btn" @click="handleLogout">
               🚪 Wyloguj się
+            </button>
+          </div>
+
+          <div v-if="!isAppInstalled" class="pwa-install-drawer-wrap">
+            <div class="drawer-section-label">Aplikacja na telefon</div>
+            <button type="button" class="pwa-install-drawer-btn" @click="triggerPwaInstall">
+              📲 Zainstaluj na ekranie głównym
             </button>
           </div>
         </nav>
@@ -564,6 +623,49 @@ onUnmounted(() => {
           </button>
           <button class="btn-notice-close" @click="notice.closeNotice()">
             Zamknij
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- INSTRUKCJA INSTALACJI PWA (gdy przeglądarka wymaga ręcznego dodania, np. iOS Safari) -->
+    <div
+      v-if="showInstallGuideModal"
+      class="auth-modal-overlay"
+      @click.self="showInstallGuideModal = false"
+    >
+      <div class="auth-modal notice-modal">
+        <button class="auth-close-btn" @click="showInstallGuideModal = false">&times;</button>
+        <div class="notice-modal-header">
+          <div class="notice-icon-box">
+            <img src="/pwa-192x192.png" alt="FantaSKI" style="width: 34px; height: 34px; object-fit: contain;" />
+          </div>
+          <span class="notice-badge">APLIKACJA NA TELEFON</span>
+          <h3>Zainstaluj FantaSKI na ekranie</h3>
+          <p class="notice-desc">
+            <template v-if="isIosDevice">
+              W przeglądarce <strong>Safari (iPhone / iPad)</strong> dodasz aplikację w 2 krokach:
+            </template>
+            <template v-else>
+              Dodaj ikonę FantaSKI bezpośrednio do pulpitu telefonu bez pobierania ze sklepu:
+            </template>
+          </p>
+        </div>
+
+        <ol class="install-steps-list">
+          <template v-if="isIosDevice">
+            <li>Dotknij ikony <strong>Udostępnij</strong> (kwadrat ze strzałką w górę na dole ekranu).</li>
+            <li>Wybierz opcję <strong>„Do ekranu głównego”</strong> i zatwierdź przyciskiem <strong>Dodaj</strong>.</li>
+          </template>
+          <template v-else>
+            <li>Otwórz menu przeglądarki (ikona <strong>⋮</strong> w prawym górnym rogu).</li>
+            <li>Wybierz <strong>„Zainstaluj aplikację”</strong> lub <strong>„Dodaj do ekranu głównego”</strong>.</li>
+          </template>
+        </ol>
+
+        <div class="notice-modal-actions">
+          <button class="btn-notice-close" @click="showInstallGuideModal = false">
+            Rozumiem
           </button>
         </div>
       </div>
@@ -1477,8 +1579,20 @@ onUnmounted(() => {
 .drawer-user-card-mobile,
 .drawer-guest-card-mobile,
 .drawer-section-label,
-.mobile-only-account {
+.mobile-only-account,
+.pwa-install-drawer-wrap {
   display: none;
+}
+
+.install-steps-list {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: #334155;
+  font-size: 0.88rem;
+  line-height: 1.45;
 }
 
 @media (max-width: 1120px) {
@@ -1697,6 +1811,30 @@ onUnmounted(() => {
 
   .app-content {
     padding: 10px 12px;
+  }
+
+  .pwa-install-drawer-wrap {
+    display: block;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid #1e293b;
+  }
+
+  .pwa-install-drawer-btn {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    background: rgba(2, 132, 199, 0.18);
+    color: #bae6fd;
+    font-weight: 700;
+    font-size: 0.9em;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
   }
 }
 </style>
