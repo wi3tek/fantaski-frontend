@@ -4,10 +4,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { useAuth } from '@/stores/auth'
 import { useNotifications } from '@/stores/notifications'
+import { useI18n } from '@/i18n'
 import SkiLoader from '@/components/SkiLoader.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 
 const auth = useAuth()
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const { fetchNotifications, lastDraftEvent } = useNotifications()
@@ -782,7 +784,7 @@ onUnmounted(() => {
       <!-- NAGŁÓWEK -->
       <div class="draft-hero">
         <div>
-          <h1>⚡ Draft Fantasy Skoki</h1>
+          <h1>{{ t('nav.draft') }} Fantasy Skoki</h1>
           <p class="hero-sub">
             Twórz ligi drafta (3–8 skoczków w systemie Snake), zapraszaj innych graczy po nazwie i rywalizuj o sumę punktów klasyfikacji generalnej sezonu.
           </p>
@@ -1880,12 +1882,15 @@ onUnmounted(() => {
 }
 
 .plan-pill {
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  padding: 6px 12px;
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #e2e8f0;
+  padding: 5px 11px;
   border-radius: 999px;
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: default;
+  user-select: none;
 }
 
 .btn-hero-join {

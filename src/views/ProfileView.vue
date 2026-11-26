@@ -3,12 +3,14 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/stores/auth'
 import { useNotifications } from '@/stores/notifications'
+import { useI18n } from '@/i18n'
 import CountryFlag from '@/components/CountryFlag.vue'
 import { api } from '@/api/client'
 
 const auth = useAuth()
 const route = useRoute()
 const router = useRouter()
+const { locale, locales, setLocale, t } = useI18n()
 const {
   notifications: notifHistory,
   unreadCount: notifUnreadCount,
@@ -21,10 +23,12 @@ const {
 
 type ProfileTab = 'edit' | 'esm' | 'plan' | 'notifications' | 'messages'
 const validTabs: ProfileTab[] = ['edit', 'esm', 'plan', 'notifications', 'messages']
-const initialTab = validTabs.includes(route.query.tab as ProfileTab)
-  ? (route.query.tab as ProfileTab)
-  : 'edit'
-const activeProfileTab = ref<ProfileTab>(initialTab)
+const normalizeProfileTab = (raw: unknown): ProfileTab => {
+  if (raw === 'package') return 'plan'
+  if (typeof raw === 'string' && validTabs.includes(raw as ProfileTab)) return raw as ProfileTab
+  return 'edit'
+}
+const activeProfileTab = ref<ProfileTab>(normalizeProfileTab(route.query.tab))
 
 const setProfileTab = (tab: ProfileTab) => {
   activeProfileTab.value = tab
@@ -34,11 +38,7 @@ const setProfileTab = (tab: ProfileTab) => {
 watch(
   () => route.query.tab,
   (newTab) => {
-    if (typeof newTab === 'string' && validTabs.includes(newTab as ProfileTab)) {
-      activeProfileTab.value = newTab as ProfileTab
-    } else if (!newTab) {
-      activeProfileTab.value = 'edit'
-    }
+    activeProfileTab.value = normalizeProfileTab(newTab)
   }
 )
 
@@ -431,7 +431,7 @@ const formatDate = (isoString?: string) => {
           :class="{ active: activeProfileTab === 'edit' }"
           @click="setProfileTab('edit')"
         >
-          <span>✏️ Profil</span>
+          <span>{{ t('profile.tabEdit') }}</span>
         </button>
         <button
           type="button"
@@ -441,7 +441,7 @@ const formatDate = (isoString?: string) => {
           :class="{ active: activeProfileTab === 'esm' }"
           @click="setProfileTab('esm')"
         >
-          <span>🏆 esmManager</span>
+          <span>{{ t('profile.tabEsm') }}</span>
           <span v-if="esmStatus?.incoming_requests?.length" class="profile-tab-badge">
             {{ esmStatus.incoming_requests.length }}
           </span>
@@ -454,7 +454,7 @@ const formatDate = (isoString?: string) => {
           :class="{ active: activeProfileTab === 'plan' }"
           @click="setProfileTab('plan')"
         >
-          <span>💎 Pakiet</span>
+          <span>{{ t('profile.tabPlan') }}</span>
         </button>
         <button
           type="button"
@@ -464,7 +464,7 @@ const formatDate = (isoString?: string) => {
           :class="{ active: activeProfileTab === 'notifications' }"
           @click="setProfileTab('notifications')"
         >
-          <span>🔔 Powiadomienia</span>
+          <span>{{ t('profile.tabNotifications') }}</span>
           <span v-if="notifUnreadCount > 0" class="profile-tab-badge">{{ notifUnreadCount }}</span>
         </button>
         <button
@@ -475,7 +475,7 @@ const formatDate = (isoString?: string) => {
           :class="{ active: activeProfileTab === 'messages' }"
           @click="setProfileTab('messages')"
         >
-          <span>💬 Admin</span>
+          <span>{{ t('profile.tabMessages') }}</span>
           <span v-if="supportUnreadUser > 0" class="profile-tab-badge">{{ supportUnreadUser }}</span>
         </button>
       </div>
@@ -501,6 +501,24 @@ const formatDate = (isoString?: string) => {
                 maxlength="60"
               />
               <span class="field-hint">Nazwa ta będzie prezentowana w nagłówku strony i panelu analiz.</span>
+            </div>
+
+            <!-- WYBÓR JĘZYKA INTERFEJSU -->
+            <div class="form-group">
+              <label class="field-label">🌍 {{ t('nav.language') }} interfejsu:</label>
+              <div class="profile-lang-grid">
+                <button
+                  v-for="loc in locales"
+                  :key="'plang_' + loc.code"
+                  type="button"
+                  class="profile-lang-btn"
+                  :class="{ active: locale === loc.code }"
+                  @click="setLocale(loc.code)"
+                >
+                  <span>{{ loc.flag }}</span>
+                  <span>{{ loc.nativeName }}</span>
+                </button>
+              </div>
             </div>
 
             <!-- 2. ZARZĄDZANIE AWATAREM -->
@@ -2341,5 +2359,31 @@ const formatDate = (isoString?: string) => {
   flex-direction: column;
   gap: 10px;
   margin-top: 12px;
+}
+
+.profile-lang-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.profile-lang-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.profile-lang-btn.active {
+  background: #f0f9ff;
+  border-color: #0284c7;
+  color: #0369a1;
 }
 </style>

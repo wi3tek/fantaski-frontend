@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import SkiLoader from '@/components/SkiLoader.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import { API_BASE_URL } from '@/api/client'
@@ -8,8 +8,17 @@ import { useAuth } from '@/stores/auth'
 
 const auth = useAuth()
 const route = useRoute()
+const router = useRouter()
 const athlete = ref<any>(null)
 const loading = ref(true)
+
+const goBack = () => {
+  if (typeof window !== 'undefined' && window.history.length > 1) {
+    router.back()
+  } else {
+    router.push('/athletes')
+  }
+}
 
 onMounted(async () => {
   const fisCode = route.params.fis_code
@@ -36,7 +45,7 @@ onMounted(async () => {
 
     <div v-else>
       <div class="profile-header">
-        <RouterLink to="/athletes" class="btn-back">← Wróć do listy</RouterLink>
+        <button type="button" class="btn-back" @click="goBack" style="cursor: pointer">← Wróć</button>
 
         <RouterLink
           :to="{ path: '/stats', query: { fis_code: athlete.fis_code, name: athlete.full_name } }"

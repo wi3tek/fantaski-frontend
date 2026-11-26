@@ -443,7 +443,7 @@ th:hover {
 }
 
 /* Dotykowy komfort i zwarte proporcje typografii na urządzeniach mobilnych */
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
     html, body {
         font-size: 15px;
     }

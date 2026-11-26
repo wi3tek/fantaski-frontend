@@ -3163,96 +3163,175 @@ onUnmounted(() => {
         </div>
 
         <div v-else-if="usersList.length > 0">
-          <div v-if="filteredUsersList.length > 0" class="table-responsive">
+          <div v-if="filteredUsersList.length > 0">
             <div class="table-summary-bar">
               <span>Znaleziono: <strong>{{ filteredUsersList.length }}</strong> z <strong>{{ usersList.length }}</strong> zarejestrowanych użytkowników</span>
             </div>
-            <table class="admin-table">
-              <thead>
-                <tr>
-                  <th>Użytkownik</th>
-                  <th>Adres e-mail</th>
-                  <th>Data rejestracji</th>
-                  <th>Ostatnie logowanie</th>
-                  <th>Aktualna rola</th>
-                  <th>Zmień uprawnienia</th>
-                  <th>esmManager (Team ID)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="u in filteredUsersList" :key="u.id">
-                  <td>
-                    <div class="user-row-cell">
-                      <img v-if="u.picture" :src="u.picture" class="user-row-avatar" alt="Avatar" />
-                      <span v-else class="user-row-fallback">👤</span>
+
+            <div class="table-responsive desktop-users-only">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Użytkownik &amp; E-mail</th>
+                    <th>Rejestracja</th>
+                    <th>Ostatnie logowanie</th>
+                    <th>Rola</th>
+                    <th>Zmień uprawnienia</th>
+                    <th>esmManager (Team ID)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="u in filteredUsersList" :key="u.id">
+                    <td>
+                      <div class="user-row-cell">
+                        <img v-if="u.picture" :src="u.picture" class="user-row-avatar" alt="Avatar" />
+                        <span v-else class="user-row-fallback">👤</span>
+                        <div class="umc-name-col">
+                          <strong>{{ u.name }}</strong>
+                          <code class="admin-email-code">{{ u.email }}</code>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{{ u.created_at ? new Date(u.created_at).toLocaleDateString() : '-' }}</td>
+                    <td>{{ u.last_login ? new Date(u.last_login).toLocaleString() : '-' }}</td>
+                    <td>
+                      <span
+                        class="role-badge"
+                        :class="{
+                          'role-admin': u.role === 'ADMIN',
+                          'role-pro': u.role === 'USER_PRO',
+                          'role-user': u.role !== 'ADMIN' && u.role !== 'USER_PRO',
+                        }"
+                      >
+                        {{ u.role === 'ADMIN' ? 'ADMIN' : (u.role === 'USER_PRO' ? 'PRO' : 'FREE') }}
+                      </span>
+                    </td>
+                    <td>
+                      <select
+                        class="form-select role-select"
+                        :value="u.role === 'USER_LITE' ? 'USER' : u.role"
+                        :disabled="updatingUserId === u.id"
+                        @change="changeUserRole(u, ($event.target as HTMLSelectElement).value)"
+                      >
+                        <option value="USER">FREE</option>
+                        <option value="USER_PRO">PRO</option>
+                        <option value="ADMIN">ADMIN</option>
+                      </select>
+                    </td>
+                    <td>
+                      <div class="admin-esm-cell">
+                        <div v-if="u.esm_summary?.connected" class="admin-esm-status">
+                          <span class="esm-linked-pill">✅ {{ u.esm_summary.team_name || 'Zsynchronizowano' }}</span>
+                        </div>
+                        <div class="admin-esm-controls">
+                          <input
+                            v-model="esmTeamDrafts[u.id]"
+                            type="text"
+                            class="form-input esm-tid-input"
+                            placeholder="ESM Team ID..."
+                            :disabled="savingEsmUserId === u.id"
+                          />
+                          <button
+                            type="button"
+                            class="btn-esm-save"
+                            :disabled="savingEsmUserId === u.id || !(esmTeamDrafts[u.id] || '').trim()"
+                            @click="assignUserEsmTeam(u)"
+                            title="Przypisz i pobierz aktualny skład z ESM"
+                          >
+                            {{ savingEsmUserId === u.id ? '⏳' : (u.esm_summary?.connected ? '🔄' : '🔗') }}
+                          </button>
+                          <button
+                            v-if="u.esm_summary?.connected"
+                            type="button"
+                            class="btn-esm-unlink"
+                            :disabled="savingEsmUserId === u.id"
+                            @click="unlinkUserEsmTeam(u)"
+                            title="Odepnij ESM od użytkownika"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- KARTY MOBILNE UŻYTKOWNIKÓW (<= 768px) -->
+            <div class="users-mobile-cards mobile-users-only">
+              <div v-for="u in filteredUsersList" :key="'mu_' + u.id" class="user-m-card">
+                <div class="umc-top">
+                  <div class="user-row-cell">
+                    <img v-if="u.picture" :src="u.picture" class="user-row-avatar" alt="Avatar" />
+                    <span v-else class="user-row-fallback">👤</span>
+                    <div class="umc-name-col">
                       <strong>{{ u.name }}</strong>
+                      <code class="umc-email">{{ u.email }}</code>
                     </div>
-                  </td>
-                  <td><code>{{ u.email }}</code></td>
-                  <td>{{ u.created_at ? new Date(u.created_at).toLocaleDateString() : '-' }}</td>
-                  <td>{{ u.last_login ? new Date(u.last_login).toLocaleString() : '-' }}</td>
-                  <td>
-                    <span
-                      class="role-badge"
-                      :class="{
-                        'role-admin': u.role === 'ADMIN',
-                        'role-pro': u.role === 'USER_PRO',
-                        'role-user': u.role !== 'ADMIN' && u.role !== 'USER_PRO',
-                      }"
-                    >
-                      {{ u.role === 'ADMIN' ? 'ADMIN' : (u.role === 'USER_PRO' ? 'PRO' : 'FREE') }}
+                  </div>
+                  <span
+                    class="role-badge"
+                    :class="{
+                      'role-admin': u.role === 'ADMIN',
+                      'role-pro': u.role === 'USER_PRO',
+                      'role-user': u.role !== 'ADMIN' && u.role !== 'USER_PRO',
+                    }"
+                  >
+                    {{ u.role === 'ADMIN' ? 'ADMIN' : (u.role === 'USER_PRO' ? 'PRO' : 'FREE') }}
+                  </span>
+                </div>
+
+                <div class="umc-field">
+                  <label>Uprawnienia:</label>
+                  <select
+                    class="form-select role-select"
+                    :value="u.role === 'USER_LITE' ? 'USER' : u.role"
+                    :disabled="updatingUserId === u.id"
+                    @change="changeUserRole(u, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="USER">FREE</option>
+                    <option value="USER_PRO">PRO</option>
+                    <option value="ADMIN">ADMIN</option>
+                  </select>
+                </div>
+
+                <div class="umc-field">
+                  <label>
+                    esmManager Team ID
+                    <span v-if="u.esm_summary?.connected" class="esm-linked-pill" style="margin-left: 6px;">
+                      ✅ {{ u.esm_summary.team_name || 'OK' }}
                     </span>
-                  </td>
-                  <td>
-                    <select
-                      class="form-select role-select"
-                      :value="u.role === 'USER_LITE' ? 'USER' : u.role"
-                      :disabled="updatingUserId === u.id"
-                      @change="changeUserRole(u, ($event.target as HTMLSelectElement).value)"
+                  </label>
+                  <div class="admin-esm-controls">
+                    <input
+                      v-model="esmTeamDrafts[u.id]"
+                      type="text"
+                      class="form-input esm-tid-input"
+                      placeholder="ESM Team ID..."
+                      :disabled="savingEsmUserId === u.id"
+                    />
+                    <button
+                      type="button"
+                      class="btn-esm-save"
+                      :disabled="savingEsmUserId === u.id || !(esmTeamDrafts[u.id] || '').trim()"
+                      @click="assignUserEsmTeam(u)"
                     >
-                      <option value="USER">Konto darmowe (1 liga Draft, max 2 w Porównywarce)</option>
-                      <option value="USER_PRO">FantaSKI PRO (Pełna analityka, Draft &amp; Predykcje AI)</option>
-                      <option value="ADMIN">Administrator</option>
-                    </select>
-                  </td>
-                  <td>
-                    <div class="admin-esm-cell">
-                      <div v-if="u.esm_summary?.connected" class="admin-esm-status">
-                        <span class="esm-linked-pill">✅ {{ u.esm_summary.team_name || 'Zsynchronizowano' }}</span>
-                      </div>
-                      <div class="admin-esm-controls">
-                        <input
-                          v-model="esmTeamDrafts[u.id]"
-                          type="text"
-                          class="form-input esm-tid-input"
-                          placeholder="ESM Team ID..."
-                          :disabled="savingEsmUserId === u.id"
-                        />
-                        <button
-                          type="button"
-                          class="btn-esm-save"
-                          :disabled="savingEsmUserId === u.id || !(esmTeamDrafts[u.id] || '').trim()"
-                          @click="assignUserEsmTeam(u)"
-                          title="Przypisz i pobierz aktualny skład z ESM"
-                        >
-                          {{ savingEsmUserId === u.id ? '⏳' : (u.esm_summary?.connected ? '🔄' : '🔗') }}
-                        </button>
-                        <button
-                          v-if="u.esm_summary?.connected"
-                          type="button"
-                          class="btn-esm-unlink"
-                          :disabled="savingEsmUserId === u.id"
-                          @click="unlinkUserEsmTeam(u)"
-                          title="Odepnij ESM od użytkownika"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                      {{ savingEsmUserId === u.id ? '⏳' : (u.esm_summary?.connected ? '🔄' : '🔗') }}
+                    </button>
+                    <button
+                      v-if="u.esm_summary?.connected"
+                      type="button"
+                      class="btn-esm-unlink"
+                      :disabled="savingEsmUserId === u.id"
+                      @click="unlinkUserEsmTeam(u)"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <div v-else class="empty-filter-state">
             <p>Nie znaleziono użytkowników spełniających podane kryteria wyszukiwania.</p>
@@ -3272,7 +3351,7 @@ onUnmounted(() => {
           <div>
             <h3>🧠 Sieć neuronowa — Trening modelu</h3>
             <p class="subtitle">
-              Zarządzanie modelem predykcyjnym PyTorch (25 cech: skocznia, forma z time-decay, korytarz wiatru, konwersja presji, profil lotności i doświadczenie PŚ).
+              Zarządzanie modelem predykcyjnym PyTorch ({{ modelInfo?.metadata?.input_features || 25 }} cech: skocznia, forma z time-decay, korytarz wiatru, konwersja presji, profil lotności i doświadczenie PŚ).
             </p>
           </div>
           <div class="header-badges">
@@ -3693,7 +3772,7 @@ onUnmounted(() => {
 <style scoped>
 .admin-page {
   padding: 24px 30px;
-  max-width: 1080px;
+  max-width: 1180px;
   margin: 0 auto;
   color: #1e293b;
 }
@@ -3709,20 +3788,21 @@ onUnmounted(() => {
 /* Taby */
 .tabs {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-bottom: 24px;
   border-bottom: 1px solid #e2e8f0;
 }
 .tabs button {
-  padding: 10px 18px;
+  padding: 9px 11px;
   border: none;
   background: none;
-  font-size: 0.95em;
+  font-size: 0.88em;
   cursor: pointer;
   color: #64748b;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   white-space: nowrap;
   font-weight: 500;
   border-bottom: 2px solid transparent;
@@ -4261,9 +4341,11 @@ onUnmounted(() => {
 .role-select {
   padding: 6px 10px;
   font-size: 0.85em;
-  font-weight: 500;
+  font-weight: 600;
   border-radius: 6px;
-  max-width: 260px;
+  min-width: 96px;
+  max-width: 140px;
+  white-space: nowrap;
 }
 .alert-success-box {
   background: #dcfce7;
@@ -6084,6 +6166,7 @@ onUnmounted(() => {
 
 .support-thread-item {
   width: 100%;
+  box-sizing: border-box;
   text-align: left;
   padding: 10px 12px;
   border-radius: 10px;
@@ -6091,7 +6174,10 @@ onUnmounted(() => {
   background: #f8fafc;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   gap: 3px;
+  overflow: hidden;
   cursor: pointer;
 }
 
@@ -6110,17 +6196,27 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+  width: 100%;
+  min-width: 0;
   font-size: 0.88rem;
   color: #0f172a;
 }
 
 .sti-email {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.74rem;
   color: #64748b;
-  word-break: break-all;
 }
 
 .sti-preview {
+  display: block;
+  width: 100%;
+  min-width: 0;
   font-size: 0.78rem;
   color: #334155;
   overflow: hidden;
@@ -6212,9 +6308,118 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.admin-email-code {
+  display: inline-block;
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.admin-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.admin-email-code {
+  font-size: 0.76rem;
+  color: #334155;
+  word-break: break-word;
+}
+
+.esm-tid-input {
+  flex: 1;
+  min-width: 125px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.76rem;
+  padding: 5px 8px;
+}
+
+.users-mobile-cards.mobile-users-only {
+  display: none;
+}
+
+.user-m-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.umc-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.umc-name-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.umc-email {
+  font-size: 0.74rem;
+  color: #64748b;
+  word-break: break-all;
+}
+
+.umc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.umc-field label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+}
+
 @media (max-width: 900px) {
   .admin-support-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .desktop-users-only {
+    display: none !important;
+  }
+  .users-mobile-cards.mobile-users-only {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 </style>

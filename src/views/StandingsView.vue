@@ -3,6 +3,9 @@ import { ref, onMounted, computed, watch } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import { api } from '@/api/client'
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
 
 interface StandingAthlete {
   rank: number
@@ -46,6 +49,23 @@ const availableSeasons = computed(() => {
   }
   return years
 })
+
+const formatSeasonLabel = (yearStr: string) => {
+  const y = Number(yearStr)
+  if (!Number.isFinite(y) || y < 1950) return `${t('common.season')} ${yearStr}`
+  return `${t('common.season')} ${y - 1}/${y}`
+}
+
+const formatStartsLabel = (count: number) => {
+  const n = Number(count || 0)
+  if (n === 1) return '1 start'
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return `${n} starty`
+  }
+  return `${n} startów`
+}
 
 // --- Pobieranie Danych z MongoDB ---
 const loadStandings = async () => {
@@ -91,7 +111,7 @@ onMounted(() => {
     <SkiLoader v-if="isLoading">Generowanie klasyfikacji generalnej z bazy danych</SkiLoader>
 
     <div class="standings-header">
-      <h2>🏆 Klasyfikacje Generalne FIS</h2>
+      <h2>{{ t('nav.standings') }}</h2>
       <p v-if="!isLoading && totalEvents > 0" class="events-count">
         Przetworzono konkursów: <strong>{{ totalEvents }}</strong>
       </p>
@@ -102,7 +122,7 @@ onMounted(() => {
         <label>Sezon:</label>
         <select v-model="selectedSeason" class="filter-input">
           <option v-for="year in availableSeasons" :key="year" :value="year">
-            Sezon {{ year }}
+            {{ formatSeasonLabel(year) }}
           </option>
         </select>
       </div>
@@ -197,7 +217,7 @@ onMounted(() => {
                 <RouterLink :to="'/athletes/' + athlete.fis_code" class="athlete-link st-m-name">
                   {{ athlete.name }}
                 </RouterLink>
-                <span class="st-m-meta">{{ athlete.country }} • {{ athlete.starts }} startów</span>
+                <span class="st-m-meta">{{ athlete.country }} • {{ formatStartsLabel(athlete.starts) }}</span>
               </div>
             </div>
 
@@ -336,7 +356,12 @@ onMounted(() => {
 .podium-bronze { background-color: rgba(254, 237, 213, 0.3); }
 
 .rank-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 2px 6px;
   border-radius: 4px;
   font-weight: 600;
@@ -422,7 +447,7 @@ onMounted(() => {
   display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
   .desktop-only {
     display: none !important;
   }

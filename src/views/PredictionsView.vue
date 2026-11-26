@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
 import SkiLoader from '@/components/SkiLoader.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import { api } from '@/api/client'
@@ -175,7 +178,10 @@ const weather = ref<WeatherState>({
 const isFetchingWeather = ref(false)
 const weatherMessage = ref<string | null>(null)
 const weatherCorridor = ref<WeatherCorridor | null>(null)
-const isWeatherCollapsed = ref(typeof window !== 'undefined' ? window.innerWidth <= 768 : false)
+const isCompactViewport = () =>
+  typeof window !== 'undefined' &&
+  (window.innerWidth <= 768 || (window.innerWidth <= 960 && window.innerHeight <= 520))
+const isWeatherCollapsed = ref(isCompactViewport())
 const showModelTechDetails = ref(false)
 
 // --- Wybór zawodów z kalendarza FIS ---
@@ -633,7 +639,23 @@ watch([selectedHillId, isCustomHill], () => {
   fetchWeatherForecast()
 })
 
+const onPredictionsKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    if (showCalendarModal.value) showCalendarModal.value = false
+    if (showLegendModal.value) showLegendModal.value = false
+  }
+}
+
+onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('keydown', onPredictionsKeydown)
+  }
+})
+
 onMounted(async () => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', onPredictionsKeydown)
+  }
   isInitializing.value = true
   try {
     await Promise.all([
@@ -665,7 +687,7 @@ onMounted(async () => {
           <span class="badge-icon">🔮</span>
           <span>PROGNOZY AI NA KONKURS</span>
         </div>
-        <h1 class="hero-title">Prognozy</h1>
+        <h1 class="hero-title">{{ t('nav.predictions') }}</h1>
         <p class="hero-desc">
           Sztuczna inteligencja ocenia aktualną formę skoczków, wyniki na wybranej skoczni, pogodę i powtarzalność skoków, aby oszacować szanse w nadchodzącym konkursie.
         </p>
@@ -1781,7 +1803,7 @@ onMounted(async () => {
     </div>
 
     <!-- MODAL WYBORU ZAWODÓW Z KALENDARZA FIS -->
-    <div v-if="showCalendarModal" class="cal-modal-overlay" @click.self="showCalendarModal = false">
+    <div v-if="showCalendarModal" class="cal-modal-overlay" role="dialog" aria-modal="true" aria-label="Wybierz zawody z kalendarza FIS" @click.self="showCalendarModal = false">
       <div class="cal-modal">
         <div class="cal-modal-header">
           <h3>📅 Wybierz zawody z kalendarza FIS</h3>
@@ -3681,6 +3703,8 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   border: 1px solid #3b82f6;
   border-left: 5px solid #3b82f6;
@@ -3800,7 +3824,7 @@ onMounted(async () => {
   display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
   .desktop-only {
     display: none !important;
   }
@@ -4487,7 +4511,7 @@ onMounted(async () => {
   color: #991b1b;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
   .run-prediction-btn {
     font-size: 0.9rem;
     padding: 12px;

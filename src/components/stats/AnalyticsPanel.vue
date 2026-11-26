@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useAuth } from '@/stores/auth'
+
+const auth = useAuth()
 
 const props = defineProps<{
   groupedRows: any[]
@@ -7,26 +10,41 @@ const props = defineProps<{
   currentHillType?: string
 }>()
 
-const sortKey = ref<string>('pointsPerPrice')
-const sortOrder = ref<'asc' | 'desc'>('desc')
+const sortKey = ref<string>(auth.isPro.value ? 'pointsPerPrice' : 'avgRank')
+const sortOrder = ref<'asc' | 'desc'>(auth.isPro.value ? 'desc' : 'asc')
 const hoveredAthlete = ref<any | null>(null)
 const expandedAthlete = ref<string | null>(null)
 const mobileStatTab = ref<'basics' | 'rates' | 'hills'>('basics')
 
-const mobileSortOptions = [
-  { key: 'pointsPerPrice', label: 'Efektywność (Pkt / Cena)' },
-  { key: 'avgRank', label: 'Średnie miejsce' },
-  { key: 'totalPoints', label: 'Suma punktów FIS' },
-  { key: 'avgPoints', label: 'Średnia punktów' },
-  { key: 'hitRate30', label: 'Skuteczność Top 30 (%)' },
-  { key: 'hitRate10', label: 'Skuteczność Top 10 (%)' },
-  { key: 'hitRate3', label: 'Podium (%)' },
-  { key: 'trendDiff', label: 'Trend formy' },
-  { key: 'stdDev', label: 'Stabilność (σ)' },
-  { key: 'jumpCount', label: 'Liczba skoków' },
-  { key: 'price', label: 'Cena Fantasy' },
-  { key: 'name', label: 'Nazwisko (A-Z)' },
-]
+const mobileSortOptions = computed(() => {
+  const opts = [
+    ...(auth.isPro.value ? [{ key: 'pointsPerPrice', label: 'Efektywność (Pkt / Cena)' }] : []),
+    { key: 'avgRank', label: 'Średnie miejsce' },
+    { key: 'totalPoints', label: 'Suma punktów FIS' },
+    { key: 'avgPoints', label: 'Średnia punktów' },
+    { key: 'hitRate30', label: 'Skuteczność Top 30 (%)' },
+    { key: 'hitRate10', label: 'Skuteczność Top 10 (%)' },
+    { key: 'hitRate3', label: 'Podium (%)' },
+    { key: 'trendDiff', label: 'Trend formy' },
+    { key: 'stdDev', label: 'Stabilność (σ)' },
+    { key: 'jumpCount', label: 'Liczba skoków' },
+    ...(auth.isPro.value ? [{ key: 'price', label: 'Cena Fantasy' }] : []),
+    { key: 'name', label: 'Nazwisko (A-Z)' },
+  ]
+  return opts
+})
+
+const getTrendX = (index: number, total: number) => {
+  if (total <= 1) return 520
+  return 44 + index * ((1000 - 80) / (total - 1))
+}
+
+const getTrendJumps = (name: string) => {
+  return [...props.groupedRows]
+    .reverse()
+    .map((row) => row.athletes[name])
+    .filter((j) => j != null)
+}
 
 const onMobileSortKeyChange = (event: Event) => {
   const nextKey = (event.target as HTMLSelectElement).value
@@ -381,6 +399,80 @@ const filteredAnalytics = computed<AthleteStat[]>(() => {
   })
 })
 
+const scatterPlotPoints = computed(() => {
+  const items = filteredAnalytics.value.filter((a) => a.hasData && a.price)
+  const raw = items.map((ath) => {
+    const x = ((ath.price || 0) / 3.0) * 600
+    const y =
+      ath.avgRank && ath.avgRank <= 20
+        ? ((ath.avgRank - 1) / 19) * 200
+        : 200 + ((Math.min(ath.avgRank || 40, 40) - 20) / 20) * 200
+    const labelText = `${ath.name} (${Number(ath.price).toFixed(1)})`
+    const estWidth = Math.min(180, Math.max(78, labelText.length * 5.8 + 14))
+    return { ath, x, y, labelText, estWidth }
+  })
+
+  // Sort top-to-bottom so label placement is deterministic and avoids collisions
+  raw.sort((a, b) => a.y - b.y || a.x - b.x)
+
+  const placed: { x1: number; y1: number; x2: number; y2: number }[] = [
+    // Reserve axis corner labels so athlete tags never collide with them
+    { x1: 0, y1: 0, x2: 190, y2: 46 },
+    { x1: 420, y1: 0, x2: 600, y2: 42 },
+    { x1: 0, y1: 365, x2: 190, y2: 400 },
+    { x1: 420, y1: 365, x2: 600, y2: 400 },
+  ]
+
+  const candidates: [number, number][] = [
+    [0, -24],
+    [0, 14],
+    [12, -10],
+    [-12, -10],
+    [0, -40],
+    [0, 30],
+    [22, -24],
+    [-22, -24],
+  ]
+
+  return raw.map((pt) => {
+    let bestBox = { dx: 0, dy: -24, x1: pt.x - pt.estWidth / 2, y1: pt.y - 24, x2: pt.x + pt.estWidth / 2, y2: pt.y - 7 }
+    let minOverlap = Infinity
+
+    for (const [dx, dy] of candidates) {
+      const cx = Math.max(pt.estWidth / 2 + 4, Math.min(600 - pt.estWidth / 2 - 4, pt.x + dx))
+      const cy = Math.max(20, Math.min(375, pt.y + dy))
+      const box = {
+        dx: cx - pt.x,
+        dy: cy - pt.y,
+        x1: cx - pt.estWidth / 2,
+        y1: cy - 9,
+        x2: cx + pt.estWidth / 2,
+        y2: cy + 9,
+      }
+
+      let overlapArea = 0
+      for (const prev of placed) {
+        const ox = Math.max(0, Math.min(box.x2, prev.x2) - Math.max(box.x1, prev.x1))
+        const oy = Math.max(0, Math.min(box.y2, prev.y2) - Math.max(box.y1, prev.y1))
+        overlapArea += ox * oy
+      }
+
+      if (overlapArea < minOverlap) {
+        minOverlap = overlapArea
+        bestBox = box
+        if (overlapArea === 0) break
+      }
+    }
+
+    placed.push({ x1: bestBox.x1, y1: bestBox.y1, x2: bestBox.x2, y2: bestBox.y2 })
+    return {
+      ...pt,
+      labelDx: bestBox.dx,
+      labelDy: bestBox.dy,
+    }
+  })
+})
+
 // Liderzy Statystyczni w Wybranych Zawodach (Obiektywne Fakty Liczbowe)
 const statisticalLeaders = computed(() => {
   const active = rawAthleteAnalytics.value.filter((a) => a.hasData && a.jumpCount > 0)
@@ -423,19 +515,14 @@ const statisticalLeaders = computed(() => {
 })
 
 const getTrendPath = (athleteName: string) => {
-  const athleteJumps = [...props.groupedRows]
-    .reverse()
-    .map((row) => row.athletes[athleteName])
-    .filter((j) => j != null)
+  const athleteJumps = getTrendJumps(athleteName)
   if (athleteJumps.length < 2) return ''
-  const width = 1000
   const height = 150
   const padding = 20
-  const xStep = (width - 2 * padding) / (athleteJumps.length - 1)
   const yScale = (rank: number) =>
-    padding + ((Math.min(Math.max(rank, 1), 50) - 1) / 49) * (height - 2 * padding)
+    15 + ((Math.min(Math.max(rank, 1), 50) - 1) / 49) * (height - 15)
   return athleteJumps
-    .map((j, i) => `${i === 0 ? 'M' : 'L'} ${padding + i * xStep},${yScale(j.jump_rank)}`)
+    .map((j, i) => `${i === 0 ? 'M' : 'L'} ${getTrendX(i, athleteJumps.length)},${yScale(j.jump_rank)}`)
     .join(' ')
 }
 </script>
@@ -458,8 +545,8 @@ const getTrendPath = (athleteName: string) => {
 
       <!-- KAFELKI LIDERÓW STATYSTYCZNYCH Z PRÓB -->
       <div v-if="statisticalLeaders" class="insights-grid">
-        <!-- 1. NAJWYŻSZA EFEKTYWNOŚĆ -->
-        <div v-if="statisticalLeaders.mostEfficient" class="insight-card card-steal">
+        <!-- 1. NAJWYŻSZA EFEKTYWNOŚĆ (PRO) -->
+        <div v-if="auth.isPro.value && statisticalLeaders.mostEfficient" class="insight-card card-steal">
           <div class="insight-header">
             <span class="insight-badge">💎 NAJWYŻSZA EFEKTYWNOŚĆ</span>
             <span class="insight-val">{{ statisticalLeaders.mostEfficient.pointsPerPrice?.toFixed(2) }} pkt/cena</span>
@@ -539,7 +626,7 @@ const getTrendPath = (athleteName: string) => {
         </div>
 
         <div class="filter-toggles-row">
-          <label class="filter-checkbox-label">
+          <label v-if="auth.isPro.value" class="filter-checkbox-label">
             <input type="checkbox" v-model="filterOnlyPriced" />
             <span>💰 Tylko z wyceną</span>
           </label>
@@ -629,12 +716,12 @@ const getTrendPath = (athleteName: string) => {
             :class="{ active: mobileStatTab === 'hills' }"
             @click="mobileStatTab = 'hills'"
           >
-            🏔️ Skocznie i zakres
+            🏔️ Skocznie
           </button>
         </div>
       </div>
 
-      <!-- KARTY ANALITYCZNE NA MOBILCE (<= 768px) -->
+      <!-- KARTY ANALITYCZNE NA MOBILCE (<= 768px / landscape) -->
       <div class="analytics-mobile-list mobile-only">
         <div v-if="filteredAnalytics.length === 0" class="no-data-msg">
           Brak zawodników spełniających nałożone kryteria filtrów.
@@ -653,7 +740,7 @@ const getTrendPath = (athleteName: string) => {
                 expandedAthlete === stat.name ? '▼' : '▶'
               }}</span>
               <strong class="amc-athlete-name">{{ stat.name }}</strong>
-              <span v-if="stat.price" class="badge price-badge-fantasy">
+              <span v-if="auth.isPro.value && stat.price" class="badge price-badge-fantasy">
                 {{ Number(stat.price).toFixed(1) }}
               </span>
             </div>
@@ -664,7 +751,7 @@ const getTrendPath = (athleteName: string) => {
 
           <template v-if="stat.hasData">
             <!-- ZAKŁADKA 1: FORMA & PUNKTY -->
-            <div v-if="mobileStatTab === 'basics'" class="amc-kpi-grid">
+            <div v-if="mobileStatTab === 'basics'" class="amc-kpi-grid" :class="{ 'cols-3': !auth.isPro.value }">
               <div class="amc-kpi-box">
                 <span class="amc-kpi-label">Śr. msc</span>
                 <strong class="amc-kpi-val">{{ stat.avgRank?.toFixed(1) || '-' }}</strong>
@@ -674,7 +761,7 @@ const getTrendPath = (athleteName: string) => {
                 <strong class="amc-kpi-val points-val">{{ stat.totalPoints }}</strong>
                 <small class="amc-kpi-sub">śr. {{ stat.avgPoints.toFixed(1) }}</small>
               </div>
-              <div class="amc-kpi-box">
+              <div v-if="auth.isPro.value" class="amc-kpi-box">
                 <span class="amc-kpi-label">Pkt / Cena</span>
                 <strong
                   v-if="stat.pointsPerPrice !== null"
@@ -727,7 +814,7 @@ const getTrendPath = (athleteName: string) => {
               <div class="amc-chips-row" style="border-top: none; padding-top: 0;">
                 <span class="amc-chip">Mediana: <strong>{{ stat.medianRank?.toFixed(1) || '-' }}</strong></span>
                 <span v-if="stat.bestRank !== null" class="amc-chip">
-                  Zakres: <strong>{{ stat.bestRank }}.–{{ stat.worstRank }}.</strong>
+                  Zakres: <strong>{{ stat.bestRank }}. – {{ stat.worstRank }}.</strong>
                 </span>
                 <span
                   class="stat-badge"
@@ -794,6 +881,7 @@ const getTrendPath = (athleteName: string) => {
                 Zawodnik {{ sortKey === 'name' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
+                v-if="auth.isPro.value"
                 class="sortable-th th-price"
                 :class="{ 'sorted-th': sortKey === 'price' }"
                 @click="sortBy('price')"
@@ -826,6 +914,7 @@ const getTrendPath = (athleteName: string) => {
                 Śr. Pkt {{ sortKey === 'avgPoints' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
+                v-if="auth.isPro.value"
                 class="sortable-th th-value"
                 :class="{ 'sorted-th': sortKey === 'pointsPerPrice' }"
                 @click="sortBy('pointsPerPrice')"
@@ -905,7 +994,7 @@ const getTrendPath = (athleteName: string) => {
           <tbody>
             <template v-if="filteredAnalytics.length === 0">
               <tr>
-                <td colspan="15" class="no-data-msg">
+                <td :colspan="auth.isPro.value ? 15 : 13" class="no-data-msg">
                   Brak zawodników spełniających nałożone kryteria filtrów.
                 </td>
               </tr>
@@ -926,7 +1015,7 @@ const getTrendPath = (athleteName: string) => {
 
                 <template v-if="stat.hasData">
                   <!-- CENA -->
-                  <td class="td-price">
+                  <td v-if="auth.isPro.value" class="td-price">
                     <span v-if="stat.price" class="badge price-badge-fantasy">
                       {{ Number(stat.price).toFixed(1) }}
                     </span>
@@ -949,7 +1038,7 @@ const getTrendPath = (athleteName: string) => {
                   </td>
 
                   <!-- WARTOŚĆ (PKT/CENA) -->
-                  <td class="td-value">
+                  <td v-if="auth.isPro.value" class="td-value">
                     <div
                       v-if="stat.pointsPerPrice !== null"
                       class="value-score-box"
@@ -1059,78 +1148,41 @@ const getTrendPath = (athleteName: string) => {
                   </td>
                 </template>
 
-                <td v-else colspan="14" class="no-data-msg">Brak danych dla wybranego zakresu</td>
+                <td v-else :colspan="auth.isPro.value ? 14 : 12" class="no-data-msg">Brak danych dla wybranego zakresu</td>
               </tr>
 
               <!-- PANEL ROZWINIĘCIA Z WYKRESEM SPARKLINE -->
               <tr v-if="expandedAthlete === stat.name" class="expansion-panel-row">
-                <td colspan="15">
+                <td :colspan="auth.isPro.value ? 15 : 13">
                   <div class="trend-chart-container">
                     <div class="chart-info">
                       <strong>Wykres Kolejnych Miejsc w Serii (Góra = 1. miejsce, Dół = 50. miejsce):</strong>
                       <span>Kliknij wiersz ponownie, aby zwinąć</span>
                     </div>
-                    <svg viewBox="-60 0 1060 180" class="trend-svg">
+                    <svg viewBox="-60 0 1060 190" class="trend-svg">
                       <line x1="0" y1="15" x2="1000" y2="15" class="guide-line top1" />
-                      <text x="-10" y="19" class="axis-text axis-y">1</text>
+                      <text x="-12" y="19" text-anchor="end" class="axis-text axis-y">1</text>
                       <line x1="0" y1="42" x2="1000" y2="42" class="guide-line top10" />
-                      <text x="-10" y="46" class="axis-text axis-y text-good">10</text>
+                      <text x="-12" y="46" text-anchor="end" class="axis-text axis-y text-good">10</text>
                       <line x1="0" y1="96" x2="1000" y2="96" class="guide-line top30" />
-                      <text x="-10" y="100" class="axis-text axis-y text-neutral">30</text>
+                      <text x="-12" y="100" text-anchor="end" class="axis-text axis-y text-neutral">30</text>
                       <line x1="0" y1="150" x2="1000" y2="150" class="guide-line top50" />
-                      <text x="-10" y="154" class="axis-text axis-y text-bad">50+</text>
+                      <text x="-12" y="152" text-anchor="end" class="axis-text axis-y text-bad">50+</text>
 
-                      <g
-                        v-if="
-                          [...groupedRows]
-                            .reverse()
-                            .map((row) => row.athletes[stat.name])
-                            .filter((j) => j != null).length > 1
-                        "
-                      >
+                      <g v-if="getTrendJumps(stat.name).length > 1">
                         <g
-                          v-for="(jump, i) in [...groupedRows]
-                            .reverse()
-                            .map((row) => row.athletes[stat.name])
-                            .filter((j) => j != null)"
+                          v-for="(jump, i) in getTrendJumps(stat.name)"
                           :key="i"
                         >
                           <line
-                            :x1="
-                              20 +
-                              i *
-                                ((1000 - 40) /
-                                  ([...groupedRows]
-                                    .reverse()
-                                    .map((row) => row.athletes[stat.name])
-                                    .filter((j) => j != null).length -
-                                    1))
-                            "
-                            y1="135"
-                            :x2="
-                              20 +
-                              i *
-                                ((1000 - 40) /
-                                  ([...groupedRows]
-                                    .reverse()
-                                    .map((row) => row.athletes[stat.name])
-                                    .filter((j) => j != null).length -
-                                    1))
-                            "
-                            y2="140"
+                            :x1="getTrendX(i, getTrendJumps(stat.name).length)"
+                            y1="145"
+                            :x2="getTrendX(i, getTrendJumps(stat.name).length)"
+                            y2="150"
                             class="axis-tick"
                           />
                           <g
-                            :transform="`translate(${
-                              20 +
-                              i *
-                                ((1000 - 40) /
-                                  ([...groupedRows]
-                                    .reverse()
-                                    .map((row) => row.athletes[stat.name])
-                                    .filter((j) => j != null).length -
-                                    1))
-                            }, 152)`"
+                            :transform="`translate(${getTrendX(i, getTrendJumps(stat.name).length)}, 164)`"
                           >
                             <text class="axis-text axis-x date-label" y="0">{{ jump.date }}</text>
                             <text class="axis-text axis-x place-label" y="12">
@@ -1150,9 +1202,9 @@ const getTrendPath = (athleteName: string) => {
       </div>
     </div>
 
-    <!-- SCATTER PLOT: CENA VS ŚREDNIA POZYCJA -->
+    <!-- SCATTER PLOT: CENA VS ŚREDNIA POZYCJA (PRO) -->
     <div
-      v-if="filteredAnalytics.some((a) => a.hasData && a.price)"
+      v-if="auth.isPro.value && filteredAnalytics.some((a) => a.hasData && a.price)"
       class="card analytics-card scatter-card"
       style="margin-top: 25px"
     >
@@ -1203,24 +1255,24 @@ const getTrendPath = (athleteName: string) => {
               stroke-dasharray="4"
             />
 
-            <g v-for="ath in filteredAnalytics.filter((a) => a.hasData && a.price)" :key="ath.name">
+            <g v-for="pt in scatterPlotPoints" :key="pt.ath.name">
               <g
-                :transform="`translate(${((ath.price || 0) / 3.0) * 600}, ${ath.avgRank && ath.avgRank <= 20 ? ((ath.avgRank - 1) / 19) * 200 : 200 + ((Math.min(ath.avgRank || 50, 40) - 20) / 20) * 200})`"
+                :transform="`translate(${pt.x}, ${pt.y})`"
                 class="scatter-dot-group"
-                @mouseenter="hoveredAthlete = ath"
+                @mouseenter="hoveredAthlete = pt.ath"
                 @mouseleave="hoveredAthlete = null"
-                @click="hoveredAthlete = hoveredAthlete?.name === ath.name ? null : ath"
+                @click="hoveredAthlete = hoveredAthlete?.name === pt.ath.name ? null : pt.ath"
               >
                 <circle r="7" class="scatter-dot" />
                 <foreignObject
-                  x="-100"
-                  y="-30"
+                  :x="pt.labelDx - 100"
+                  :y="pt.labelDy"
                   width="200"
-                  height="30"
+                  height="26"
                   class="scatter-foreign"
-                  :style="{ opacity: hoveredAthlete?.name === ath.name ? 0 : 1 }"
+                  :style="{ opacity: hoveredAthlete?.name === pt.ath.name ? 0 : 1 }"
                 >
-                  <div class="scatter-dot-text">{{ ath.name }} ({{ Number(ath.price).toFixed(1) }})</div>
+                  <div class="scatter-dot-text">{{ pt.labelText }}</div>
                 </foreignObject>
               </g>
             </g>
@@ -1894,23 +1946,23 @@ const getTrendPath = (athleteName: string) => {
 }
 
 .quad-top-left {
-  top: 10px;
-  left: 10px;
+  top: 32px;
+  left: 14px;
 }
 
 .quad-top-right {
-  top: 10px;
-  right: 10px;
+  top: 12px;
+  right: 12px;
 }
 
 .quad-bottom-left {
-  bottom: 10px;
-  left: 10px;
+  bottom: 32px;
+  left: 14px;
 }
 
 .quad-bottom-right {
-  bottom: 10px;
-  right: 10px;
+  bottom: 32px;
+  right: 12px;
 }
 
 .scatter-dot {
@@ -1956,12 +2008,15 @@ const getTrendPath = (athleteName: string) => {
   display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
   .desktop-only {
     display: none !important;
   }
   .mobile-only {
     display: flex;
+  }
+  .amc-kpi-grid.cols-3 {
+    grid-template-columns: repeat(3, 1fr);
   }
   .insights-grid {
     grid-template-columns: 1fr !important;
@@ -1986,6 +2041,13 @@ const getTrendPath = (athleteName: string) => {
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     width: 100%;
+    align-items: end;
+  }
+  .filter-select-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
   }
   .filter-checkbox-label {
     grid-column: span 2;

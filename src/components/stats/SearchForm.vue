@@ -93,6 +93,8 @@ const filteredNames = computed(() => {
 
 const addName = (name: string) => {
   if (!auth.isPro.value && localNames.value.length >= 2) {
+    nameInput.value = ''
+    showDropdown.value = false
     notice.showNotice({
       title: 'Limit konta darmowego',
       message: 'Darmowe konto pozwala na jednoczesne porównanie maksymalnie 2 zawodników. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków.',
@@ -384,7 +386,7 @@ const submitSearch = () => {
       <div>
         <h3>🔍 Kryteria Wyszukiwania i Porównywarki</h3>
         <p class="subtitle">
-          Wybierz skoczków (lub zapisany skład) i pobierz wyniki historyczne.
+          Wybierz skoczków{{ auth.isPro.value ? ' (lub zapisany skład)' : '' }} i pobierz wyniki historyczne.
         </p>
       </div>
       <div style="display: flex; gap: 6px; flex-wrap: wrap;">
@@ -1150,7 +1152,7 @@ const submitSearch = () => {
 }
 
 /* Responsive Form */
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
   .form-grid {
     grid-template-columns: 1fr;
     gap: 10px;

@@ -423,6 +423,47 @@ const mobileViewMode = ref<'cards' | 'table'>('cards')
 const expandedSessionRow = ref<string | null>(null)
 const isTableFullScreen = ref(false)
 
+const formatSessionTypeLabel = (raw?: string | null) => {
+  const code = String(raw || '').toUpperCase()
+  const map: Record<string, string> = {
+    COMPETITION: 'Konkurs Główny',
+    QUA: 'Kwalifikacje',
+    QUALIFICATION: 'Kwalifikacje',
+    TRAINING: 'Trening',
+    TRIAL: 'Seria próbna',
+  }
+  return map[code] || raw || 'Sesja'
+}
+
+const formatHillTypeLabel = (raw?: string | null, size?: number | null) => {
+  const s = Number(size || 0)
+  if (s > 0 && s < 85) return 'Średnia'
+  const code = String(raw || '').toUpperCase()
+  const map: Record<string, string> = {
+    FLYING: 'Mamucia',
+    LARGE: 'Duża',
+    NORMAL: 'Normalna',
+    MEDIUM: 'Średnia',
+    SMALL: 'Mała',
+  }
+  return map[code] || raw || 'Normalna / Duża'
+}
+
+const getResultsHeading = (raw?: string | null) => {
+  const code = String(raw || '').toUpperCase()
+  if (code === 'TRAINING') return 'Wyniki Treningu'
+  if (code === 'QUA' || code === 'QUALIFICATION') return 'Wyniki Kwalifikacji'
+  if (code === 'TRIAL') return 'Wyniki Serii Próbnej'
+  return 'Oficjalne Wyniki Konkursu'
+}
+
+const showCompetitionPointsCol = computed(() => {
+  const st = String(session.value?.session_type || '').toUpperCase()
+  if (st === 'COMPETITION' || !st) return true
+  const res = session.value?.results_data?.results || []
+  return res.some((r: any) => Number(r?.competition_points || 0) > 0)
+})
+
 const toggleExpandedRow = (key: string) => {
   expandedSessionRow.value = expandedSessionRow.value === key ? null : key
 }
@@ -452,7 +493,7 @@ onMounted(() => {
         </div>
         <div class="badges">
           <span class="badge blue">{{ session.category_code }}</span>
-          <span class="badge gray">{{ session.session_type }}</span>
+          <span class="badge gray">{{ formatSessionTypeLabel(session.session_type) }}</span>
           <a v-if="session.raceUrl" :href="session.raceUrl" target="_blank" rel="noopener noreferrer" class="btn-fis" title="Oficjalny protokół FIS">
             Wyniki FIS ↗
           </a>
@@ -473,7 +514,7 @@ onMounted(() => {
           <div class="card-icon">🏔️</div>
           <div class="card-text">
             <span class="card-label">Skocznia</span>
-            <strong>{{ session.hillType || 'Normalna / Duża' }}</strong>
+            <strong>{{ formatHillTypeLabel(session.hillType, session.hillSize) }}</strong>
             <small class="time-dim">HS: {{ session.hillSize || 'Brak danych' }}</small>
           </div>
         </div>
@@ -719,7 +760,7 @@ onMounted(() => {
       <div class="results-section">
         <div class="results-toolbar">
           <div class="toolbar-left">
-            <h3>Oficjalne Wyniki Konkursu</h3>
+            <h3>{{ getResultsHeading(session.session_type) }}</h3>
             <span class="results-count" v-if="session.results_data?.results">
               {{ session.results_data.results.length }} skoczków
             </span>
@@ -877,7 +918,7 @@ onMounted(() => {
                   {{ (session.session_type === 'TRAINING' || session.session_type === 'TRIAL') ? `Skok ${rNum}` : `Seria ${rNum}` }}
                 </th>
                 <th class="th-total">Łączna nota</th>
-                <th class="th-points">Pkt PŚ</th>
+                <th v-if="showCompetitionPointsCol" class="th-points">Pkt PŚ</th>
               </tr>
             </thead>
             <tbody>
@@ -984,7 +1025,7 @@ onMounted(() => {
                 </td>
 
                 <!-- Punkty Pucharu Świata -->
-                <td class="td-points font-mono">
+                <td v-if="showCompetitionPointsCol" class="td-points font-mono">
                   <span
                     class="comp-pts-chip"
                     :class="{ active: athlete.competition_points > 0 }"
@@ -1878,7 +1919,7 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
   .desktop-only {
     display: none !important;
   }
@@ -2514,7 +2555,7 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
   .mobile-desktop-hint {
     display: block;
     background: #eff6ff;

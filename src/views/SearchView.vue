@@ -8,9 +8,11 @@ import AnalyticsPanel from '@/components/stats/AnalyticsPanel.vue'
 import { api } from '@/api/client'
 import { useAuth } from '@/stores/auth'
 import { useNotice } from '@/stores/notice'
+import { useI18n } from '@/i18n'
 
 const auth = useAuth()
 const notice = useNotice()
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
@@ -44,6 +46,9 @@ const searchedNames = ref<string[]>([])
 const excludedNames = ref<string[]>([])
 const loading = ref(false)
 const isFiltersCollapsed = ref(false)
+const isCompactViewport = () =>
+  typeof window !== 'undefined' &&
+  (window.innerWidth <= 768 || (window.innerWidth <= 960 && window.innerHeight <= 520))
 
 // --- LOGIKA URL ---
 const isSyncingFromUrl = ref(false)
@@ -177,7 +182,7 @@ const performSearch = async (payload: any, finalNames: string[]) => {
 
   try {
     results.value = await api.post('/stats/search', safePayload)
-    if (typeof window !== 'undefined' && window.innerWidth <= 768 && results.value.length > 0) {
+    if (isCompactViewport() && results.value.length > 0) {
       isFiltersCollapsed.value = true
     }
   } catch (e: any) {
@@ -306,7 +311,7 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <h2>Porównywarka &amp; Analiza Skoczków {{ auth.isPro.value ? '(FantaSKI PRO)' : '(Konto darmowe)' }}</h2>
+    <h2>{{ t('nav.stats') }} {{ auth.isPro.value ? '(FantaSKI PRO)' : '(Free)' }}</h2>
 
     <div v-if="!auth.isPro.value" class="lite-notice-banner">
       <span>ℹ️ <strong>Konto darmowe:</strong> Możesz porównywać do <strong>2 zawodników</strong> i maksymalnie <strong>10 ostatnich skoków</strong>. Przejdź na <strong>FantaSKI PRO</strong>, aby zdjąć limity.</span>

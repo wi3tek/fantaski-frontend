@@ -4,8 +4,10 @@ import SkiLoader from '@/components/SkiLoader.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import { api, clearApiCache } from '@/api/client'
 import { useAuth } from '@/stores/auth'
+import { useI18n } from '@/i18n'
 
 const auth = useAuth()
+const { t } = useI18n()
 
 interface HillVersion {
   hill_id: string
@@ -146,10 +148,51 @@ const getTypeIcon = (type: string) => {
     case 'LARGE':
       return '🏔️'
     case 'NORMAL':
+    case 'MEDIUM':
       return '⛷️'
     default:
       return '🎿'
   }
+}
+
+const resolveDisplayHillType = (typeGroup: any) => {
+  const size = Number(typeGroup?.current_version?.size || 0)
+  const raw = String(typeGroup?.type || '').toUpperCase()
+  if (size > 0 && size < 85) return 'MEDIUM'
+  if (size >= 85 && size <= 109 && raw === 'LARGE') return 'NORMAL'
+  return raw || 'LARGE'
+}
+
+const formatHillTypeName = (type: string) => {
+  const code = String(type || '').toUpperCase()
+  const key = `hill.${code}`
+  const translated = t(key)
+  if (translated !== key) return translated
+  switch (code) {
+    case 'FLYING':
+      return 'Skocznia mamucia'
+    case 'LARGE':
+      return 'Duża skocznia'
+    case 'NORMAL':
+      return 'Normalna skocznia'
+    case 'MEDIUM':
+      return 'Średnia skocznia'
+    case 'SMALL':
+      return 'Mała skocznia'
+    default:
+      return 'Skocznia'
+  }
+}
+
+const formatSessionsCount = (count: number) => {
+  const n = Number(count || 0)
+  if (n === 1) return '1 sesja'
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return `${n} sesje`
+  }
+  return `${n} sesji`
 }
 
 // Pobieranie hierarchii z backendu
@@ -404,7 +447,7 @@ onMounted(() => {
     <div class="header-row">
       <div>
         <div class="title-with-badge">
-          <h2>🏔️ Baza Skoczni Narciarskich</h2>
+          <h2>{{ t('nav.hills') }}</h2>
           <span class="hierarchy-pill">Hierarchia 3-poziomowa</span>
         </div>
         <p class="subtitle">
@@ -571,10 +614,10 @@ onMounted(() => {
             <!-- Nagłówek rodzaju skoczni -->
             <div class="type-header">
               <div class="type-label-box">
-                <span class="type-icon">{{ getTypeIcon(typeGroup.type) }}</span>
+                <span class="type-icon">{{ getTypeIcon(resolveDisplayHillType(typeGroup)) }}</span>
                 <div>
-                  <h4 class="type-title">{{ typeGroup.label }}</h4>
-                  <span class="type-tech-tag">{{ typeGroup.type }}</span>
+                  <h4 class="type-title">{{ formatHillTypeName(resolveDisplayHillType(typeGroup)) }}</h4>
+                  <span class="type-tech-tag">{{ resolveDisplayHillType(typeGroup) }}</span>
                 </div>
               </div>
 
@@ -614,7 +657,7 @@ onMounted(() => {
                 <div class="spec-cell">
                   <span class="spec-title">Aktywność w bazie</span>
                   <span class="spec-value" v-if="typeGroup.current_version.total_sessions">
-                    {{ typeGroup.current_version.total_sessions }} sesji
+                    {{ formatSessionsCount(typeGroup.current_version.total_sessions) }}
                     <small v-if="typeGroup.current_version.last_session_date" class="date-dim">
                       (ost. {{ typeGroup.current_version.last_session_date }})
                     </small>
@@ -705,7 +748,7 @@ onMounted(() => {
                       </td>
                       <td>
                         <span v-if="ver.total_sessions">
-                          {{ ver.total_sessions }} sesji
+                          {{ formatSessionsCount(ver.total_sessions) }}
                           <small v-if="ver.last_season" class="season-dim">
                             (sezon {{ ver.last_season }})
                           </small>
@@ -1916,9 +1959,31 @@ onMounted(() => {
   -webkit-overflow-scrolling: touch;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
   .page {
-    padding: 14px 12px;
+    padding: 12px 10px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: clip;
+    box-sizing: border-box;
+  }
+  .filter-bar,
+  .search-box,
+  .complexes-grid,
+  .complex-card,
+  .type-group-card,
+  .current-version-panel {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+  }
+  .search-input {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
   .header-row {
     flex-direction: column;
@@ -1937,17 +2002,20 @@ onMounted(() => {
   .filter-bar {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
   }
   .search-box {
     min-width: 0;
+    flex: none;
   }
   .type-filter-group {
     display: flex;
-    overflow-x: auto;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     gap: 6px;
-    padding-bottom: 4px;
-    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
   }
   .filter-btn {
     flex-shrink: 0;

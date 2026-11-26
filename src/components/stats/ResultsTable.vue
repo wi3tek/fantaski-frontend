@@ -262,21 +262,16 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
             </thead>
             <tbody>
             <tr v-for="(row, idx) in displayedRows" :key="idx">
-              <td class="meta-cell sticky-col sticky-col-1">
+              <td class="meta-cell sticky-col sticky-col-1" style="white-space: nowrap">
                 {{ row.meta.date }}<br />
                 <small style="color: #64748b">{{ row.meta.time }}</small>
               </td>
               <td class="meta-cell sticky-col sticky-col-2">
-                <strong>{{ row.meta.place }} HS{{ row.meta.hill_size || '?' }}</strong
-                >: {{ getSessionName(row.meta.session_type) }}:
-                <a target="_self" style="color: darkred"
-                ><RouterLink :to="`/sessions/${row.meta.session_id}`" class="session-link"
-                >LINK</RouterLink
-                ></a
-                ><br />
-                <small
-                >{{ getCategoryName(row.meta.category) }} | Seria: {{ row.meta.round }}</small
-                >
+                <strong>{{ row.meta.place || '?' }} HS{{ row.meta.hill_size || '?' }}</strong>
+                <span style="color: #64748b"> • {{ getSessionName(row.meta.session_type) }}</span>
+                <RouterLink :to="`/sessions/${row.meta.session_id}`" class="session-link" style="margin-left: 6px">LINK</RouterLink>
+                <br />
+                <small>{{ getCategoryName(row.meta.category) }} | Seria: {{ row.meta.round }}</small>
               </td>
               <td v-for="athlete in displayedAthletes" :key="athlete.name" class="athlete-cell">
                 <div
@@ -683,7 +678,7 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
   display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
   .mobile-only-block {
     display: block;
     background: #eff6ff;
@@ -709,7 +704,7 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
   /* Przełączanie trybów wyświetlania - gasimy desktop, zapalamy mobile */
   .desktop-only { display: none !important; }
   .mobile-only { display: flex; flex-direction: column; gap: 15px; padding: 10px; background: #f8fafc; }

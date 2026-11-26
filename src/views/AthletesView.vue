@@ -4,8 +4,10 @@ import SkiLoader from '@/components/SkiLoader.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import { api } from '@/api/client'
 import { useAuth } from '@/stores/auth'
+import { useI18n } from '@/i18n'
 
 const auth = useAuth()
+const { t } = useI18n()
 
 interface Athlete {
   fis_code: string
@@ -343,7 +345,7 @@ onUnmounted(() => {
 <template>
   <div class="page">
     <div class="view-header">
-      <h2>🎿 Baza Skoczków FIS</h2>
+      <h2>{{ t('nav.athletes') }}</h2>
     </div>
 
     <div class="filters-bar-primary">
@@ -383,8 +385,8 @@ onUnmounted(() => {
         <div class="filter-box filter-box-select filter-span-2-mobile">
           <label>Status:</label>
           <select v-model="filters.status" @change="fetchAthletes(false)" class="filter-input">
-            <option value="ACTIVE">Tylko aktywni (Domyślne)</option>
-            <option value="">Wszyscy (w tym byli skoczkowie)</option>
+            <option value="ACTIVE">Tylko aktywni</option>
+            <option value="">Wszyscy skoczkowie</option>
             <option value="INACTIVE">Koniec kariery</option>
           </select>
         </div>
@@ -610,18 +612,12 @@ onUnmounted(() => {
               <span v-else class="status-dot active" title="Aktywny"></span>
             </div>
             <span v-if="auth.isPro.value && getAthletePrice(athlete) != null" class="price-chip">
-              {{ getAthletePrice(athlete)!.toFixed(1) }}
+              Cena: {{ getAthletePrice(athlete)!.toFixed(1) }} mln
             </span>
           </div>
 
           <div class="amc-meta">
-            <CountryFlag
-              :code="athlete.country_code"
-              :src="athlete.flagUrl"
-              size="xs"
-              :show-code="true"
-              :title="getCountryDisplay(athlete.country_code)"
-            />
+            <span class="amc-country-code">{{ getCountryDisplay(athlete.country_code) }}</span>
             <span>🎂 {{ calculateAge(athlete.birthdate) }} lat</span>
             <span v-if="athlete.club" class="amc-club">🎿 {{ athlete.club }}</span>
           </div>
@@ -1032,7 +1028,7 @@ onUnmounted(() => {
 .col-name { width: auto; }
 .col-price { width: 85px; text-align: center; }
 .col-age { width: 75px; text-align: center; }
-.col-birthdate { width: 95px; }
+.col-birthdate { width: 124px; white-space: nowrap; }
 .col-club { width: 20%; }
 .col-actions { width: 110px; text-align: right; }
 
@@ -1157,7 +1153,7 @@ onUnmounted(() => {
   .col-club { display: none; }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
   .desktop-only {
     display: none !important;
   }

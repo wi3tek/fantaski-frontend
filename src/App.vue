@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { RouterLink, RouterView, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
+import { RouterLink, RouterView, useRoute, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useAuth } from '@/stores/auth'
 import { useNotice } from '@/stores/notice'
 import { useNotifications } from '@/stores/notifications'
+import { useI18n, type LocaleCode } from '@/i18n'
 import { api, clearApiCache } from '@/api/client'
 
 const auth = useAuth()
 const notice = useNotice()
+const route = useRoute()
 const router = useRouter()
+const { locale, currentOption, locales, setLocale, t } = useI18n()
+const isLangDropdownOpen = ref<boolean>(false)
 const {
   unreadCount,
   unreadNotifications,
@@ -66,6 +70,9 @@ const closeDropdown = (e: Event) => {
   if (!target.closest('.notif-menu-container')) {
     isNotifDropdownOpen.value = false
   }
+  if (!target.closest('.lang-menu-container')) {
+    isLangDropdownOpen.value = false
+  }
 }
 
 const closeNavigation = () => {
@@ -73,6 +80,12 @@ const closeNavigation = () => {
   isStatsDropdownOpen.value = false
   isUserDropdownOpen.value = false
   isNotifDropdownOpen.value = false
+  isLangDropdownOpen.value = false
+}
+
+const selectLanguage = (code: LocaleCode) => {
+  setLocale(code)
+  isLangDropdownOpen.value = false
 }
 
 const openNotification = async (notif: any) => {
@@ -346,43 +359,43 @@ onUnmounted(() => {
           </div>
           <div v-else class="drawer-guest-card-mobile">
             <button class="drawer-login-btn" @click="auth.isAuthModalOpen.value = true; closeNavigation()">
-              🚀 Zaloguj się na konto
+              {{ t('nav.loginMobile') }}
             </button>
           </div>
 
           <RouterLink v-if="auth.isAuthenticated.value" to="/dashboard" @click="closeNavigation">
-            🏠 Pulpit
+            {{ t('nav.dashboard') }}
           </RouterLink>
 
-          <div class="drawer-section-label">Bazy Danych</div>
-          <RouterLink to="/athletes" @click="closeNavigation">🎿 Baza skoczków</RouterLink>
-          <RouterLink to="/sessions" @click="closeNavigation">📅 Baza sesji</RouterLink>
-          <RouterLink to="/hills" @click="closeNavigation">🏔️ Baza skoczni</RouterLink>
+          <div class="drawer-section-label">{{ t('nav.dbSection') }}</div>
+          <RouterLink to="/athletes" @click="closeNavigation">{{ t('nav.athletes') }}</RouterLink>
+          <RouterLink to="/sessions" @click="closeNavigation">{{ t('nav.sessions') }}</RouterLink>
+          <RouterLink to="/hills" @click="closeNavigation">{{ t('nav.hills') }}</RouterLink>
 
-          <div class="drawer-section-label">Zawody &amp; Wyniki</div>
+          <div class="drawer-section-label">{{ t('nav.eventsSection') }}</div>
           <RouterLink to="/standings" @click="closeNavigation" title="Oficjalne klasyfikacje FIS">
-            🏆 Klasyfikacje
+            {{ t('nav.standings') }}
           </RouterLink>
 
-          <div class="drawer-section-label">Analityka &amp; Narzędzia</div>
+          <div class="drawer-section-label">{{ t('nav.toolsSection') }}</div>
           <div class="dropdown-container">
             <button
               class="dropdown-btn"
               @click.stop="isStatsDropdownOpen = !isStatsDropdownOpen"
               :class="{ 'nav-locked': !auth.isAuthenticated.value }"
             >
-              Narzędzia
+              {{ t('nav.tools') }}
               <span v-if="!auth.isAuthenticated.value" class="lock-icon">🔒</span>
               <span class="arrow" :class="{ up: isStatsDropdownOpen }">▼</span>
             </button>
-            <div class="dropdown-menu" v-if="isStatsDropdownOpen || isMenuOpen">
+            <div class="dropdown-menu" v-if="isStatsDropdownOpen">
               <RouterLink
                 to="/stats"
                 @click="closeNavigation"
                 :class="{ 'nav-locked': !auth.isAuthenticated.value }"
                 :title="!auth.isAuthenticated.value ? '🔒 Dostępne po darmowym zalogowaniu' : 'Porównywarka zawodników'"
               >
-                ⚖️ Porównywarka
+                {{ t('nav.stats') }}
                 <span v-if="!auth.isAuthenticated.value" class="lock-icon">🔒</span>
               </RouterLink>
               <RouterLink
@@ -391,7 +404,7 @@ onUnmounted(() => {
                 :class="{ 'nav-locked': !auth.isAuthenticated.value }"
                 :title="!auth.isAuthenticated.value ? '🔒 Dostępne po darmowym zalogowaniu' : 'Ligi Drafta Fantasy'"
               >
-                ⚡ Draft
+                {{ t('nav.draft') }}
                 <span v-if="!auth.isAuthenticated.value" class="lock-icon">🔒</span>
               </RouterLink>
               <RouterLink
@@ -400,7 +413,7 @@ onUnmounted(() => {
                 :class="{ 'nav-locked': !auth.isPro.value }"
                 :title="!auth.isPro.value ? '🔒 Dostępne wyłącznie w pakiecie PRO' : 'Prognozy'"
               >
-                🔮 Prognozy
+                {{ t('nav.predictions') }}
                 <span v-if="!auth.isPro.value" class="lock-icon">🔒</span>
                 <span class="badge-pro-mini">PRO</span>
               </RouterLink>
@@ -409,27 +422,43 @@ onUnmounted(() => {
 
           <!-- Widoczne tylko dla ADMINA -->
           <template v-if="auth.isAdmin.value">
-            <div class="drawer-section-label">Administracja</div>
+            <div class="drawer-section-label">{{ t('nav.adminSection') }}</div>
             <RouterLink to="/admin" class="admin-link" @click="closeNavigation">
-              ⚙️ Panel Administratora
+              {{ t('nav.admin') }}
             </RouterLink>
           </template>
 
           <!-- Użytkownik zalogowany (widok mobilny wewnątrz szuflady) -->
           <div v-if="auth.isAuthenticated.value" class="mobile-only-account">
-            <div class="drawer-section-label">Konto</div>
+            <div class="drawer-section-label">{{ t('nav.accountSection') }}</div>
             <RouterLink to="/profile" @click="closeNavigation">
-              👤 Mój profil
+              {{ t('nav.profile') }}
             </RouterLink>
             <button class="logout-menu-btn" @click="handleLogout">
-              🚪 Wyloguj się
+              {{ t('nav.logout') }}
             </button>
           </div>
 
+          <div class="drawer-lang-section">
+            <div class="drawer-section-label">{{ t('nav.language') }}</div>
+            <div class="drawer-lang-pills">
+              <button
+                v-for="loc in locales"
+                :key="'dl_' + loc.code"
+                type="button"
+                class="drawer-lang-pill"
+                :class="{ active: locale === loc.code }"
+                @click="selectLanguage(loc.code)"
+              >
+                {{ loc.flag }} {{ loc.code.toUpperCase() }}
+              </button>
+            </div>
+          </div>
+
           <div v-if="!isAppInstalled" class="pwa-install-drawer-wrap">
-            <div class="drawer-section-label">Aplikacja na telefon</div>
+            <div class="drawer-section-label">{{ t('nav.appSection') }}</div>
             <button type="button" class="pwa-install-drawer-btn" @click="triggerPwaInstall">
-              📲 Zainstaluj na ekranie głównym
+              {{ t('nav.installApp') }}
             </button>
           </div>
         </nav>
@@ -465,24 +494,50 @@ onUnmounted(() => {
                 <div class="user-info-role">Plan: <strong>{{ getRoleFullLabel(auth.user.value?.role) }}</strong></div>
               </div>
               <RouterLink to="/profile" @click="closeNavigation">
-                👤 Mój profil
+                {{ t('nav.profile') }}
               </RouterLink>
               <RouterLink v-if="auth.isAdmin.value" to="/admin" @click="closeNavigation">
-                ⚙️ Panel Administratora
+                {{ t('nav.admin') }}
               </RouterLink>
               <button class="logout-menu-btn" @click="handleLogout">
-                🚪 Wyloguj się
+                {{ t('nav.logout') }}
               </button>
             </div>
           </div>
 
           <button
-            v-else
+            v-else-if="route.path !== '/' && route.path !== '/login'"
             class="login-btn desktop-only"
             @click="auth.isAuthModalOpen.value = true; closeNavigation()"
           >
-            Zaloguj się
+            {{ t('nav.login') }}
           </button>
+
+          <!-- WYBÓR JĘZYKA (DESKTOP) -->
+          <div class="lang-menu-container desktop-only">
+            <button
+              type="button"
+              class="lang-btn"
+              @click.stop="isLangDropdownOpen = !isLangDropdownOpen"
+              :title="`${t('nav.language')}: ${currentOption.nativeName}`"
+            >
+              <span aria-hidden="true">🌐</span>
+              <span class="lang-code">{{ currentOption.code.toUpperCase() }}</span>
+            </button>
+            <div v-if="isLangDropdownOpen" class="dropdown-menu lang-dropdown">
+              <button
+                v-for="loc in locales"
+                :key="loc.code"
+                type="button"
+                class="lang-option-btn"
+                :class="{ active: locale === loc.code }"
+                @click="selectLanguage(loc.code)"
+              >
+                <span>{{ loc.flag }} {{ loc.nativeName }}</span>
+                <span v-if="locale === loc.code">✓</span>
+              </button>
+            </div>
+          </div>
 
           <div v-if="auth.isAuthenticated.value" class="notif-menu-container">
             <button
@@ -771,7 +826,7 @@ onUnmounted(() => {
     </div>
 
     <footer class="app-footer">
-      <p>FantaSKI &bull; Fantasy &amp; Wyniki Skoków Narciarskich &bull; 2026</p>
+      <p>{{ t('footer.copy') }}</p>
     </footer>
   </div>
 </template>
@@ -803,15 +858,15 @@ onUnmounted(() => {
 }
 
 .header-container {
-  max-width: 1350px;
+  max-width: 1420px;
   width: 100%;
   box-sizing: border-box;
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  padding: 0 16px;
+  gap: 10px;
+  padding: 0 18px;
 }
 
 .header-right-bar {
@@ -868,23 +923,25 @@ onUnmounted(() => {
 
 .nav-links {
   display: flex;
-  gap: 6px;
+  gap: 3px;
   align-items: center;
   margin-left: auto;
+  flex: 1 1 auto;
+  justify-content: flex-end;
   min-width: 0;
 }
 
 .nav-links a {
-  color: #94a3b8;
+  color: #cbd5e1;
   text-decoration: none;
-  font-size: 0.86em;
+  font-size: 0.82em;
   font-weight: 500;
-  padding: 6px 8px;
+  padding: 6px 7px;
   border-radius: 6px;
   transition: all 0.2s;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   white-space: nowrap;
 }
 
@@ -930,7 +987,8 @@ onUnmounted(() => {
 }
 
 .nav-locked {
-  opacity: 0.65;
+  opacity: 0.88;
+  color: #cbd5e1 !important;
   transition: opacity 0.2s, filter 0.2s;
 }
 
@@ -1949,12 +2007,14 @@ onUnmounted(() => {
 
   .logout-menu-btn {
     width: 100%;
-    min-height: 42px;
-    padding: 8px 12px;
+    min-height: 44px;
+    padding: 10px 14px;
     text-align: left;
+    justify-content: flex-start;
     display: flex;
     align-items: center;
     gap: 8px;
+    font-size: 0.95em;
   }
 
   .app-content {
@@ -1984,5 +2044,92 @@ onUnmounted(() => {
     gap: 8px;
     cursor: pointer;
   }
+
+  .drawer-lang-section {
+    display: block;
+    margin-top: 6px;
+  }
+
+  .drawer-lang-pills {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    padding: 4px 2px;
+  }
+
+  .drawer-lang-pill {
+    border: 1px solid #334155;
+    background: #1e293b;
+    color: #cbd5e1;
+    border-radius: 6px;
+    padding: 6px 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: center;
+  }
+
+  .drawer-lang-pill.active {
+    background: #0284c7;
+    border-color: #38bdf8;
+    color: #ffffff;
+  }
+}
+
+.drawer-lang-section {
+  display: none;
+}
+
+.lang-menu-container {
+  position: relative;
+}
+
+.lang-btn {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  padding: 5px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78em;
+  font-weight: 700;
+}
+
+.lang-btn:hover {
+  border-color: #64748b;
+}
+
+.lang-dropdown {
+  min-width: 170px;
+  right: 0;
+  left: auto;
+  transform: none;
+  padding: 6px;
+}
+
+.lang-option-btn {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #cbd5e1;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 0.84em;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.lang-option-btn:hover,
+.lang-option-btn.active {
+  background: #1e293b;
+  color: #38bdf8;
 }
 </style>

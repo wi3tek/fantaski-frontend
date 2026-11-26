@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { api } from '@/api/client'
 import { useAuth } from '@/stores/auth'
+import { useI18n } from '@/i18n'
 import SkiLoader from '@/components/SkiLoader.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 
@@ -98,7 +99,9 @@ interface DraftLeagueSummary {
 
 interface EsmStarter {
   fis_code?: string | number | null
-  name: string
+  name?: string | null
+  fis_name?: string | null
+  esm_fullname?: string | null
   country?: string
   flag?: string | null
   price?: number | null
@@ -120,6 +123,7 @@ interface EsmStatusPayload {
 }
 
 const auth = useAuth()
+const { t, locale } = useI18n()
 
 const isLoading = ref(true)
 const dashboardData = ref<DashboardStatsPayload | null>(null)
@@ -206,6 +210,18 @@ const formatPoints = (val?: number | null) => {
 const formatMln = (val?: number | null) => {
   if (val === null || val === undefined || Number.isNaN(Number(val))) return '—'
   return `${Number(val).toFixed(2).replace(/\.?0+$/, '')} mln`
+}
+
+const getStarterName = (p: EsmStarter) =>
+  p.fis_name || p.esm_fullname || p.name || (p.fis_code ? `#${p.fis_code}` : 'Skoczek')
+
+const formatStartsLabel = (count?: number | null) => {
+  const n = Number(count || 0)
+  if (n === 1) return '1 start'
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} starty`
+  return `${n} startów`
 }
 
 const getParticipantStatus = (lg: DraftLeagueSummary) => {
@@ -360,14 +376,14 @@ onMounted(loadDashboard)
       <header class="dash-welcome">
         <div class="dash-welcome-copy">
           <span v-if="todayLabel" class="dash-date-eyebrow">{{ todayLabel }}</span>
-          <h1>Cześć, {{ firstName }}! 🎿</h1>
-          <p class="dash-subtitle">Najważniejsze zawody, ligi drafta i forma skoczków w jednym miejscu.</p>
+          <h1>{{ t('dash.greeting') }}, {{ firstName }}! 🎿</h1>
+          <p class="dash-subtitle">{{ t('dash.subtitle') }}</p>
         </div>
         <div class="dash-quick-links">
-          <RouterLink to="/athletes" class="quick-chip">🎿 Skoczkowie</RouterLink>
-          <RouterLink to="/stats" class="quick-chip">📊 Statystyki</RouterLink>
+          <RouterLink to="/athletes" class="quick-chip">{{ t('nav.athletes') }}</RouterLink>
+          <RouterLink to="/stats" class="quick-chip">📊 {{ locale === 'pl' ? 'Statystyki' : t('nav.stats') }}</RouterLink>
           <RouterLink v-if="auth.isPro.value" to="/predictions" class="quick-chip quick-chip-pro">
-            🔮 Prognozy
+            {{ t('nav.predictions') }}
           </RouterLink>
         </div>
       </header>
@@ -380,7 +396,7 @@ onMounted(loadDashboard)
       <!-- 1. NAJBLIŻSZE ZAWODY -->
       <section class="dash-panel next-comp-panel" aria-label="Najbliższe zawody">
         <div class="panel-top-row">
-          <span class="eyebrow-pill">⏭️ NAJBLIŻSZE ZAWODY PUCHARU ŚWIATA</span>
+          <span class="eyebrow-pill">{{ t('dash.nextCompEyebrow') }}</span>
           <span v-if="nextComp.found && nextComp.hill_size" class="hs-pill">
             HS {{ nextComp.hill_size }}
             <template v-if="hillTypeLabel(nextComp.hill_type)"> · {{ hillTypeLabel(nextComp.hill_type) }}</template>
@@ -394,7 +410,7 @@ onMounted(loadDashboard)
               <div>
                 <h2 class="next-comp-title">{{ nextComp.place }}</h2>
                 <p class="next-comp-sub">
-                  {{ nextComp.session_title || 'Konkurs Indywidualny' }}
+                  {{ nextComp.session_title || t('dash.mainComp') }}
                   <span v-if="nextComp.competition_type"> ({{ nextComp.competition_type }})</span>
                 </p>
               </div>
@@ -402,14 +418,14 @@ onMounted(loadDashboard)
 
             <div class="next-comp-schedule">
               <div class="schedule-chip">
-                <span class="schedule-label">Konkurs główny</span>
+                <span class="schedule-label">{{ t('dash.mainComp') }}</span>
                 <strong class="schedule-val">
                   {{ formatShortDate(nextComp.date) }}
                   <span v-if="nextComp.time"> · {{ nextComp.time }}</span>
                 </strong>
               </div>
               <div v-if="nextComp.qualification?.date" class="schedule-chip schedule-chip-muted">
-                <span class="schedule-label">Kwalifikacje</span>
+                <span class="schedule-label">{{ t('dash.qualifications') }}</span>
                 <strong class="schedule-val">
                   {{ formatShortDate(nextComp.qualification.date) }}
                   <span v-if="nextComp.qualification.time"> · {{ nextComp.qualification.time }}</span>
@@ -420,20 +436,20 @@ onMounted(loadDashboard)
 
           <div class="next-comp-actions">
             <RouterLink v-if="auth.isPro.value" to="/predictions" class="btn-dash-primary">
-              🔮 Prognozy AI na zawody
+              {{ t('dash.ctaPredictions') }}
             </RouterLink>
-            <RouterLink v-else to="/profile?tab=package" class="btn-dash-pro-teaser">
-              ✨ Prognozy AI (PRO)
+            <RouterLink v-else to="/profile?tab=plan" class="btn-dash-pro-teaser">
+              {{ t('dash.ctaProTeaser') }}
             </RouterLink>
             <RouterLink to="/sessions?tab=calendar" class="btn-dash-secondary">
-              📅 Kalendarz FIS
+              {{ t('dash.ctaCalendar') }}
             </RouterLink>
           </div>
         </div>
 
         <div v-else class="next-comp-empty">
-          <p>Brak zaplanowanych nadchodzących konkursów Pucharu Świata w kalendarzu FIS.</p>
-          <RouterLink to="/sessions?tab=calendar" class="btn-dash-secondary">📅 Zobacz kalendarz FIS</RouterLink>
+          <p>{{ t('dash.noUpcoming') }}</p>
+          <RouterLink to="/sessions?tab=calendar" class="btn-dash-secondary">{{ t('dash.ctaCalendar') }}</RouterLink>
         </div>
       </section>
 
@@ -441,10 +457,10 @@ onMounted(loadDashboard)
       <section class="card dash-panel" aria-label="Twoje ligi drafta">
         <div class="panel-header">
           <div>
-            <h2>🏆 Twoje Ligi Drafta & Akcja</h2>
-            <p class="panel-desc">Aktywne kolejki wyboru, zaproszenia i Twoja pozycja w ligach.</p>
+            <h2>{{ t('dash.draftTitle') }}</h2>
+            <p class="panel-desc">{{ t('dash.draftDesc') }}</p>
           </div>
-          <RouterLink to="/draft" class="panel-link">Otwórz Draft →</RouterLink>
+          <RouterLink to="/draft" class="panel-link">{{ t('dash.openDraft') }}</RouterLink>
         </div>
 
         <div v-if="draftActionAlerts.length > 0" class="draft-alerts-stack">
@@ -520,10 +536,10 @@ onMounted(loadDashboard)
         <div class="card dash-panel">
           <div class="panel-header">
             <div>
-              <h2>🏁 Najnowsze wyniki</h2>
-              <p class="panel-desc">Ostatnio rozegrane sesje i konkursy z bazy FIS.</p>
+              <h2>{{ t('dash.recentTitle') }}</h2>
+              <p class="panel-desc">{{ t('dash.recentDesc') }}</p>
             </div>
-            <RouterLink to="/sessions" class="panel-link">Wszystkie sesje →</RouterLink>
+            <RouterLink to="/sessions" class="panel-link">{{ t('dash.allSessions') }}</RouterLink>
           </div>
 
           <div v-if="latestSessions.length > 0" class="recent-sessions-list">
@@ -573,13 +589,13 @@ onMounted(loadDashboard)
         <div class="card dash-panel">
           <div class="panel-header">
             <div>
-              <h2>🌍 Top 5 Pucharu Świata</h2>
+              <h2>{{ t('dash.top5Title') }}</h2>
               <p class="panel-desc">
-                Sezon {{ formatSeasonLabel(standingsSeason) }}
+                {{ t('common.season') }} {{ formatSeasonLabel(standingsSeason) }}
                 <template v-if="standingsTotalEvents > 0"> · po {{ standingsTotalEvents }} konkursach</template>
               </p>
             </div>
-            <RouterLink to="/standings" class="panel-link">Pełna tabela →</RouterLink>
+            <RouterLink to="/standings" class="panel-link">{{ t('dash.fullStandings') }}</RouterLink>
           </div>
 
           <div v-if="topStandings.length > 0" class="top5-list">
@@ -598,7 +614,7 @@ onMounted(loadDashboard)
                     {{ a.name }}
                   </RouterLink>
                   <span v-else class="top5-athlete-link">{{ a.name }}</span>
-                  <span class="top5-meta">{{ a.country }} · {{ a.starts }} startów</span>
+                  <span class="top5-meta">{{ a.country }} · {{ formatStartsLabel(a.starts) }}</span>
                 </div>
               </div>
               <div class="top5-points">
@@ -618,7 +634,7 @@ onMounted(loadDashboard)
         <div class="panel-header">
           <div>
             <h2>🛡️ Mój skład ESM — {{ esmTeam.team_name || 'Drużyna ESM' }}</h2>
-            <p class="panel-desc">Aktualne ceny z bazy FantaSKI oraz szybki podgląd podstawowej szóstki.</p>
+            <p class="panel-desc">{{ t('dash.esmDesc') }}</p>
           </div>
           <div class="esm-header-actions">
             <RouterLink
@@ -626,24 +642,24 @@ onMounted(loadDashboard)
               :to="`/sessions/${latestCompId}`"
               class="btn-dash-secondary-sm"
             >
-              ⚖️ Porównaj z ostatnim konkursem
+              {{ t('dash.esmCompareLabel') }}
             </RouterLink>
-            <RouterLink to="/profile?tab=esm" class="panel-link">Zarządzaj →</RouterLink>
+            <RouterLink to="/profile?tab=esm" class="panel-link">{{ t('dash.manage') }}</RouterLink>
           </div>
         </div>
 
         <div class="esm-kpi-row">
           <div class="esm-kpi-box">
-            <span class="esm-kpi-label">Wartość składu</span>
+            <span class="esm-kpi-label">{{ t('dash.esmValue') }}</span>
             <strong class="esm-kpi-val">{{ formatMln(esmDisplayValue) }}</strong>
           </div>
           <div class="esm-kpi-box">
-            <span class="esm-kpi-label">Punkty ESM</span>
+            <span class="esm-kpi-label">{{ t('dash.esmPoints') }}</span>
             <strong class="esm-kpi-val">{{ formatPoints(esmTeam.total_points) }} pkt</strong>
           </div>
           <div class="esm-kpi-box">
-            <span class="esm-kpi-label">Podstawowi</span>
-            <strong class="esm-kpi-val">{{ esmStarters.length }} skoczków</strong>
+            <span class="esm-kpi-label">{{ t('dash.esmStarters') }}</span>
+            <strong class="esm-kpi-val">{{ esmStarters.length }} {{ t('dash.jumpersCount') }}</strong>
           </div>
         </div>
 
@@ -651,12 +667,12 @@ onMounted(loadDashboard)
           <component
             :is="p.fis_code ? RouterLink : 'div'"
             v-for="(p, idx) in esmStarters"
-            :key="`${p.fis_code || p.name}-${idx}`"
+            :key="`${p.fis_code || getStarterName(p)}-${idx}`"
             :to="p.fis_code ? `/athletes/${p.fis_code}` : undefined"
             class="esm-player-chip"
           >
             <CountryFlag :code="p.country" :src="p.flag" size="xs" />
-            <span class="esm-player-name">{{ p.name }}</span>
+            <span class="esm-player-name">{{ getStarterName(p) }}</span>
             <span v-if="p.price !== null && p.price !== undefined" class="esm-player-price">
               {{ Number(p.price).toFixed(2).replace(/\.?0+$/, '') }}M
             </span>

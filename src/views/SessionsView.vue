@@ -4,6 +4,9 @@ import SkiLoader from '@/components/SkiLoader.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { api } from '@/api/client'
+import { useI18n } from '@/i18n'
+
+const { t } = useI18n()
 
 interface SessionLight {
   _id: string
@@ -89,12 +92,20 @@ const filters = ref({
   skip: 0,
 })
 
-// Słownik tłumaczeń typów sesji
 const sessionTypeMap: Record<string, string> = {
   COMPETITION: 'Konkurs Główny',
+  QUA: 'Kwalifikacje',
   QUALIFICATION: 'Kwalifikacje',
   TRAINING: 'Trening',
   TRIAL: 'Seria próbna',
+}
+
+const formatSessionType = (raw?: string | null) => {
+  const code = String(raw || '').toUpperCase()
+  const key = `session.${code}`
+  const translated = t(key)
+  if (translated !== key) return translated
+  return sessionTypeMap[code] || raw || 'Nieznany'
 }
 
 const fetchCountries = async () => {
@@ -166,7 +177,7 @@ onMounted(() => {
   <div class="page">
     <div class="view-header">
       <div class="title-cluster">
-        <h2>🎿 Kalendarz i Baza Sesji FIS</h2>
+        <h2>{{ t('nav.sessions') }}</h2>
         <span class="sub-counter" v-if="activeViewTab === 'sessions' && sessions.length > 0">
           Wyświetlono {{ sessions.length }} sesji
         </span>
@@ -506,9 +517,12 @@ onMounted(() => {
         <select v-model="filters.category" class="filter-input-sm" @change="applyFilters">
           <option value="">-- Wszystkie rangi --</option>
           <option value="WC">Puchar Świata (WC)</option>
+          <option value="GP">Letnie Grand Prix (GP)</option>
           <option value="COC">Puchar Kontynentalny (COC)</option>
+          <option value="FC">FIS Cup (FC)</option>
           <option value="OWG">Igrzyska Olimpijskie (OWG)</option>
           <option value="WSC">Mistrzostwa Świata (WSC)</option>
+          <option value="SFWC">MŚ w Lotach (SFWC)</option>
         </select>
       </div>
 
@@ -569,7 +583,7 @@ onMounted(() => {
                       (s.session_type || '').includes('COMPETITION') ? 'comp' : (s.session_type || '').includes('QUA') ? 'qua' : 'other',
                     ]"
                   >
-                    {{ (s.session_type && sessionTypeMap[s.session_type]) || s.session_type || 'Nieznany' }}
+                    {{ formatSessionType(s.session_type) }}
                   </span>
                 </td>
                 <td style="text-align: right">
@@ -598,7 +612,7 @@ onMounted(() => {
                     (s.session_type || '').includes('COMPETITION') ? 'comp' : (s.session_type || '').includes('QUA') ? 'qua' : 'other',
                   ]"
                 >
-                  {{ (s.session_type && sessionTypeMap[s.session_type]) || s.session_type || 'Nieznany' }}
+                  {{ formatSessionType(s.session_type) }}
                 </span>
               </div>
             </div>
@@ -718,9 +732,9 @@ onMounted(() => {
   justify-content: flex-end;
 }
 .btn-clear-sm {
-  background: none;
-  border: 1px dashed #94a3b8;
-  color: #64748b;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
   padding: 6px 12px;
   border-radius: 4px;
   cursor: pointer;
@@ -923,7 +937,7 @@ onMounted(() => {
   display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-width: 960px) and (max-height: 520px) {
   .desktop-only {
     display: none !important;
   }

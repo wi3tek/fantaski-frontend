@@ -2,10 +2,12 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/stores/auth'
+import { useI18n } from '@/i18n'
 
 const auth = useAuth()
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 const showDevLogin =
   import.meta.env.MODE !== 'production' || import.meta.env.VITE_ENABLE_DEV_LOGIN === 'true'
@@ -104,10 +106,10 @@ onMounted(() => {
     <div class="welcome-grid">
       <!-- LEWA STRONA: PREZENTACJA PLATFORMY I DLACZEGO WARTO DOŁĄCZYĆ -->
       <section class="showcase-panel">
-        <div class="showcase-badge">🎿 CENTRUM STATYSTYK, DRAFTA &amp; FANTASY</div>
-        <h1>Witaj w <span>FantaSKI</span></h1>
+        <div class="showcase-badge">🎿 {{ t('login.badge') }}</div>
+        <h1>Fanta<span>SKI</span></h1>
         <p class="showcase-lead">
-          Twoje jedno miejsce do analizy wyników skoków narciarskich FIS, rywalizacji ze znajomymi w ligach Drafta oraz porównywania składów Fantasy.
+          {{ t('login.subtitle') }}
         </p>
 
         <div class="features-grid">
@@ -142,12 +144,12 @@ onMounted(() => {
         </div>
 
         <div class="public-shortcuts">
-          <span class="shortcuts-label">Otwarty podgląd bez logowania:</span>
+          <span class="shortcuts-label">{{ t('login.guestHint') }}</span>
           <div class="shortcut-links">
-            <RouterLink to="/athletes" class="shortcut-pill">🎿 Baza skoczków</RouterLink>
-            <RouterLink to="/sessions" class="shortcut-pill">📅 Sesje &amp; Kalendarz PŚ</RouterLink>
-            <RouterLink to="/hills" class="shortcut-pill">🏔️ Skocznie</RouterLink>
-            <RouterLink to="/standings" class="shortcut-pill">🏆 Klasyfikacje generalne</RouterLink>
+            <RouterLink to="/athletes" class="shortcut-pill">{{ t('nav.athletes') }}</RouterLink>
+            <RouterLink to="/sessions" class="shortcut-pill">{{ t('nav.sessions') }}</RouterLink>
+            <RouterLink to="/hills" class="shortcut-pill">{{ t('nav.hills') }}</RouterLink>
+            <RouterLink to="/standings" class="shortcut-pill">{{ t('nav.standings') }}</RouterLink>
           </div>
         </div>
       </section>
@@ -156,8 +158,8 @@ onMounted(() => {
       <section class="login-card">
         <div class="login-header">
           <img src="/logo.png" alt="FantaSKI" class="login-logo" />
-          <h2>Dołącz lub zaloguj się</h2>
-          <p>Darmowe konto daje natychmiastowy dostęp do Drafta (1 liga) i porównywarki skoczków.</p>
+          <h2>{{ t('login.cardTitle') }}</h2>
+          <p>{{ t('login.cardSub') }}</p>
         </div>
 
         <div v-if="isExpired" class="expired-banner">
@@ -549,12 +551,15 @@ onMounted(() => {
   .welcome-grid {
     grid-template-columns: 1fr;
   }
-  .features-grid {
-    grid-template-columns: 1fr;
-  }
   .showcase-panel,
   .login-card {
     padding: 20px 18px;
+  }
+}
+
+@media (max-width: 560px) {
+  .features-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
