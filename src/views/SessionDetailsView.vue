@@ -419,6 +419,8 @@ const maxRoundsCount = computed(() => {
   return maxR
 })
 
+const mobileViewMode = ref<'cards' | 'table'>('cards')
+
 onMounted(() => {
   loadPackagesFromStorage()
   fetchDetails()
@@ -716,16 +718,142 @@ onMounted(() => {
               {{ session.results_data.results.length }} skoczków
             </span>
           </div>
-          <span class="table-tip">
-            💡 Kliknij wiersz lub pole 📦 aby dodać skoczka do testowego składu
-          </span>
+          <div class="toolbar-right-mobile">
+            <span class="table-tip">
+              💡 Kliknij wiersz lub pole 📦 aby dodać skoczka do testowego składu
+            </span>
+            <div class="s-view-switch mobile-only">
+              <button
+                type="button"
+                class="s-switch-btn"
+                :class="{ active: mobileViewMode === 'cards' }"
+                @click="mobileViewMode = 'cards'"
+              >
+                🪪 Karty
+              </button>
+              <button
+                type="button"
+                class="s-switch-btn"
+                :class="{ active: mobileViewMode === 'table' }"
+                @click="mobileViewMode = 'table'"
+              >
+                📋 Tabela
+              </button>
+            </div>
+          </div>
         </div>
 
         <p v-if="session.results_data?.is_cancelled" class="cancelled-alert">
           ⚠️ Uwaga: Ta sesja została oficjalnie odwołana lub przerwana.
         </p>
 
-        <div class="table-responsive" v-if="session.results_data?.results?.length > 0">
+        <!-- KARTY MOBILNE WYNIKÓW SESJI (<= 768px) -->
+        <div
+          v-if="mobileViewMode === 'cards' && session.results_data?.results?.length > 0"
+          class="session-mobile-list mobile-only"
+        >
+          <div
+            v-for="(athlete, aIdx) in session.results_data.results"
+            :key="'m_' + (athlete.fis_code || `${athlete.name}_${aIdx}`)"
+            class="session-m-res-card"
+            :class="{
+              'row-selected': isAthleteSelected(athlete.name),
+              'row-esm-starter': isEsmStarter(athlete),
+              'row-esm-bench': isEsmBench(athlete),
+              'podium-gold': athlete.rank === 1,
+              'podium-silver': athlete.rank === 2,
+              'podium-bronze': athlete.rank === 3,
+            }"
+            @click="toggleAthlete(athlete.name)"
+          >
+            <div class="smr-top">
+              <div class="smr-left">
+                <input
+                  type="checkbox"
+                  :checked="isAthleteSelected(athlete.name)"
+                  @change="toggleAthlete(athlete.name)"
+                  @click.stop
+                  :disabled="!isAthleteSelected(athlete.name) && selectedAthletes.length >= 8"
+                  class="smart-checkbox"
+                  :aria-label="'Wybierz ' + athlete.name"
+                />
+                <span v-if="athlete.rank === 1" class="rank-badge gold">🥇 1</span>
+                <span v-else-if="athlete.rank === 2" class="rank-badge silver">🥈 2</span>
+                <span v-else-if="athlete.rank === 3" class="rank-badge bronze">🥉 3</span>
+                <strong v-else class="rank-normal smr-rank">#{{ athlete.rank || '-' }}</strong>
+
+                <CountryFlag v-if="athlete.country" :code="athlete.country" size="sm" />
+                <div class="smr-name-wrap">
+                  <RouterLink
+                    v-if="athlete.fis_code"
+                    :to="`/athletes/${athlete.fis_code}`"
+                    class="athlete-link smr-name"
+                    @click.stop
+                  >
+                    {{ athlete.name }}
+                  </RouterLink>
+                  <span v-else class="athlete-name-plain smr-name">{{ athlete.name }}</span>
+                  <div class="smr-tags">
+                    <span v-if="athlete.bib" class="bib-tag">Bib {{ athlete.bib }}</span>
+                    <span v-if="athlete.status && athlete.status !== 'Classified'" class="status-dns">
+                      {{ athlete.status }}
+                    </span>
+                    <span v-if="isEsmStarter(athlete)" class="esm-badge esm-starter">⭐ ESM</span>
+                    <span v-else-if="isEsmBench(athlete)" class="esm-badge esm-bench">🪑 ESM (R)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="smr-right">
+                <span v-if="getAthletePrice(athlete) != null" class="price-chip">
+                  {{ getAthletePrice(athlete)!.toFixed(1) }}
+                </span>
+                <span
+                  v-if="athlete.competition_points > 0"
+                  class="comp-pts-chip active"
+                >
+                  +{{ athlete.competition_points }} PŚ
+                </span>
+              </div>
+            </div>
+
+            <div class="smr-jumps-row">
+              <div
+                v-for="rNum in maxRoundsCount"
+                :key="'mr_' + rNum"
+                class="smr-jump-box"
+              >
+                <span class="smr-j-label">
+                  {{ (session.session_type === 'TRAINING' || session.session_type === 'TRIAL') ? `Skok ${rNum}` : `Seria ${rNum}` }}
+                </span>
+                <template v-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].distance">
+                  <strong class="distance-main font-mono">{{ athlete.jumps[rNum - 1].distance }} m</strong>
+                  <small class="jump-sub">
+                    <template v-if="athlete.jumps[rNum - 1].points != null">{{ athlete.jumps[rNum - 1].points }} pkt</template>
+                    <template v-if="athlete.jumps[rNum - 1].rank != null"> ({{ athlete.jumps[rNum - 1].rank }}.)</template>
+                  </small>
+                </template>
+                <span v-else-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].status" class="status-dns">
+                  {{ athlete.jumps[rNum - 1].status }}
+                </span>
+                <span v-else class="dim-dash">-</span>
+              </div>
+
+              <div class="smr-jump-box smr-total-box">
+                <span class="smr-j-label">Nota</span>
+                <strong class="font-mono smr-total-val">
+                  {{ athlete.total_points != null ? athlete.total_points : '-' }}
+                </strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="table-responsive"
+          :class="{ 'desktop-only': mobileViewMode === 'cards' }"
+          v-if="session.results_data?.results?.length > 0"
+        >
           <table class="results-table">
             <thead>
               <tr>
@@ -1729,7 +1857,24 @@ onMounted(() => {
   color: #334155;
 }
 
+.mobile-only {
+  display: none;
+}
+
+.toolbar-right-mobile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+  .mobile-only {
+    display: flex;
+  }
   .page {
     padding: 12px;
   }
@@ -1747,6 +1892,7 @@ onMounted(() => {
   .hub-right {
     width: 100%;
     justify-content: space-between;
+    flex-wrap: wrap;
   }
   .selection-detail-strip {
     flex-direction: column;
@@ -1762,14 +1908,170 @@ onMounted(() => {
   .packages-compact-grid {
     grid-template-columns: 1fr;
   }
-  /* Zamrożona pozycja i nazwisko w tabeli wyników sesji */
+  .toolbar-right-mobile {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .s-view-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    background: #e2e8f0;
+    padding: 3px;
+    border-radius: 8px;
+    width: 100%;
+  }
+  .s-switch-btn {
+    border: none;
+    background: transparent;
+    color: #475569;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    min-height: 36px;
+    cursor: pointer;
+  }
+  .s-switch-btn.active {
+    background: #ffffff;
+    color: #0284c7;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+  .session-mobile-list {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .session-m-res-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  }
+  .session-m-res-card.podium-gold {
+    background: rgba(254, 243, 199, 0.45);
+    border-color: #fde68a;
+  }
+  .session-m-res-card.podium-silver {
+    background: rgba(241, 245, 249, 0.8);
+    border-color: #cbd5e1;
+  }
+  .session-m-res-card.podium-bronze {
+    background: rgba(254, 237, 213, 0.45);
+    border-color: #fed7aa;
+  }
+  .session-m-res-card.row-esm-starter:not(.row-selected) {
+    background-color: #fffbeb;
+  }
+  .session-m-res-card.row-esm-bench:not(.row-selected) {
+    background-color: #f8fafc;
+  }
+  .session-m-res-card.row-selected {
+    background: #e0f2fe !important;
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 1px #38bdf8;
+  }
+  .smr-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .smr-left {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    min-width: 0;
+    flex: 1;
+  }
+  .smr-rank {
+    font-size: 0.85rem;
+    min-width: 24px;
+  }
+  .smr-name-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .smr-name {
+    font-size: 0.92rem;
+    line-height: 1.2;
+  }
+  .smr-tags {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .smr-tags .esm-badge {
+    margin-left: 0;
+  }
+  .smr-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .smr-jumps-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+    gap: 6px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 7px 8px;
+  }
+  .smr-jump-box {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .smr-j-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #64748b;
+  }
+  .smr-total-box {
+    align-items: flex-end;
+    text-align: right;
+  }
+  .smr-total-val {
+    font-size: 0.95rem;
+    color: #0f172a;
+  }
+
+  /* Poprawione zamrożone kolumny w tabeli sesji (bez nakładania checkboxa) */
+  .results-table th.th-pkg,
+  .results-table td.td-pkg {
+    position: sticky;
+    left: 0;
+    z-index: 9;
+    background: #ffffff;
+    width: 34px;
+    min-width: 34px;
+    padding: 6px 4px;
+  }
+  .results-table th.th-pkg {
+    z-index: 11;
+    background: #f8fafc;
+  }
   .results-table th.th-rank,
   .results-table td.td-rank {
     position: sticky;
-    left: 0;
+    left: 34px;
     z-index: 8;
     background: #ffffff;
-    min-width: 44px;
+    min-width: 42px;
+    padding: 6px 4px;
   }
   .results-table th.th-rank {
     z-index: 10;
@@ -1778,11 +2080,11 @@ onMounted(() => {
   .results-table th.th-name,
   .results-table td.td-name {
     position: sticky;
-    left: 44px;
+    left: 76px;
     z-index: 8;
     background: #ffffff;
-    min-width: 145px;
-    max-width: 165px;
+    min-width: 135px;
+    max-width: 155px;
     white-space: normal;
     box-shadow: 4px 0 6px -2px rgba(0, 0, 0, 0.08);
   }
@@ -1790,12 +2092,16 @@ onMounted(() => {
     z-index: 10;
     background: #f8fafc;
   }
+  .results-table tr.podium-gold td.td-pkg,
   .results-table tr.podium-gold td.td-rank,
   .results-table tr.podium-gold td.td-name { background: #fefce8; }
+  .results-table tr.podium-silver td.td-pkg,
   .results-table tr.podium-silver td.td-rank,
   .results-table tr.podium-silver td.td-name { background: #f8fafc; }
+  .results-table tr.podium-bronze td.td-pkg,
   .results-table tr.podium-bronze td.td-rank,
   .results-table tr.podium-bronze td.td-name { background: #fff7ed; }
+  .results-table tr.row-selected td.td-pkg,
   .results-table tr.row-selected td.td-rank,
   .results-table tr.row-selected td.td-name { background: #e0f2fe; }
 }

@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/stores/auth'
 import { useNotifications } from '@/stores/notifications'
 import CountryFlag from '@/components/CountryFlag.vue'
 import { api } from '@/api/client'
 
 const auth = useAuth()
+const route = useRoute()
 const router = useRouter()
 const {
   notifications: notifHistory,
@@ -16,6 +17,29 @@ const {
   markAsRead,
   markAllAsRead,
 } = useNotifications()
+
+type ProfileTab = 'edit' | 'esm' | 'plan' | 'notifications'
+const validTabs: ProfileTab[] = ['edit', 'esm', 'plan', 'notifications']
+const initialTab = validTabs.includes(route.query.tab as ProfileTab)
+  ? (route.query.tab as ProfileTab)
+  : 'edit'
+const activeProfileTab = ref<ProfileTab>(initialTab)
+
+const setProfileTab = (tab: ProfileTab) => {
+  activeProfileTab.value = tab
+  router.replace({ path: '/profile', query: tab === 'edit' ? {} : { tab } })
+}
+
+watch(
+  () => route.query.tab,
+  (newTab) => {
+    if (typeof newTab === 'string' && validTabs.includes(newTab as ProfileTab)) {
+      activeProfileTab.value = newTab as ProfileTab
+    } else if (!newTab) {
+      activeProfileTab.value = 'edit'
+    }
+  }
+)
 
 // Stan edycji formularza
 const nameInput = ref('')
@@ -353,9 +377,56 @@ const formatDate = (isoString?: string) => {
         <span>⚠️</span> {{ errorMsg }}
       </div>
 
-      <!-- GŁÓWNA SIATKA USTAWIEŃ -->
-      <div class="profile-grid">
-        <!-- FORMULARZ EDYCJI DANYCH -->
+      <!-- ZAKŁADKI PROFILU -->
+      <div class="profile-tabs-bar" role="tablist" aria-label="Sekcje profilu">
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeProfileTab === 'edit'"
+          class="profile-tab-btn"
+          :class="{ active: activeProfileTab === 'edit' }"
+          @click="setProfileTab('edit')"
+        >
+          <span>✏️ Profil i Awatar</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeProfileTab === 'esm'"
+          class="profile-tab-btn"
+          :class="{ active: activeProfileTab === 'esm' }"
+          @click="setProfileTab('esm')"
+        >
+          <span>🏆 esmManager &amp; Znajomi</span>
+          <span v-if="esmStatus?.incoming_requests?.length" class="profile-tab-badge">
+            {{ esmStatus.incoming_requests.length }}
+          </span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeProfileTab === 'plan'"
+          class="profile-tab-btn"
+          :class="{ active: activeProfileTab === 'plan' }"
+          @click="setProfileTab('plan')"
+        >
+          <span>💎 Pakiet i dostęp</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeProfileTab === 'notifications'"
+          class="profile-tab-btn"
+          :class="{ active: activeProfileTab === 'notifications' }"
+          @click="setProfileTab('notifications')"
+        >
+          <span>🔔 Powiadomienia</span>
+          <span v-if="notifUnreadCount > 0" class="profile-tab-badge">{{ notifUnreadCount }}</span>
+        </button>
+      </div>
+
+      <!-- ZAKŁADKA 1: EDYCJA PROFILU -->
+      <div v-if="activeProfileTab === 'edit'" class="profile-tab-panel">
         <div class="card edit-card">
           <div class="card-header">
             <h3>✏️ Edycja Profilu</h3>
@@ -505,7 +576,10 @@ const formatDate = (isoString?: string) => {
           </div>
         </div>
 
-        <!-- KARTA INFORMACJI O PLANIE I PAKIETACH -->
+      </div>
+
+      <!-- ZAKŁADKA 3: KARTA INFORMACJI O PLANIE I PAKIETACH -->
+      <div v-if="activeProfileTab === 'plan'" class="profile-tab-panel">
         <div class="card info-card">
           <div class="card-header">
             <h3>💎 Twój Pakiet i Możliwości</h3>
@@ -545,8 +619,8 @@ const formatDate = (isoString?: string) => {
         </div>
       </div>
 
-      <!-- KARTA INTEGRACJI Z ESM MANAGER I ZNAJOMYCH FANTASKI -->
-      <div class="card esm-card">
+      <!-- ZAKŁADKA 2: KARTA INTEGRACJI Z ESM MANAGER I ZNAJOMYCH FANTASKI -->
+      <div v-if="activeProfileTab === 'esm'" class="card esm-card">
         <div class="card-header esm-header-row">
           <div>
             <h3>🏆 Integracja z esmManager (Fantasy Skoki)</h3>
@@ -791,8 +865,8 @@ const formatDate = (isoString?: string) => {
         </div>
       </div>
 
-      <!-- KARTA HISTORII POWIADOMIEŃ -->
-      <div class="card notif-history-card">
+      <!-- ZAKŁADKA 4: KARTA HISTORII POWIADOMIEŃ -->
+      <div v-if="activeProfileTab === 'notifications'" class="card notif-history-card">
         <div class="card-header esm-header-row">
           <div>
             <h3>🔔 Historia powiadomień ({{ notifHistory.length }})</h3>
@@ -858,7 +932,78 @@ const formatDate = (isoString?: string) => {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
+}
+
+/* ZAKŁADKI PROFILU */
+.profile-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.profile-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.profile-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border: 1px solid transparent;
+  background: #f8fafc;
+  color: #475569;
+  border-radius: 9px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.18s ease;
+}
+
+.profile-tab-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.profile-tab-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.25);
+}
+
+.profile-tab-badge {
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-tab-btn.active .profile-tab-badge {
+  background: #ffffff;
+  color: #0284c7;
+}
+
+.profile-tab-panel {
+  width: 100%;
 }
 
 /* HERO CARD */
@@ -1821,12 +1966,130 @@ const formatDate = (isoString?: string) => {
 }
 
 @media (max-width: 768px) {
+  .profile-page {
+    padding: 12px 8px 28px;
+  }
+  .profile-container {
+    gap: 12px;
+  }
+  .profile-hero-card {
+    padding: 14px 16px;
+    border-radius: 12px;
+  }
+  .hero-left {
+    gap: 14px;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+  .profile-avatar-large,
+  .avatar-fallback-large {
+    width: 64px;
+    height: 64px;
+    font-size: 2rem;
+  }
+  .user-display-name {
+    font-size: 1.2rem;
+  }
+  .user-email {
+    font-size: 0.84rem;
+    word-break: break-all;
+  }
+  .hero-meta-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    font-size: 0.74rem;
+  }
+  .meta-dot {
+    display: none;
+  }
+  .profile-tabs-bar {
+    padding: 6px;
+    gap: 6px;
+    border-radius: 10px;
+    position: sticky;
+    top: calc(var(--header-height, 56px) + 4px);
+    z-index: 40;
+  }
+  .profile-tab-btn {
+    padding: 8px 12px;
+    font-size: 0.82rem;
+    min-height: 40px;
+  }
+  .card-header {
+    padding: 14px 14px 10px;
+  }
+  .card-body {
+    padding: 14px;
+    gap: 14px;
+  }
+  .avatar-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .avatar-tab-btn {
+    font-size: 0.76rem;
+    padding: 8px 6px;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.2;
+  }
+  .generator-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .form-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .form-actions .btn-primary,
+  .form-actions .btn-cancel {
+    width: 100%;
+    min-height: 44px;
+  }
+  .esm-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .esm-header-actions .btn-esm-sync {
+    width: 100%;
+    justify-content: center;
+    min-height: 42px;
+  }
   .esm-form-grid,
   .esm-squad-columns,
   .esm-add-friend-row,
-  .esm-directory-search {
+  .esm-directory-search,
+  .esm-friends-grid {
     grid-template-columns: 1fr;
     flex-direction: column;
+  }
+  .esm-directory-search .btn-esm-sync {
+    width: 100%;
+    min-height: 42px;
+  }
+  .esm-req-card,
+  .esm-dir-item,
+  .notif-history-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .esm-req-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .esm-dir-item > div:last-child,
+  .notif-history-item > .btn-esm-sync {
+    width: 100%;
+  }
+  .esm-dir-item > div:last-child button,
+  .notif-history-item > .btn-esm-sync {
+    width: 100%;
+    justify-content: center;
+    min-height: 40px;
   }
 }
 </style>

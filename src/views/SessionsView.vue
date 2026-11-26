@@ -224,138 +224,238 @@ onMounted(() => {
         <p class="error-text">⚠️ {{ calendarError }}</p>
         <button @click="fetchCalendar" class="btn-retry">Spróbuj ponownie 🔄</button>
       </div>
-      <div v-else-if="calendarEvents.length > 0" class="table-responsive">
-        <table class="sessions-table">
-          <thead>
-            <tr>
-              <th style="width: 170px">Termin</th>
-              <th>Miejscowość / Turniej</th>
-              <th style="width: 160px">Status</th>
-              <th style="width: 190px; text-align: right">Sesje / Szczegóły</th>
-            </tr>
-          </thead>
-          <tbody>
-            <template v-for="ev in calendarEvents" :key="getCalendarEventKey(ev)">
-              <tr
-                :class="{
-                  'cal-row-expandable': ev.sessions && ev.sessions.length > 0,
-                  'cal-row-expanded': isCalendarEventExpanded(ev),
-                }"
-                @click="toggleCalendarEvent(ev)"
-              >
-                <td>
-                  <strong>{{ ev.date_label }}</strong>
-                </td>
-                <td>
-                  <div class="location-row">
-                    <CountryFlag
-                      v-if="ev.country && ev.country !== 'FIS'"
-                      :code="ev.country"
-                      size="sm"
-                      :title="countries[ev.country] || ev.country"
-                    />
-                    <span class="place-name">{{ ev.place }}</span>
-                    <span v-if="ev.tournament_tag" class="cal-tourney-badge">
-                      {{ tournamentBadgeLabel(ev.tournament_tag) }}
-                    </span>
-                  </div>
-                </td>
-                <td>
-                  <span v-if="ev.status === 'COMPLETED'" class="cal-status-pill done">
-                    ✅ Rozegrane ({{ ev.sessions_count }})
-                  </span>
-                  <span v-else-if="ev.status === 'IN_PROGRESS'" class="cal-status-pill progress">
-                    🟢 W trakcie ({{ ev.sessions_count }})
-                  </span>
-                  <span v-else-if="ev.status === 'CANCELLED'" class="cal-status-pill cancelled">
-                    🚫 Odwołane
-                  </span>
-                  <span v-else-if="ev.status === 'AWAITING_RESULTS' || ev.status === 'PAST'" class="cal-status-pill awaiting">
-                    ⏳ Oczekiwanie na wyniki
-                  </span>
-                  <span v-else class="cal-status-pill upcoming">
-                    ⏳ Nadchodzące
-                  </span>
-                </td>
-                <td style="text-align: right">
-                  <div class="cal-actions">
-                    <button
-                      v-if="ev.sessions && ev.sessions.length > 0"
-                      type="button"
-                      class="btn-cal-expand"
-                      :class="{ active: isCalendarEventExpanded(ev) }"
-                      :aria-expanded="isCalendarEventExpanded(ev)"
-                      :title="isCalendarEventExpanded(ev) ? 'Zwiń listę sesji' : 'Rozwiń wszystkie rozegrane sesje'"
-                      @click.stop="toggleCalendarEvent(ev)"
-                    >
-                      <span>Sesje ({{ ev.sessions.length }})</span>
-                      <span class="cal-arrow">{{ isCalendarEventExpanded(ev) ? '▲' : '▼' }}</span>
-                    </button>
-                    <a
-                      v-if="ev.url"
-                      :href="ev.url"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="cal-fis-link"
-                      @click.stop
-                    >
-                      FIS ↗
-                    </a>
-                  </div>
-                </td>
+      <div v-else-if="calendarEvents.length > 0">
+        <div class="table-responsive desktop-only">
+          <table class="sessions-table">
+            <thead>
+              <tr>
+                <th style="width: 170px">Termin</th>
+                <th>Miejscowość / Turniej</th>
+                <th style="width: 160px">Status</th>
+                <th style="width: 190px; text-align: right">Sesje / Szczegóły</th>
               </tr>
-
-              <!-- Rozwinięta lista wszystkich rozegranych sesji dla weekendu -->
-              <tr
-                v-if="isCalendarEventExpanded(ev) && ev.sessions && ev.sessions.length > 0"
-                class="cal-sessions-drawer-row"
-              >
-                <td colspan="4">
-                  <div class="cal-sessions-panel">
-                    <div class="cal-sessions-panel-head">
-                      <span>📋 Rozegrane sesje: <strong>{{ ev.place }}</strong> ({{ ev.date_label }})</span>
-                      <small>{{ ev.sessions.length }} {{ ev.sessions.length === 1 ? 'sesja' : ev.sessions.length < 5 ? 'sesje' : 'sesji' }}</small>
+            </thead>
+            <tbody>
+              <template v-for="ev in calendarEvents" :key="getCalendarEventKey(ev)">
+                <tr
+                  :class="{
+                    'cal-row-expandable': ev.sessions && ev.sessions.length > 0,
+                    'cal-row-expanded': isCalendarEventExpanded(ev),
+                  }"
+                  @click="toggleCalendarEvent(ev)"
+                >
+                  <td>
+                    <strong>{{ ev.date_label }}</strong>
+                  </td>
+                  <td>
+                    <div class="location-row">
+                      <CountryFlag
+                        v-if="ev.country && ev.country !== 'FIS'"
+                        :code="ev.country"
+                        size="sm"
+                        :title="countries[ev.country] || ev.country"
+                      />
+                      <span class="place-name">{{ ev.place }}</span>
+                      <span v-if="ev.tournament_tag" class="cal-tourney-badge">
+                        {{ tournamentBadgeLabel(ev.tournament_tag) }}
+                      </span>
                     </div>
-                    <div class="cal-sessions-list">
-                      <div
-                        v-for="s in ev.sessions"
-                        :key="s.id"
-                        class="cal-session-item"
+                  </td>
+                  <td>
+                    <span v-if="ev.status === 'COMPLETED'" class="cal-status-pill done">
+                      ✅ Rozegrane ({{ ev.sessions_count }})
+                    </span>
+                    <span v-else-if="ev.status === 'IN_PROGRESS'" class="cal-status-pill progress">
+                      🟢 W trakcie ({{ ev.sessions_count }})
+                    </span>
+                    <span v-else-if="ev.status === 'CANCELLED'" class="cal-status-pill cancelled">
+                      🚫 Odwołane
+                    </span>
+                    <span v-else-if="ev.status === 'AWAITING_RESULTS' || ev.status === 'PAST'" class="cal-status-pill awaiting">
+                      ⏳ Oczekiwanie na wyniki
+                    </span>
+                    <span v-else class="cal-status-pill upcoming">
+                      ⏳ Nadchodzące
+                    </span>
+                  </td>
+                  <td style="text-align: right">
+                    <div class="cal-actions">
+                      <button
+                        v-if="ev.sessions && ev.sessions.length > 0"
+                        type="button"
+                        class="btn-cal-expand"
+                        :class="{ active: isCalendarEventExpanded(ev) }"
+                        :aria-expanded="isCalendarEventExpanded(ev)"
+                        :title="isCalendarEventExpanded(ev) ? 'Zwiń listę sesji' : 'Rozwiń wszystkie rozegrane sesje'"
+                        @click.stop="toggleCalendarEvent(ev)"
                       >
-                        <div class="cal-session-main">
-                          <span class="cal-session-date">
-                            {{ s.date }}<template v-if="s.time"> · {{ s.time }}</template>
-                          </span>
-                          <span
-                            class="cal-session-type-pill"
-                            :class="(s.session_type || '').toLowerCase()"
-                          >
-                            {{ sessionTypeMap[s.session_type] || s.session_type || 'Sesja' }}
-                          </span>
-                          <span class="cal-session-title">
-                            {{ s.title || ev.place }}
-                          </span>
-                          <span v-if="s.hillSize" class="cal-session-hill">
-                            HS {{ s.hillSize }}
-                          </span>
-                          <span v-if="s.is_cancelled" class="cal-session-cancelled">
-                            🚫 Odwołana
-                          </span>
-                        </div>
-                        <RouterLink
-                          :to="`/sessions/${s.id}`"
-                          class="btn-details-sm"
+                        <span>Sesje ({{ ev.sessions.length }})</span>
+                        <span class="cal-arrow">{{ isCalendarEventExpanded(ev) ? '▲' : '▼' }}</span>
+                      </button>
+                      <a
+                        v-if="ev.url"
+                        :href="ev.url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="cal-fis-link"
+                        @click.stop
+                      >
+                        FIS ↗
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Rozwinięta lista wszystkich rozegranych sesji dla weekendu -->
+                <tr
+                  v-if="isCalendarEventExpanded(ev) && ev.sessions && ev.sessions.length > 0"
+                  class="cal-sessions-drawer-row"
+                >
+                  <td colspan="4">
+                    <div class="cal-sessions-panel">
+                      <div class="cal-sessions-panel-head">
+                        <span>📋 Rozegrane sesje: <strong>{{ ev.place }}</strong> ({{ ev.date_label }})</span>
+                        <small>{{ ev.sessions.length }} {{ ev.sessions.length === 1 ? 'sesja' : ev.sessions.length < 5 ? 'sesje' : 'sesji' }}</small>
+                      </div>
+                      <div class="cal-sessions-list">
+                        <div
+                          v-for="s in ev.sessions"
+                          :key="s.id"
+                          class="cal-session-item"
                         >
-                          Wyniki ↗
-                        </RouterLink>
+                          <div class="cal-session-main">
+                            <span class="cal-session-date">
+                              {{ s.date }}<template v-if="s.time"> · {{ s.time }}</template>
+                            </span>
+                            <span
+                              class="cal-session-type-pill"
+                              :class="(s.session_type || '').toLowerCase()"
+                            >
+                              {{ sessionTypeMap[s.session_type] || s.session_type || 'Sesja' }}
+                            </span>
+                            <span class="cal-session-title">
+                              {{ s.title || ev.place }}
+                            </span>
+                            <span v-if="s.hillSize" class="cal-session-hill">
+                              HS {{ s.hillSize }}
+                            </span>
+                            <span v-if="s.is_cancelled" class="cal-session-cancelled">
+                              🚫 Odwołana
+                            </span>
+                          </div>
+                          <RouterLink
+                            :to="`/sessions/${s.id}`"
+                            class="btn-details-sm"
+                          >
+                            Wyniki ↗
+                          </RouterLink>
+                        </div>
                       </div>
                     </div>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- KARTY MOBILNE KALENDARZA (<= 768px) -->
+        <div class="mobile-cards-list mobile-only">
+          <div
+            v-for="ev in calendarEvents"
+            :key="'m_' + getCalendarEventKey(ev)"
+            class="session-m-card"
+            :class="{ 'cal-card-expanded': isCalendarEventExpanded(ev) }"
+            @click="toggleCalendarEvent(ev)"
+          >
+            <div class="smc-top">
+              <strong class="smc-date">{{ ev.date_label }}</strong>
+              <span v-if="ev.status === 'COMPLETED'" class="cal-status-pill done">
+                ✅ Rozegrane ({{ ev.sessions_count }})
+              </span>
+              <span v-else-if="ev.status === 'IN_PROGRESS'" class="cal-status-pill progress">
+                🟢 W trakcie ({{ ev.sessions_count }})
+              </span>
+              <span v-else-if="ev.status === 'CANCELLED'" class="cal-status-pill cancelled">
+                🚫 Odwołane
+              </span>
+              <span v-else-if="ev.status === 'AWAITING_RESULTS' || ev.status === 'PAST'" class="cal-status-pill awaiting">
+                ⏳ Oczekiwanie na wyniki
+              </span>
+              <span v-else class="cal-status-pill upcoming">
+                ⏳ Nadchodzące
+              </span>
+            </div>
+
+            <div class="smc-location">
+              <CountryFlag
+                v-if="ev.country && ev.country !== 'FIS'"
+                :code="ev.country"
+                size="sm"
+                :title="countries[ev.country] || ev.country"
+              />
+              <span class="place-name">{{ ev.place }}</span>
+              <span v-if="ev.tournament_tag" class="cal-tourney-badge">
+                {{ tournamentBadgeLabel(ev.tournament_tag) }}
+              </span>
+            </div>
+
+            <div class="smc-actions">
+              <button
+                v-if="ev.sessions && ev.sessions.length > 0"
+                type="button"
+                class="btn-cal-expand smc-expand-btn"
+                :class="{ active: isCalendarEventExpanded(ev) }"
+                @click.stop="toggleCalendarEvent(ev)"
+              >
+                <span>📋 Sesje ({{ ev.sessions.length }})</span>
+                <span class="cal-arrow">{{ isCalendarEventExpanded(ev) ? '▲' : '▼' }}</span>
+              </button>
+              <a
+                v-if="ev.url"
+                :href="ev.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="cal-fis-link smc-fis-btn"
+                @click.stop
+              >
+                FIS ↗
+              </a>
+            </div>
+
+            <div
+              v-if="isCalendarEventExpanded(ev) && ev.sessions && ev.sessions.length > 0"
+              class="cal-sessions-panel smc-sessions-panel"
+              @click.stop
+            >
+              <div class="cal-sessions-list">
+                <div
+                  v-for="s in ev.sessions"
+                  :key="'ms_' + s.id"
+                  class="cal-session-item smc-session-item"
+                >
+                  <div class="cal-session-main">
+                    <span class="cal-session-date">
+                      {{ s.date }}<template v-if="s.time"> · {{ s.time }}</template>
+                    </span>
+                    <span
+                      class="cal-session-type-pill"
+                      :class="(s.session_type || '').toLowerCase()"
+                    >
+                      {{ sessionTypeMap[s.session_type] || s.session_type || 'Sesja' }}
+                    </span>
+                    <span class="cal-session-title">{{ s.title || ev.place }}</span>
+                    <span v-if="s.hillSize" class="cal-session-hill">HS {{ s.hillSize }}</span>
+                    <span v-if="s.is_cancelled" class="cal-session-cancelled">🚫 Odwołana</span>
                   </div>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
+                  <RouterLink :to="`/sessions/${s.id}`" class="btn-details-sm smc-session-link">
+                    Wyniki ↗
+                  </RouterLink>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div v-else class="no-results">
         📅 Brak pozycji w kalendarzu FIS dla wybranego sezonu i rangi.
@@ -422,41 +522,71 @@ onMounted(() => {
         <button @click="fetchSessions(false)" class="btn-retry">Spróbuj ponownie 🔄</button>
       </div>
 
-      <div class="table-responsive" v-else-if="sessions.length > 0">
-        <table class="sessions-table">
-          <thead>
-            <tr>
-              <th style="width: 140px">Termin</th>
-              <th style="width: 80px; text-align: center">Ranga</th>
-              <th>Miejscowość / Wydarzenie</th>
-              <th style="width: 160px">Typ Sesji</th>
-              <th style="width: 110px; text-align: right">Akcja</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="s in sessions" :key="s._id">
-              <td>
-                <div class="date-block">
-                  <span class="date-main">{{ s.date || 'Brak daty' }}</span>
-                  <span v-if="s.time" class="time-tag">{{ s.time }}</span>
-                </div>
-              </td>
-              <td style="text-align: center">
+      <div v-else-if="sessions.length > 0">
+        <div class="table-responsive desktop-only">
+          <table class="sessions-table">
+            <thead>
+              <tr>
+                <th style="width: 140px">Termin</th>
+                <th style="width: 80px; text-align: center">Ranga</th>
+                <th>Miejscowość / Wydarzenie</th>
+                <th style="width: 160px">Typ Sesji</th>
+                <th style="width: 110px; text-align: right">Akcja</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="s in sessions" :key="s._id">
+                <td>
+                  <div class="date-block">
+                    <span class="date-main">{{ s.date || 'Brak daty' }}</span>
+                    <span v-if="s.time" class="time-tag">{{ s.time }}</span>
+                  </div>
+                </td>
+                <td style="text-align: center">
+                  <span class="cat-chip">{{ s.category_code || '-' }}</span>
+                </td>
+                <td>
+                  <div class="location-row">
+                    <CountryFlag
+                      v-if="s.event_country"
+                      :code="s.event_country"
+                      size="sm"
+                      :title="countries[s.event_country] || s.event_country"
+                    />
+                    <span class="place-name">{{ s.event_place || 'Brak miejsca' }}</span>
+                  </div>
+                  <small v-if="s.title" class="session-sub-title">{{ s.title }}</small>
+                </td>
+                <td>
+                  <span
+                    :class="[
+                      'session-type-chip',
+                      (s.session_type || '').includes('COMPETITION') ? 'comp' : (s.session_type || '').includes('QUA') ? 'qua' : 'other',
+                    ]"
+                  >
+                    {{ (s.session_type && sessionTypeMap[s.session_type]) || s.session_type || 'Nieznany' }}
+                  </span>
+                </td>
+                <td style="text-align: right">
+                  <RouterLink :to="`/sessions/${s._id}`" class="btn-details-sm">
+                    Szczegóły ↗
+                  </RouterLink>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- KARTY MOBILNE SESJI (<= 768px) -->
+        <div class="mobile-cards-list mobile-only">
+          <div v-for="s in sessions" :key="'m_' + s._id" class="session-m-card">
+            <div class="smc-top">
+              <div class="smc-date-wrap">
+                <strong class="smc-date">{{ s.date || 'Brak daty' }}</strong>
+                <span v-if="s.time" class="time-tag">{{ s.time }}</span>
+              </div>
+              <div class="smc-badges">
                 <span class="cat-chip">{{ s.category_code || '-' }}</span>
-              </td>
-              <td>
-                <div class="location-row">
-                  <CountryFlag
-                    v-if="s.event_country"
-                    :code="s.event_country"
-                    size="sm"
-                    :title="countries[s.event_country] || s.event_country"
-                  />
-                  <span class="place-name">{{ s.event_place || 'Brak miejsca' }}</span>
-                </div>
-                <small v-if="s.title" class="session-sub-title">{{ s.title }}</small>
-              </td>
-              <td>
                 <span
                   :class="[
                     'session-type-chip',
@@ -465,15 +595,27 @@ onMounted(() => {
                 >
                   {{ (s.session_type && sessionTypeMap[s.session_type]) || s.session_type || 'Nieznany' }}
                 </span>
-              </td>
-              <td style="text-align: right">
-                <RouterLink :to="`/sessions/${s._id}`" class="btn-details-sm">
-                  Szczegóły ↗
-                </RouterLink>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </div>
+            </div>
+
+            <div class="smc-location">
+              <CountryFlag
+                v-if="s.event_country"
+                :code="s.event_country"
+                size="sm"
+                :title="countries[s.event_country] || s.event_country"
+              />
+              <span class="place-name">{{ s.event_place || 'Brak miejsca' }}</span>
+            </div>
+            <small v-if="s.title" class="session-sub-title smc-subtitle">{{ s.title }}</small>
+
+            <div class="smc-actions">
+              <RouterLink :to="`/sessions/${s._id}`" class="btn-details-sm smc-full-btn">
+                Zobacz wyniki i szczegóły ↗
+              </RouterLink>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div v-if="!errorMessage && sessions.length >= filters.limit" class="load-more-container">
@@ -772,28 +914,144 @@ onMounted(() => {
   font-size: 0.9em;
 }
 
+.mobile-only {
+  display: none;
+}
+
 @media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+  .mobile-only {
+    display: flex;
+  }
   .page {
     padding: 12px;
   }
-  .filters-toolbar {
+  .view-header {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
   }
-  .filter-item {
+  .view-mode-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
     width: 100%;
   }
-  .results-table th:first-child,
-  .results-table td:first-child {
-    position: sticky;
-    left: 0;
-    z-index: 8;
-    background: #ffffff;
-    box-shadow: 4px 0 6px -2px rgba(0, 0, 0, 0.08);
+  .view-tab-btn {
+    padding: 9px 10px;
+    font-size: 0.8rem;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.2;
+    min-height: 42px;
   }
-  .results-table th:first-child {
-    z-index: 10;
-    background: #f1f5f9;
+  .filters-toolbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 12px;
+    align-items: end;
+  }
+  .filter-item {
+    flex: none;
+    min-width: 0;
+    width: 100%;
+  }
+  .filter-actions {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .btn-clear-sm {
+    width: 100%;
+    height: 40px;
+    min-height: 40px;
+  }
+  .mobile-cards-list {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .session-m-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04);
+  }
+  .session-m-card.cal-card-expanded {
+    border-color: #93c5fd;
+    background: #f8fbff;
+  }
+  .smc-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .smc-date-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .smc-date {
+    font-size: 0.88rem;
+    color: #0f172a;
+  }
+  .smc-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .smc-location {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .smc-subtitle {
+    margin-top: -2px;
+  }
+  .smc-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 2px;
+  }
+  .smc-expand-btn {
+    flex: 1;
+    justify-content: space-between;
+    min-height: 38px;
+    padding: 6px 12px;
+  }
+  .smc-fis-btn {
+    min-height: 38px;
+    padding: 6px 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .smc-full-btn {
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 12px;
+  }
+  .smc-sessions-panel {
+    margin-top: 4px;
+  }
+  .smc-session-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .smc-session-link {
+    width: 100%;
+    min-height: 36px;
   }
 }
 

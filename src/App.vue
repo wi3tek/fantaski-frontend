@@ -424,7 +424,7 @@ onUnmounted(() => {
                   <span class="notif-item-msg">{{ n.message }}</span>
                 </button>
               </div>
-              <RouterLink to="/profile" class="notif-history-link" @click="closeNavigation">
+              <RouterLink to="/profile?tab=notifications" class="notif-history-link" @click="closeNavigation">
                 📜 Historia powiadomień w Profilu →
               </RouterLink>
             </div>

@@ -436,16 +436,47 @@ th:hover {
 
 /* Dotykowy komfort na urządzeniach mobilnych */
 @media (max-width: 768px) {
-    /* iOS Safari auto-zoom prevention */
+    /* iOS Safari auto-zoom prevention + zapobieganie rozpychaniu siatki przez date/select */
     input, select, textarea {
         font-size: 16px !important;
+        min-width: 0;
+        max-width: 100%;
     }
 
-    button,
+    input[type="checkbox"],
+    input[type="radio"] {
+        font-size: inherit !important;
+    }
+
     .btn,
+    .btn-primary,
+    .btn-secondary,
     .btn-submit,
+    .btn-details,
+    .btn-load-more,
     .nav-links a {
         min-height: var(--touch-target-min);
+    }
+
+    .card {
+        padding: 14px;
+    }
+
+    .card-header {
+        padding-bottom: 8px;
+        margin-bottom: 14px;
+    }
+
+    [data-tooltip]::after {
+        min-width: 180px;
+        max-width: min(320px, calc(100vw - 24px));
+    }
+}
+
+@media (hover: none) {
+    [data-tooltip]::after,
+    [data-tooltip]::before {
+        display: none;
     }
 }
 

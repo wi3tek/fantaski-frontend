@@ -116,6 +116,7 @@ const selectedTime = ref('16:00')
 // --- Stan Najbliższych Zawodów (Auto-detekcja z Kalendarza FIS) ---
 const upcomingCompetition = ref<any>(null)
 const isFetchingUpcoming = ref(false)
+const isInitializing = ref(true)
 
 const fetchUpcomingCompetition = async () => {
   try {
@@ -194,9 +195,33 @@ const errorMsg = ref<string | null>(null)
 const tableSearch = ref('')
 const filterMode = ref<'all' | 'top30' | 'pol' | 'podium' | 'clutch'>('all')
 
-// Sortowanie tabeli
+// Sortowanie tabeli i kart mobilnych
 const sortKey = ref<string>('predicted_rank')
 const sortOrder = ref<'asc' | 'desc'>('asc')
+const mobileViewMode = ref<'cards' | 'table'>('cards')
+
+const mobileSortOptions = [
+  { key: 'predicted_rank', label: 'Miejsce (Prognoza)' },
+  { key: 'predicted_distance', label: 'Dystans (m)' },
+  { key: 'predicted_points', label: 'Punkty' },
+  { key: 'top30_probability', label: 'Szansa Top 30 (%)' },
+  { key: 'podium_probability', label: 'Szansa Podium (%)' },
+  { key: 'form_score', label: 'Forma (%)' },
+  { key: 'price', label: 'Cena Fantasy' },
+  { key: 'consistency_score', label: 'Stabilność (%)' },
+  { key: 'name', label: 'Nazwisko (A-Z)' },
+]
+
+const onMobileSortKeyChange = (event: Event) => {
+  const nextKey = (event.target as HTMLSelectElement).value
+  if (nextKey !== sortKey.value) {
+    sortBy(nextKey)
+  }
+}
+
+const toggleSortOrder = () => {
+  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+}
 
 const sortBy = (key: string) => {
   if (sortKey.value === key) {
@@ -527,17 +552,30 @@ watch([selectedHillId, isCustomHill], () => {
 })
 
 onMounted(async () => {
-  await fetchHills()
-  await fetchUpcomingCompetition()
-  await fetchAvailableAthletes()
-  await fetchModelInfo()
-  await fetchWeatherForecast()
+  isInitializing.value = true
+  try {
+    await Promise.all([
+      fetchHills(),
+      fetchUpcomingCompetition(),
+      fetchAvailableAthletes(),
+      fetchModelInfo(),
+    ])
+    await fetchWeatherForecast()
+    if (selectedFisCodes.value.length > 0) {
+      isPredicting.value = true
+    }
+  } finally {
+    isInitializing.value = false
+  }
   await runPrediction()
 })
 </script>
 
 <template>
   <div class="predictions-page">
+    <SkiLoader v-if="isInitializing">
+      Pobieranie najbliższego konkursu i listy startowej...
+    </SkiLoader>
     <!-- HERO HEADER -->
     <header class="page-hero">
       <div class="hero-content">
@@ -917,8 +955,9 @@ onMounted(async () => {
 
       <!-- LOADER PODCZAS GENEROWANIA -->
       <div v-if="isPredicting" class="loader-box">
-        <SkiLoader />
-        <p class="loader-txt">Sieć neuronowa analizuje parametry skoczni, pogodę, powtarzalność i formę {{ selectedFisCodes.length }} skoczków...</p>
+        <SkiLoader>
+          Sieć neuronowa analizuje parametry skoczni, pogodę, powtarzalność i formę {{ selectedFisCodes.length }} skoczków...
+        </SkiLoader>
       </div>
 
       <!-- WYNIKI PREDYKCJI -->
@@ -1167,7 +1206,189 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div class="table-responsive">
+          <!-- PASEK SORTOWANIA I TRYBU WIDOKU NA MOBILCE -->
+          <div class="mobile-pred-controls mobile-only">
+            <div class="mpc-sort-group">
+              <label for="predMobileSort">Sortuj:</label>
+              <select
+                id="predMobileSort"
+                :value="sortKey"
+                class="mpc-select"
+                @change="onMobileSortKeyChange"
+              >
+                <option v-for="opt in mobileSortOptions" :key="opt.key" :value="opt.key">
+                  {{ opt.label }}
+                </option>
+              </select>
+              <button
+                type="button"
+                class="mpc-order-btn"
+                @click="toggleSortOrder"
+                :title="sortOrder === 'asc' ? 'Rosnąco' : 'Malejąco'"
+              >
+                {{ sortOrder === 'asc' ? '▲ Rosn.' : '▼ Mal.' }}
+              </button>
+            </div>
+            <div class="mpc-view-switch">
+              <button
+                type="button"
+                class="mpc-switch-btn"
+                :class="{ active: mobileViewMode === 'cards' }"
+                @click="mobileViewMode = 'cards'"
+              >
+                🪪 Karty
+              </button>
+              <button
+                type="button"
+                class="mpc-switch-btn"
+                :class="{ active: mobileViewMode === 'table' }"
+                @click="mobileViewMode = 'table'"
+              >
+                📋 Tabela
+              </button>
+            </div>
+          </div>
+
+          <!-- WIDOK KART MOBILNYCH (<= 768px) -->
+          <div v-if="mobileViewMode === 'cards'" class="pred-mobile-list mobile-only">
+            <div
+              v-for="ath in filteredPredictions"
+              :key="'m_' + ath.fis_code"
+              class="pred-m-card"
+              :class="{
+                'row-gold': ath.predicted_rank === 1,
+                'row-silver': ath.predicted_rank === 2,
+                'row-bronze': ath.predicted_rank === 3,
+                'row-top10': ath.predicted_rank > 3 && ath.predicted_rank <= 10,
+              }"
+            >
+              <div class="pmc-top">
+                <div class="pmc-identity">
+                  <span class="rank-badge" :class="'rank-' + ath.predicted_rank">
+                    {{ ath.predicted_rank }}
+                  </span>
+                  <CountryFlag :code="ath.country" size="sm" />
+                  <div class="pmc-name-wrap">
+                    <RouterLink :to="'/athletes/' + ath.fis_code" class="athlete-link pmc-name">
+                      {{ ath.name }}
+                    </RouterLink>
+                    <div class="pmc-sub-tags">
+                      <span class="country-tag">{{ ath.country }}</span>
+                      <span
+                        v-if="ath.is_tier_debutant && selectedCompetitionType === 'WC'"
+                        class="debutant-pill pmc-debut"
+                      >
+                        DEBIUTANT
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div class="pmc-right-top">
+                  <span v-if="ath.price !== null && ath.price !== undefined" class="price-badge">
+                    {{ Number(ath.price).toFixed(1) }}
+                  </span>
+                  <button
+                    class="btn-row-remove pmc-remove"
+                    @click="removeAthlete(ath.fis_code)"
+                    title="Usuń z listy startowej"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <div class="pmc-metrics-grid">
+                <div class="pmc-metric">
+                  <span class="pmc-m-label">Dystans</span>
+                  <div class="pmc-dist-val">
+                    <strong class="dist-num">{{ ath.predicted_distance.toFixed(1) }} m</strong>
+                    <span
+                      v-if="ath.effective_headwind !== undefined"
+                      class="wind-micro-badge"
+                      :class="ath.effective_headwind >= 0 ? 'wind-head' : 'wind-tail'"
+                    >
+                      {{ ath.effective_headwind >= 0 ? '↗+' : '↘' }}{{ ath.effective_headwind }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="pmc-metric">
+                  <span class="pmc-m-label">Punkty</span>
+                  <strong class="pts-bold">{{ ath.predicted_points.toFixed(1) }} <small class="pts-unit">pkt</small></strong>
+                </div>
+
+                <div class="pmc-metric">
+                  <span class="pmc-m-label">Top 30</span>
+                  <span
+                    class="top30-badge"
+                    :class="{
+                      'top30-high': (ath.top30_probability ?? 0) >= 80,
+                      'top30-med': (ath.top30_probability ?? 0) >= 40 && (ath.top30_probability ?? 0) < 80,
+                      'top30-low': (ath.top30_probability ?? 0) < 40
+                    }"
+                  >
+                    {{ ath.top30_probability != null ? ath.top30_probability : 0 }}%
+                  </span>
+                </div>
+
+                <div class="pmc-metric">
+                  <span class="pmc-m-label">Podium</span>
+                  <strong class="chance-val" v-if="ath.podium_probability != null && ath.podium_probability > 0">
+                    {{ ath.podium_probability }}%
+                  </strong>
+                  <span v-else class="chance-zero">&lt;1%</span>
+                </div>
+              </div>
+
+              <div class="pmc-footer">
+                <div class="pmc-form-stab">
+                  <span class="pmc-mini-label">Forma:</span>
+                  <span
+                    class="form-pill"
+                    :class="{
+                      'form-high': ath.form_score >= 95,
+                      'form-med': ath.form_score >= 88 && ath.form_score < 95,
+                      'form-low': ath.form_score < 88
+                    }"
+                  >
+                    {{ ath.form_score }}%
+                  </span>
+                  <span
+                    v-if="ath.recent_form_score"
+                    class="recent-form-tag"
+                    :class="ath.recent_form_score >= ath.form_score ? 'trend-up' : 'trend-down'"
+                  >
+                    {{ ath.recent_form_score >= ath.form_score ? '▲' : '▼' }}{{ ath.recent_form_score }}%
+                  </span>
+                  <span class="pmc-sep">&bull;</span>
+                  <span class="pmc-mini-label">Stab:</span>
+                  <span class="repeat-box">
+                    <span
+                      class="repeat-circle"
+                      :style="{
+                        background: ath.consistency_score >= 80 ? '#10b981' : ath.consistency_score >= 50 ? '#3b82f6' : '#f59e0b'
+                      }"
+                    ></span>
+                    <span class="repeat-num">{{ ath.consistency_score.toFixed(0) }}%</span>
+                  </span>
+                </div>
+
+                <div v-if="ath.profiles && ath.profiles.length > 0" class="profiles-flex">
+                  <span
+                    v-for="prof in ath.profiles"
+                    :key="prof.code"
+                    class="profile-tag"
+                    :class="prof.tag_class"
+                    :title="prof.description"
+                  >
+                    {{ prof.icon }} {{ prof.label }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="table-responsive" :class="{ 'desktop-only': mobileViewMode === 'cards' }">
             <table class="predictions-table">
               <thead>
                 <tr>
@@ -2222,6 +2443,15 @@ onMounted(async () => {
   .podium-grid {
     grid-template-columns: 1fr;
     align-items: stretch;
+  }
+  .podium-card.gold {
+    order: 1;
+  }
+  .podium-card.silver {
+    order: 2;
+  }
+  .podium-card.bronze {
+    order: 3;
   }
 }
 
@@ -3365,33 +3595,68 @@ onMounted(async () => {
   font-variant-numeric: tabular-nums;
 }
 
+.mobile-only {
+  display: none;
+}
+
 @media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+  .mobile-only {
+    display: flex;
+  }
   .page-hero {
-    padding: 20px 14px;
+    padding: 20px 14px 30px;
+  }
+  .hero-title {
+    font-size: 1.7rem;
+  }
+  .hero-desc {
+    font-size: 0.9rem;
+    margin-bottom: 14px;
   }
   .model-meta-bar {
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;
+    font-size: 0.8rem;
   }
   .meta-divider {
     display: none;
   }
   .container.main-layout {
-    padding: 0 8px 40px;
+    padding: 0 8px 36px;
+    margin-top: -16px;
+  }
+  .card-header {
+    padding: 14px;
+    flex-wrap: wrap;
+    gap: 8px;
   }
   .card-body {
     padding: 14px;
+  }
+  .legend-panel {
+    padding: 12px;
+  }
+  .legend-grid {
+    grid-template-columns: 1fr;
   }
   .upcoming-comp-banner {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
     padding: 14px;
+    margin-bottom: 16px;
   }
   .btn-apply-upcoming {
     width: 100%;
     justify-content: center;
+  }
+  .control-grid {
+    gap: 14px;
+    margin-bottom: 16px;
   }
   .table-toolbar {
     flex-direction: column;
@@ -3422,7 +3687,184 @@ onMounted(async () => {
     box-sizing: border-box;
   }
 
-  /* Zamrożone kolumny: Pozycja (#) i Zawodnik */
+  /* Pasek sortowania i przełącznik Karty / Tabela na mobilce */
+  .mobile-pred-controls {
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .mpc-sort-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+  }
+  .mpc-sort-group label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #475569;
+    white-space: nowrap;
+  }
+  .mpc-select {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #0f172a;
+    font-weight: 600;
+  }
+  .mpc-order-btn {
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #0369a1;
+    font-size: 0.78rem;
+    font-weight: 700;
+    min-height: 38px;
+    flex-shrink: 0;
+  }
+  .mpc-view-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    background: #e2e8f0;
+    padding: 3px;
+    border-radius: 8px;
+  }
+  .mpc-switch-btn {
+    border: none;
+    background: transparent;
+    color: #475569;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    min-height: 36px;
+    cursor: pointer;
+  }
+  .mpc-switch-btn.active {
+    background: #ffffff;
+    color: #0284c7;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Karty prognoz mobilnych */
+  .pred-mobile-list {
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    background: #f8fafc;
+  }
+  .pred-m-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04);
+  }
+  .pmc-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .pmc-identity {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+  }
+  .pmc-name-wrap {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 2px;
+  }
+  .pmc-name {
+    font-size: 0.94rem;
+    line-height: 1.25;
+  }
+  .pmc-sub-tags {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .pmc-debut {
+    margin-left: 0;
+  }
+  .pmc-right-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .pmc-remove {
+    padding: 4px 7px;
+    min-height: 28px;
+  }
+  .pmc-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .pmc-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: flex-start;
+  }
+  .pmc-m-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #64748b;
+    letter-spacing: 0.04em;
+  }
+  .pmc-dist-val {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .pmc-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 4px;
+    border-top: 1px solid #f1f5f9;
+  }
+  .pmc-form-stab {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    font-size: 0.78rem;
+  }
+  .pmc-mini-label {
+    color: #64748b;
+    font-weight: 600;
+    font-size: 0.74rem;
+  }
+  .pmc-sep {
+    color: #cbd5e1;
+  }
+
+  /* Zamrożone kolumny w trybie Tabela na mobilce */
   .predictions-table th.th-rank,
   .predictions-table td.td-rank {
     position: sticky;

@@ -11,6 +11,33 @@ const sortKey = ref<string>('pointsPerPrice')
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const hoveredAthlete = ref<any | null>(null)
 const expandedAthlete = ref<string | null>(null)
+const mobileViewMode = ref<'cards' | 'table'>('cards')
+
+const mobileSortOptions = [
+  { key: 'pointsPerPrice', label: 'Efektywność (Pkt / Cena)' },
+  { key: 'avgRank', label: 'Średnie miejsce' },
+  { key: 'totalPoints', label: 'Suma punktów FIS' },
+  { key: 'avgPoints', label: 'Średnia punktów' },
+  { key: 'hitRate30', label: 'Skuteczność Top 30 (%)' },
+  { key: 'hitRate10', label: 'Skuteczność Top 10 (%)' },
+  { key: 'hitRate3', label: 'Podium (%)' },
+  { key: 'trendDiff', label: 'Trend formy' },
+  { key: 'stdDev', label: 'Stabilność (σ)' },
+  { key: 'jumpCount', label: 'Liczba skoków' },
+  { key: 'price', label: 'Cena Fantasy' },
+  { key: 'name', label: 'Nazwisko (A-Z)' },
+]
+
+const onMobileSortKeyChange = (event: Event) => {
+  const nextKey = (event.target as HTMLSelectElement).value
+  if (nextKey !== sortKey.value) {
+    sortBy(nextKey)
+  }
+}
+
+const toggleSortOrder = () => {
+  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+}
 
 // --- FILTRY WEWNĘTRZNE PANELU ANALITYCZNEGO ---
 const searchQuery = ref('')
@@ -555,8 +582,187 @@ const getTrendPath = (athleteName: string) => {
         </div>
       </div>
 
+      <!-- PASEK SORTOWANIA I TRYBU WIDOKU NA MOBILCE -->
+      <div class="mobile-analytics-controls mobile-only">
+        <div class="mac-sort-row">
+          <label for="analyticsMobileSort">Sortuj:</label>
+          <select
+            id="analyticsMobileSort"
+            :value="sortKey"
+            class="mac-select"
+            @change="onMobileSortKeyChange"
+          >
+            <option v-for="opt in mobileSortOptions" :key="opt.key" :value="opt.key">
+              {{ opt.label }}
+            </option>
+          </select>
+          <button type="button" class="mac-order-btn" @click="toggleSortOrder">
+            {{ sortOrder === 'asc' ? '▲ Rosn.' : '▼ Mal.' }}
+          </button>
+        </div>
+        <div class="mac-view-switch">
+          <button
+            type="button"
+            class="mac-switch-btn"
+            :class="{ active: mobileViewMode === 'cards' }"
+            @click="mobileViewMode = 'cards'"
+          >
+            🪪 Karty
+          </button>
+          <button
+            type="button"
+            class="mac-switch-btn"
+            :class="{ active: mobileViewMode === 'table' }"
+            @click="mobileViewMode = 'table'"
+          >
+            📋 Tabela
+          </button>
+        </div>
+      </div>
+
+      <!-- KARTY ANALITYCZNE NA MOBILCE (<= 768px) -->
+      <div v-if="mobileViewMode === 'cards'" class="analytics-mobile-list mobile-only">
+        <div v-if="filteredAnalytics.length === 0" class="no-data-msg">
+          Brak zawodników spełniających nałożone kryteria filtrów.
+        </div>
+
+        <div
+          v-for="stat in filteredAnalytics"
+          :key="'m_' + stat.name"
+          class="analytics-m-card"
+          :class="{ 'is-expanded': expandedAthlete === stat.name }"
+          @click="stat.hasData ? toggleAthleteExpansion(stat.name) : null"
+        >
+          <div class="amc-head">
+            <div class="amc-title-wrap">
+              <span v-if="stat.hasData" class="expansion-chevron">{{
+                expandedAthlete === stat.name ? '▼' : '▶'
+              }}</span>
+              <strong class="amc-athlete-name">{{ stat.name }}</strong>
+              <span v-if="stat.price" class="badge price-badge-fantasy">
+                {{ Number(stat.price).toFixed(1) }}
+              </span>
+            </div>
+            <span v-if="stat.hasData" :class="['trend-badge', stat.trendClass]">
+              {{ stat.trendIcon }} {{ stat.trendText }}
+            </span>
+          </div>
+
+          <template v-if="stat.hasData">
+            <div class="amc-kpi-grid">
+              <div class="amc-kpi-box">
+                <span class="amc-kpi-label">Śr. msc</span>
+                <strong class="amc-kpi-val">{{ stat.avgRank?.toFixed(1) || '-' }}</strong>
+              </div>
+              <div class="amc-kpi-box">
+                <span class="amc-kpi-label">Suma Pkt</span>
+                <strong class="amc-kpi-val points-val">{{ stat.totalPoints }}</strong>
+                <small class="amc-kpi-sub">śr. {{ stat.avgPoints.toFixed(1) }}</small>
+              </div>
+              <div class="amc-kpi-box">
+                <span class="amc-kpi-label">Pkt / Cena</span>
+                <strong
+                  v-if="stat.pointsPerPrice !== null"
+                  class="amc-kpi-val"
+                  :class="getValueScoreClass(stat.pointsPerPrice)"
+                >
+                  {{ stat.pointsPerPrice.toFixed(2) }}
+                </strong>
+                <span v-else class="text-null">-</span>
+              </div>
+              <div class="amc-kpi-box">
+                <span class="amc-kpi-label">Skoki</span>
+                <strong class="amc-kpi-val">{{ stat.jumpCount }}</strong>
+              </div>
+            </div>
+
+            <div class="amc-rates-grid">
+              <div class="amc-rate-item">
+                <span class="amc-rate-lbl">Top 30</span>
+                <div class="rate-cell">
+                  <div class="rate-bar-track">
+                    <div class="rate-bar-fill fill-top30" :style="{ width: Math.min(100, stat.hitRate30) + '%' }"></div>
+                  </div>
+                  <span class="rate-text">{{ stat.hitRate30.toFixed(0) }}%</span>
+                </div>
+              </div>
+              <div class="amc-rate-item">
+                <span class="amc-rate-lbl">Top 10</span>
+                <div class="rate-cell">
+                  <div class="rate-bar-track">
+                    <div class="rate-bar-fill fill-top10" :style="{ width: Math.min(100, stat.hitRate10) + '%' }"></div>
+                  </div>
+                  <span class="rate-text">{{ stat.hitRate10.toFixed(0) }}%</span>
+                </div>
+              </div>
+              <div class="amc-rate-item">
+                <span class="amc-rate-lbl">Podium</span>
+                <div class="rate-cell">
+                  <div class="rate-bar-track">
+                    <div class="rate-bar-fill fill-podium" :style="{ width: Math.min(100, stat.hitRate3) + '%' }"></div>
+                  </div>
+                  <span class="rate-text">{{ stat.hitRate3.toFixed(0) }}%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="amc-chips-row">
+              <span class="amc-chip">Mediana: <strong>{{ stat.medianRank?.toFixed(1) || '-' }}</strong></span>
+              <span v-if="stat.bestRank !== null" class="amc-chip">
+                Zakres: <strong>{{ stat.bestRank }}.–{{ stat.worstRank }}.</strong>
+              </span>
+              <span
+                class="stat-badge"
+                :class="
+                  stat.stdDev != null && stat.stdDev < 5
+                    ? 'good'
+                    : stat.stdDev != null && stat.stdDev > 8
+                      ? 'bad'
+                      : 'neutral'
+                "
+              >
+                σ {{ stat.stdDev != null ? '±' + stat.stdDev.toFixed(1) : '-' }}
+              </span>
+              <span class="hill-note-tag">
+                {{
+                  stat.hillBreakdown.preferenceText.includes('mamut')
+                    ? '🦅 Mamuty'
+                    : stat.hillBreakdown.preferenceText.includes('dużych')
+                      ? '⛷️ Duże'
+                      : stat.hillBreakdown.preferenceText.includes('Brak')
+                        ? '—'
+                        : '⚖️ Równy'
+                }}
+              </span>
+            </div>
+
+            <!-- Wykres trendu po kliknięciu karty -->
+            <div v-if="expandedAthlete === stat.name" class="trend-chart-container amc-chart" @click.stop>
+              <div class="chart-info">
+                <strong>Kolejne miejsca (Góra = 1., Dół = 50.):</strong>
+                <button type="button" class="btn-close-chart" @click="expandedAthlete = null">Zwiń ▲</button>
+              </div>
+              <svg viewBox="-60 0 1060 180" class="trend-svg">
+                <line x1="0" y1="15" x2="1000" y2="15" class="guide-line top1" />
+                <text x="-10" y="19" class="axis-text axis-y">1</text>
+                <line x1="0" y1="42" x2="1000" y2="42" class="guide-line top10" />
+                <text x="-10" y="46" class="axis-text axis-y text-good">10</text>
+                <line x1="0" y1="96" x2="1000" y2="96" class="guide-line top30" />
+                <text x="-10" y="100" class="axis-text axis-y text-neutral">30</text>
+                <line x1="0" y1="150" x2="1000" y2="150" class="guide-line top50" />
+                <text x="-10" y="154" class="axis-text axis-y text-bad">50+</text>
+                <path :d="getTrendPath(stat.name)" class="trend-path" />
+              </svg>
+            </div>
+          </template>
+          <div v-else class="no-data-msg" style="padding: 8px !important;">
+            Brak danych dla wybranego zakresu
+          </div>
+        </div>
+      </div>
+
       <!-- TABELA ANALITYCZNA Z PRZYPIĘTYMI NAGŁÓWKAMI I PIERWSZĄ KOLUMNĄ -->
-      <div class="analytics-table-wrapper">
+      <div class="analytics-table-wrapper" :class="{ 'desktop-only': mobileViewMode === 'cards' }">
         <table class="analytics-table">
           <thead>
             <tr>
@@ -984,6 +1190,7 @@ const getTrendPath = (athleteName: string) => {
                 class="scatter-dot-group"
                 @mouseenter="hoveredAthlete = ath"
                 @mouseleave="hoveredAthlete = null"
+                @click="hoveredAthlete = hoveredAthlete?.name === ath.name ? null : ath"
               >
                 <circle r="7" class="scatter-dot" />
                 <foreignObject
@@ -1020,6 +1227,10 @@ const getTrendPath = (athleteName: string) => {
             <text x="535" y="390" fill="#94a3b8" font-size="11" font-weight="bold">Cena 3.0→</text>
             <text x="265" y="390" fill="#94a3b8" font-size="10">Cena 1.5</text>
           </svg>
+        </div>
+        <div v-if="hoveredAthlete" class="scatter-selected-banner mobile-only">
+          <strong>{{ hoveredAthlete.name }}</strong>
+          <span>Cena: {{ Number(hoveredAthlete.price).toFixed(1) }} • Śr. msc: {{ hoveredAthlete.avgRank?.toFixed(1) }}</span>
         </div>
       </div>
     </div>
@@ -1722,24 +1933,245 @@ const getTrendPath = (athleteName: string) => {
   font-variant-numeric: tabular-nums;
 }
 
+.mobile-only {
+  display: none;
+}
+
 @media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+  .mobile-only {
+    display: flex;
+  }
   .insights-grid {
     grid-template-columns: 1fr !important;
+    gap: 10px;
   }
   .analytics-filters-toolbar {
     flex-direction: column;
     align-items: stretch;
     padding: 12px;
+    gap: 10px;
   }
   .filter-search-box {
     width: 100%;
     min-width: 0;
+    box-sizing: border-box;
   }
-  .filter-toggles-group {
+  .filter-toggles-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+  .filter-checkbox-label {
+    grid-column: span 2;
+  }
+  .filter-select-wrapper {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    min-width: 0;
+  }
+  .filter-inline-select {
+    width: 100%;
+  }
+  .mobile-analytics-controls {
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+  .mac-sort-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+  }
+  .mac-sort-row label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #475569;
+    white-space: nowrap;
+  }
+  .mac-select {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #0f172a;
+    font-weight: 600;
+  }
+  .mac-order-btn {
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #0369a1;
+    font-size: 0.78rem;
+    font-weight: 700;
+    min-height: 38px;
+    flex-shrink: 0;
+  }
+  .mac-view-switch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    background: #e2e8f0;
+    padding: 3px;
+    border-radius: 8px;
+  }
+  .mac-switch-btn {
+    border: none;
+    background: transparent;
+    color: #475569;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    min-height: 36px;
+    cursor: pointer;
+  }
+  .mac-switch-btn.active {
+    background: #ffffff;
+    color: #0284c7;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+  .analytics-mobile-list {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .analytics-m-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    gap: 10px;
+    box-shadow: 0 2px 4px rgba(15, 23, 42, 0.04);
+  }
+  .analytics-m-card.is-expanded {
+    border-color: #93c5fd;
+    background: #f8fbff;
+  }
+  .amc-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
+  }
+  .amc-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+  }
+  .amc-athlete-name {
+    font-size: 0.95rem;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .amc-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px;
+  }
+  .amc-kpi-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 1px;
+  }
+  .amc-kpi-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #64748b;
+  }
+  .amc-kpi-val {
+    font-size: 0.9rem;
+    color: #0f172a;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .amc-kpi-val.score-high {
+    color: #047857;
+    background: transparent;
+    border: none;
+  }
+  .amc-kpi-val.score-med {
+    color: #1d4ed8;
+    background: transparent;
+    border: none;
+  }
+  .amc-kpi-val.score-low {
+    color: #64748b;
+    background: transparent;
+    border: none;
+  }
+  .amc-kpi-sub {
+    font-size: 0.68rem;
+    color: #64748b;
+  }
+  .amc-rates-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .amc-rate-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .amc-rate-lbl {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #64748b;
+  }
+  .amc-chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding-top: 6px;
+    border-top: 1px solid #f1f5f9;
+  }
+  .amc-chip {
+    background: #f1f5f9;
+    color: #334155;
+    font-size: 0.72rem;
+    padding: 2px 7px;
+    border-radius: 5px;
+  }
+  .amc-chart {
+    margin-top: 2px;
+    padding: 10px;
+  }
+  .btn-close-chart {
+    background: #eff6ff;
+    border: 1px solid #93c5fd;
+    color: #1d4ed8;
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    cursor: pointer;
   }
   .analytics-table th:first-child,
   .analytics-table td:first-child {
@@ -1762,6 +2194,18 @@ const getTrendPath = (athleteName: string) => {
   .scatter-wrapper {
     padding: 10px;
     overflow-x: auto;
+  }
+  .scatter-selected-banner {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: #0f172a;
+    color: #ffffff;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
   }
   .quadrant {
     display: none;

@@ -87,22 +87,31 @@
 <style scoped>
 .loader-overlay {
   position: fixed;
-  top: 60px;
+  top: var(--header-height, 56px);
   left: 0;
   width: 100vw;
-  height: calc(100vh - 60px);
+  height: calc(100vh - var(--header-height, 56px));
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(2px);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(3px);
   z-index: 900;
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 .loader-content {
   display: flex;
   flex-direction: column; /* Wymusza układ pionowy dla dzieci */
   align-items: center; /* Wyśrodkowuje w poziomie */
+  max-width: 100%;
+  text-align: center;
+}
+
+.loader-content svg {
+  max-width: 85vw;
+  height: auto;
 }
 
 /* Animacja zjazdu */

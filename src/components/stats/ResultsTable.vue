@@ -139,7 +139,7 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
       </div>
 
       <div class="frontend-filters-row">
-        <div class="filter-group" style="min-width: 200px">
+        <div class="filter-group filter-topn-group">
           <label>Wyróżnij miejsca do (Top X)</label>
           <input type="number" v-model="localHighlightTopN" min="1" max="100" />
         </div>
@@ -684,23 +684,30 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
   .mobile-only { display: flex; flex-direction: column; gap: 15px; padding: 10px; background: #f8fafc; }
 
   /* Modyfikacja paska nawigacyjnego (D-Pad w dół/górę) */
+  .filter-topn-group {
+    width: 100%;
+    min-width: 0;
+  }
   .nav-horizontal {
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     align-items: stretch;
     text-align: center;
+    padding: 10px 12px;
   }
   .nav-info-group {
     flex-direction: column;
-    gap: 5px;
+    gap: 4px;
   }
   .nav-controls {
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
     width: 100%;
   }
   .nav-btn {
-    flex-grow: 1;
-    padding: 14px;
+    padding: 10px 12px;
+    min-height: 40px;
   }
 
   /* --- STYLIZACJA KART MOBILNYCH (Cards Layout) --- */

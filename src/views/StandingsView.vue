@@ -116,7 +116,7 @@ onMounted(() => {
         </select>
       </div>
 
-      <div class="filter-box flex-grow">
+      <div class="filter-box flex-grow filter-search-span">
         <label>Filtruj skoczka na liście:</label>
         <input
           v-model="searchSearchQuery"
@@ -128,48 +128,85 @@ onMounted(() => {
     </div>
 
     <div v-if="!isLoading">
-      <div class="table-responsive" v-if="filteredStandings.length > 0">
-        <table class="results-table">
-          <thead>
-            <tr>
-              <th style="width: 70px; text-align: center">Miejsce</th>
-              <th>Imię i Nazwisko</th>
-              <th style="width: 90px; text-align: center">Kraj</th>
-              <th style="width: 90px; text-align: center">Starty</th>
-              <th style="width: 120px; text-align: right; padding-right: 15px">Punkty</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="athlete in filteredStandings"
-              :key="athlete.fis_code"
-              :class="{
-                'podium-gold': athlete.rank === 1,
-                'podium-silver': athlete.rank === 2,
-                'podium-bronze': athlete.rank === 3,
-              }"
-            >
-              <td style="text-align: center">
-                <span v-if="athlete.rank === 1" class="rank-badge gold">🥇 1</span>
-                <span v-else-if="athlete.rank === 2" class="rank-badge silver">🥈 2</span>
-                <span v-else-if="athlete.rank === 3" class="rank-badge bronze">🥉 3</span>
-                <span v-else class="rank-badge normal">{{ athlete.rank }}</span>
-              </td>
-              <td>
-                <RouterLink :to="'/athletes/' + athlete.fis_code" class="athlete-link">
+      <div v-if="filteredStandings.length > 0">
+        <div class="table-responsive desktop-only">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th style="width: 70px; text-align: center">Miejsce</th>
+                <th>Imię i Nazwisko</th>
+                <th style="width: 90px; text-align: center">Kraj</th>
+                <th style="width: 90px; text-align: center">Starty</th>
+                <th style="width: 120px; text-align: right; padding-right: 15px">Punkty</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="athlete in filteredStandings"
+                :key="athlete.fis_code"
+                :class="{
+                  'podium-gold': athlete.rank === 1,
+                  'podium-silver': athlete.rank === 2,
+                  'podium-bronze': athlete.rank === 3,
+                }"
+              >
+                <td style="text-align: center">
+                  <span v-if="athlete.rank === 1" class="rank-badge gold">🥇 1</span>
+                  <span v-else-if="athlete.rank === 2" class="rank-badge silver">🥈 2</span>
+                  <span v-else-if="athlete.rank === 3" class="rank-badge bronze">🥉 3</span>
+                  <span v-else class="rank-badge normal">{{ athlete.rank }}</span>
+                </td>
+                <td>
+                  <RouterLink :to="'/athletes/' + athlete.fis_code" class="athlete-link">
+                    {{ athlete.name }}
+                  </RouterLink>
+                </td>
+                <td style="text-align: center">
+                  <CountryFlag :code="athlete.country" :src="athlete.flag" size="sm" />
+                </td>
+                <td style="text-align: center" class="starts-col">{{ athlete.starts }}</td>
+                <td style="text-align: right; padding-right: 15px" class="points-col">
+                  <strong>{{ athlete.total_points }}</strong> pkt
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- WIDOK MOBILNY KLASYFIKACJI (<= 768px) -->
+        <div class="standings-mobile-list mobile-only">
+          <div
+            v-for="athlete in filteredStandings"
+            :key="'m_' + athlete.fis_code"
+            class="standing-m-card"
+            :class="{
+              'podium-gold': athlete.rank === 1,
+              'podium-silver': athlete.rank === 2,
+              'podium-bronze': athlete.rank === 3,
+            }"
+          >
+            <div class="st-m-left">
+              <span v-if="athlete.rank === 1" class="rank-badge gold">🥇 1</span>
+              <span v-else-if="athlete.rank === 2" class="rank-badge silver">🥈 2</span>
+              <span v-else-if="athlete.rank === 3" class="rank-badge bronze">🥉 3</span>
+              <span v-else class="rank-badge normal st-rank-num">{{ athlete.rank }}</span>
+
+              <CountryFlag :code="athlete.country" :src="athlete.flag" size="sm" />
+
+              <div class="st-m-identity">
+                <RouterLink :to="'/athletes/' + athlete.fis_code" class="athlete-link st-m-name">
                   {{ athlete.name }}
                 </RouterLink>
-              </td>
-              <td style="text-align: center">
-                <CountryFlag :code="athlete.country" :src="athlete.flag" size="sm" />
-              </td>
-              <td style="text-align: center" class="starts-col">{{ athlete.starts }}</td>
-              <td style="text-align: right; padding-right: 15px" class="points-col">
-                <strong>{{ athlete.total_points }}</strong> pkt
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                <span class="st-m-meta">{{ athlete.country }} • {{ athlete.starts }} startów</span>
+              </div>
+            </div>
+
+            <div class="st-m-points">
+              <strong>{{ athlete.total_points }}</strong>
+              <small>pkt</small>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div v-else class="no-results">
@@ -381,46 +418,112 @@ onMounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
+.mobile-only {
+  display: none;
+}
+
 @media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+  .mobile-only {
+    display: flex;
+  }
   .page {
     padding: 12px;
   }
   .filters-container {
-    flex-direction: column;
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 12px;
+    align-items: end;
   }
   .filter-box {
+    flex: none;
+    min-width: 0;
     width: 100%;
   }
-  .results-table th:first-child,
-  .results-table td:first-child {
-    position: sticky;
-    left: 0;
-    z-index: 8;
+  .filter-search-span {
+    grid-column: 1 / -1;
+  }
+  .standings-mobile-list {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .standing-m-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
     background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
   }
-  .results-table th:first-child {
-    z-index: 10;
+  .standing-m-card.podium-gold {
+    background: rgba(254, 243, 199, 0.45);
+    border-color: #fde68a;
+  }
+  .standing-m-card.podium-silver {
+    background: rgba(241, 245, 249, 0.8);
+    border-color: #cbd5e1;
+  }
+  .standing-m-card.podium-bronze {
+    background: rgba(254, 237, 213, 0.45);
+    border-color: #fed7aa;
+  }
+  .st-m-left {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    flex: 1;
+  }
+  .st-rank-num {
+    min-width: 28px;
+    text-align: center;
     background: #f1f5f9;
+    padding: 3px 6px;
+    border-radius: 6px;
+    font-weight: 700;
   }
-  .results-table th:nth-child(2),
-  .results-table td:nth-child(2) {
-    position: sticky;
-    left: 60px;
-    z-index: 8;
-    background: #ffffff;
-    min-width: 150px;
-    box-shadow: 4px 0 6px -2px rgba(0, 0, 0, 0.08);
+  .st-m-identity {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
   }
-  .results-table th:nth-child(2) {
-    z-index: 10;
-    background: #f1f5f9;
+  .st-m-name {
+    font-size: 0.92rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .results-table tr.podium-gold td:first-child,
-  .results-table tr.podium-gold td:nth-child(2) { background: #fefce8; }
-  .results-table tr.podium-silver td:first-child,
-  .results-table tr.podium-silver td:nth-child(2) { background: #f8fafc; }
-  .results-table tr.podium-bronze td:first-child,
-  .results-table tr.podium-bronze td:nth-child(2) { background: #fff7ed; }
+  .st-m-meta {
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+  .st-m-points {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    padding: 4px 9px;
+    border-radius: 8px;
+  }
+  .st-m-points strong {
+    font-size: 1rem;
+    color: #0f172a;
+  }
+  .st-m-points small {
+    font-size: 0.72rem;
+    color: #64748b;
+  }
 }
 </style>
