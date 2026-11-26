@@ -1,16 +1,33 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterLink, RouterView, useRouter, type RouteLocationNormalizedLoaded } from 'vue-router'
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useAuth } from '@/stores/auth'
 import { useNotice } from '@/stores/notice'
+import { useNotifications } from '@/stores/notifications'
+import { clearApiCache } from '@/api/client'
 
 const auth = useAuth()
 const notice = useNotice()
+const router = useRouter()
+const {
+  unreadCount,
+  unreadNotifications,
+  activeToast,
+  dismissToast,
+  fetchNotifications,
+  startEventStream,
+  stopEventStream,
+  markAsRead,
+  markAllAsRead,
+} = useNotifications()
 const envName = (import.meta.env.VITE_ENV_NAME || (import.meta.env.MODE === 'test' ? 'TEST' : '')).toUpperCase()
+const showDevLogin = import.meta.env.MODE !== 'production' || import.meta.env.VITE_ENABLE_DEV_LOGIN === 'true'
 
 const isMenuOpen = ref<boolean>(false)
 const isStatsDropdownOpen = ref<boolean>(false)
 const isUserDropdownOpen = ref<boolean>(false)
+const isNotifDropdownOpen = ref<boolean>(false)
+let notifPollTimer: any = null
 const devEmail = ref<string>('')
 const devName = ref<string>('')
 const devError = ref<string>('')
@@ -18,15 +35,13 @@ const devError = ref<string>('')
 const getRoleBadgeLabel = (role?: string) => {
   if (role === 'ADMIN') return 'ADMIN'
   if (role === 'USER_PRO') return 'PRO'
-  if (role === 'USER_LITE') return 'LITE'
   return 'FREE'
 }
 
 const getRoleFullLabel = (role?: string) => {
   if (role === 'ADMIN') return 'Administrator'
   if (role === 'USER_PRO') return 'FantaSKI PRO'
-  if (role === 'USER_LITE') return 'FantaSKI LITE'
-  return 'Konto podstawowe (darmowe)'
+  return 'Konto darmowe'
 }
 
 // Zamykanie dropdownów po kliknięciu gdziekolwiek indziej na ekranie
@@ -38,12 +53,23 @@ const closeDropdown = (e: Event) => {
   if (!target.closest('.user-menu-container')) {
     isUserDropdownOpen.value = false
   }
+  if (!target.closest('.notif-menu-container')) {
+    isNotifDropdownOpen.value = false
+  }
 }
 
 const closeNavigation = () => {
   isMenuOpen.value = false
   isStatsDropdownOpen.value = false
   isUserDropdownOpen.value = false
+  isNotifDropdownOpen.value = false
+}
+
+const openNotification = async (notif: any) => {
+  dismissToast()
+  await markAsRead(notif.id)
+  closeNavigation()
+  router.push(notif.link || '/draft')
 }
 
 watch(isMenuOpen, (open) => {
@@ -52,9 +78,47 @@ watch(isMenuOpen, (open) => {
   }
 })
 
+const isProtectedRoute = (r: RouteLocationNormalizedLoaded) =>
+  Boolean(r.meta?.requiresAuth || r.meta?.requiresSearch || r.meta?.requiresPro || r.meta?.requiresAdmin)
+
+const handleAutoExpiredRedirect = () => {
+  closeNavigation()
+  auth.isAuthModalOpen.value = false
+  notice.closeNotice()
+  stopEventStream()
+  clearApiCache()
+
+  const cur = router.currentRoute.value
+  if (cur.path !== '/login') {
+    const query: Record<string, string> = { expired: '1' }
+    if (isProtectedRoute(cur)) {
+      query.redirect = cur.fullPath
+    }
+    router.replace({ path: '/login', query })
+  }
+}
+
+watch(
+  [() => auth.isAuthenticated.value, () => router.currentRoute.value.fullPath],
+  ([isAuth]) => {
+    const cur = router.currentRoute.value
+    if (!isAuth && isProtectedRoute(cur)) {
+      closeNavigation()
+      if (auth.sessionExpiredReason.value === 'expired') {
+        router.replace({ path: '/login', query: { expired: '1', redirect: cur.fullPath } })
+      } else {
+        router.replace('/')
+      }
+    }
+  }
+)
+
 const handleLogout = () => {
   auth.logout()
+  stopEventStream()
+  notice.closeNotice()
   closeNavigation()
+  router.replace('/')
 }
 
 // Inicjalizacja Google One Tap / Button
@@ -116,15 +180,44 @@ const handleDevLogin = async () => {
   }
 }
 
+watch(
+  () => auth.isAuthenticated.value,
+  (isAuth) => {
+    if (isAuth) {
+      fetchNotifications()
+      startEventStream()
+    } else {
+      stopEventStream()
+    }
+  }
+)
+
 onMounted(async () => {
   document.addEventListener('click', closeDropdown)
+  window.addEventListener('auth:expired', handleAutoExpiredRedirect)
+  if (auth.sessionExpiredReason.value === 'expired' && isProtectedRoute(router.currentRoute.value)) {
+    handleAutoExpiredRedirect()
+    return
+  }
   if (auth.token.value) {
     await auth.fetchMe()
+    if (auth.isAuthenticated.value) {
+      await fetchNotifications()
+      startEventStream()
+    }
   }
+  notifPollTimer = setInterval(() => {
+    if (auth.isAuthenticated.value) {
+      fetchNotifications()
+    }
+  }, 45000)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', closeDropdown)
+  window.removeEventListener('auth:expired', handleAutoExpiredRedirect)
+  stopEventStream()
+  if (notifPollTimer) clearInterval(notifPollTimer)
 })
 </script>
 
@@ -139,15 +232,6 @@ onUnmounted(() => {
             <span v-if="envName === 'TEST'" class="env-pill-test" title="Aktywne środowisko testowe (baza: FIS_DATA_DB_TEST)">TEST</span>
           </div>
         </RouterLink>
-
-        <button
-          class="menu-toggle"
-          @click.stop="isMenuOpen = !isMenuOpen"
-          aria-label="Menu"
-          :class="{ active: isMenuOpen }"
-        >
-          <span></span><span></span><span></span>
-        </button>
 
         <nav class="nav-links" :class="{ open: isMenuOpen }">
           <div class="drawer-header-mobile">
@@ -183,14 +267,8 @@ onUnmounted(() => {
           <RouterLink to="/hills" @click="closeNavigation">🏔️ Baza skoczni</RouterLink>
 
           <div class="drawer-section-label">Zawody &amp; Wyniki</div>
-          <RouterLink
-            to="/standings"
-            @click="closeNavigation"
-            :class="{ 'nav-locked': !auth.isAuthenticated.value }"
-            :title="!auth.isAuthenticated.value ? '🔒 Wymaga zalogowania' : 'Oficjalne klasyfikacje FIS'"
-          >
+          <RouterLink to="/standings" @click="closeNavigation" title="Oficjalne klasyfikacje FIS">
             🏆 Klasyfikacje
-            <span v-if="!auth.isAuthenticated.value" class="lock-icon">🔒</span>
           </RouterLink>
 
           <div class="drawer-section-label">Analityka &amp; Narzędzia</div>
@@ -198,33 +276,38 @@ onUnmounted(() => {
             <button
               class="dropdown-btn"
               @click.stop="isStatsDropdownOpen = !isStatsDropdownOpen"
-              :class="{ 'nav-locked': !auth.hasSearchAccess.value }"
+              :class="{ 'nav-locked': !auth.isAuthenticated.value }"
             >
               Narzędzia
-              <span v-if="!auth.hasSearchAccess.value" class="lock-icon">🔒</span>
-              <span v-else-if="auth.isLite.value" class="badge-lite-mini" style="margin-left: 4px">LITE</span>
-              <span v-else class="badge-pro">PRO</span>
+              <span v-if="!auth.isAuthenticated.value" class="lock-icon">🔒</span>
               <span class="arrow" :class="{ up: isStatsDropdownOpen }">▼</span>
             </button>
             <div class="dropdown-menu" v-if="isStatsDropdownOpen || isMenuOpen">
               <RouterLink
                 to="/stats"
                 @click="closeNavigation"
-                :class="{ 'nav-locked': !auth.hasSearchAccess.value }"
-                :title="!auth.hasSearchAccess.value ? '🔒 Dostępne w pakietach LITE i PRO' : 'Porównywarka zawodników'"
+                :class="{ 'nav-locked': !auth.isAuthenticated.value }"
+                :title="!auth.isAuthenticated.value ? '🔒 Dostępne po darmowym zalogowaniu' : 'Porównywarka zawodników'"
               >
                 ⚖️ Porównywarka
-                <span v-if="!auth.hasSearchAccess.value" class="lock-icon">🔒</span>
-                <span v-else-if="auth.isLite.value" class="badge-lite-mini">LITE</span>
-                <span v-else class="badge-pro-mini">PRO</span>
+                <span v-if="!auth.isAuthenticated.value" class="lock-icon">🔒</span>
+              </RouterLink>
+              <RouterLink
+                to="/draft"
+                @click="closeNavigation"
+                :class="{ 'nav-locked': !auth.isAuthenticated.value }"
+                :title="!auth.isAuthenticated.value ? '🔒 Dostępne po darmowym zalogowaniu' : 'Ligi Drafta Fantasy'"
+              >
+                ⚡ Draft
+                <span v-if="!auth.isAuthenticated.value" class="lock-icon">🔒</span>
               </RouterLink>
               <RouterLink
                 to="/predictions"
                 @click="closeNavigation"
                 :class="{ 'nav-locked': !auth.isPro.value }"
-                :title="!auth.isPro.value ? '🔒 Dostępne wyłącznie w pakiecie PRO' : 'Przewidywania AI'"
+                :title="!auth.isPro.value ? '🔒 Dostępne wyłącznie w pakiecie PRO' : 'Prognozy'"
               >
-                🔮 Przewidywania AI
+                🔮 Prognozy
                 <span v-if="!auth.isPro.value" class="lock-icon">🔒</span>
                 <span class="badge-pro-mini">PRO</span>
               </RouterLink>
@@ -239,52 +322,60 @@ onUnmounted(() => {
             </RouterLink>
           </template>
 
-          <!-- Użytkownik zalogowany -->
-          <template v-if="auth.isAuthenticated.value">
+          <!-- Użytkownik zalogowany (widok mobilny wewnątrz szuflady) -->
+          <div v-if="auth.isAuthenticated.value" class="mobile-only-account">
             <div class="drawer-section-label">Konto</div>
-            <div class="user-menu-container">
-              <button class="user-btn desktop-only" @click.stop="isUserDropdownOpen = !isUserDropdownOpen">
-                <img
-                  v-if="auth.user.value?.picture"
-                  :src="auth.user.value.picture"
-                  class="user-avatar"
-                  alt="Avatar"
-                />
-                <span v-else class="user-avatar-fallback">👤</span>
-                <span class="user-name">{{ auth.user.value?.name }}</span>
-                <span
-                  v-if="auth.user.value?.role !== 'USER'"
-                  class="role-badge"
-                  :class="{
-                    'role-admin': auth.user.value?.role === 'ADMIN',
-                    'role-pro': auth.user.value?.role === 'USER_PRO',
-                    'role-lite': auth.user.value?.role === 'USER_LITE',
-                  }"
-                >
-                  {{ getRoleBadgeLabel(auth.user.value?.role) }}
-                </span>
-                <span class="arrow" :class="{ up: isUserDropdownOpen }">▼</span>
-              </button>
+            <RouterLink to="/profile" @click="closeNavigation">
+              👤 Mój profil
+            </RouterLink>
+            <button class="logout-menu-btn" @click="handleLogout">
+              🚪 Wyloguj się
+            </button>
+          </div>
+        </nav>
 
-              <div class="dropdown-menu user-dropdown" v-if="isUserDropdownOpen || isMenuOpen">
-                <div class="user-info-box">
-                  <div class="user-info-email">{{ auth.user.value?.email }}</div>
-                  <div class="user-info-role">Plan: <strong>{{ getRoleFullLabel(auth.user.value?.role) }}</strong></div>
-                </div>
-                <RouterLink to="/profile" @click="closeNavigation">
-                  👤 Mój profil
-                </RouterLink>
-                <RouterLink v-if="auth.isAdmin.value" to="/admin" @click="closeNavigation">
-                  ⚙️ Panel Administratora
-                </RouterLink>
-                <button class="logout-menu-btn" @click="handleLogout">
-                  🚪 Wyloguj się
-                </button>
+        <!-- Stały pasek po prawej stronie nagłówka: Profil / Logowanie (desktop) + dzwoneczek powiadomień + hamburger (mobile/tablet) -->
+        <div class="header-right-bar">
+          <div v-if="auth.isAuthenticated.value" class="user-menu-container desktop-only">
+            <button class="user-btn" @click.stop="isUserDropdownOpen = !isUserDropdownOpen">
+              <img
+                v-if="auth.user.value?.picture"
+                :src="auth.user.value.picture"
+                class="user-avatar"
+                alt="Avatar"
+              />
+              <span v-else class="user-avatar-fallback">👤</span>
+              <span class="user-name">{{ auth.user.value?.name }}</span>
+              <span
+                v-if="auth.user.value?.role !== 'USER'"
+                class="role-badge"
+                :class="{
+                  'role-admin': auth.user.value?.role === 'ADMIN',
+                  'role-pro': auth.user.value?.role === 'USER_PRO',
+                }"
+              >
+                {{ getRoleBadgeLabel(auth.user.value?.role) }}
+              </span>
+              <span class="arrow" :class="{ up: isUserDropdownOpen }">▼</span>
+            </button>
+
+            <div class="dropdown-menu user-dropdown" v-if="isUserDropdownOpen">
+              <div class="user-info-box">
+                <div class="user-info-email">{{ auth.user.value?.email }}</div>
+                <div class="user-info-role">Plan: <strong>{{ getRoleFullLabel(auth.user.value?.role) }}</strong></div>
               </div>
+              <RouterLink to="/profile" @click="closeNavigation">
+                👤 Mój profil
+              </RouterLink>
+              <RouterLink v-if="auth.isAdmin.value" to="/admin" @click="closeNavigation">
+                ⚙️ Panel Administratora
+              </RouterLink>
+              <button class="logout-menu-btn" @click="handleLogout">
+                🚪 Wyloguj się
+              </button>
             </div>
-          </template>
+          </div>
 
-          <!-- Przycisk logowania jeśli niezalogowany -->
           <button
             v-else
             class="login-btn desktop-only"
@@ -292,9 +383,74 @@ onUnmounted(() => {
           >
             Zaloguj się
           </button>
-        </nav>
+
+          <div v-if="auth.isAuthenticated.value" class="notif-menu-container">
+            <button
+              type="button"
+              class="notif-bell-btn"
+              @click.stop="isNotifDropdownOpen = !isNotifDropdownOpen; if (isNotifDropdownOpen) fetchNotifications()"
+              title="Powiadomienia (Draft)"
+            >
+              🔔
+              <span v-if="unreadCount > 0" class="notif-badge">{{ unreadCount }}</span>
+            </button>
+            <div v-if="isNotifDropdownOpen" class="notif-popover">
+              <div class="notif-dropdown-header">
+                <strong>Powiadomienia ({{ unreadCount }})</strong>
+                <button
+                  v-if="unreadCount > 0"
+                  type="button"
+                  class="notif-read-all-btn"
+                  @click.stop="markAllAsRead"
+                >
+                  Oznacz wszystkie
+                </button>
+              </div>
+              <div v-if="unreadNotifications.length === 0" class="notif-empty">
+                Brak nieprzeczytanych powiadomień.
+              </div>
+              <div v-else class="notif-items-scroll">
+                <button
+                  v-for="n in unreadNotifications"
+                  :key="n.id"
+                  type="button"
+                  class="notif-item unread"
+                  @click="openNotification(n)"
+                >
+                  <div class="notif-item-head">
+                    <span class="notif-item-dot"></span>
+                    <strong class="notif-item-title">{{ n.title }}</strong>
+                  </div>
+                  <span class="notif-item-msg">{{ n.message }}</span>
+                </button>
+              </div>
+              <RouterLink to="/profile" class="notif-history-link" @click="closeNavigation">
+                📜 Historia powiadomień w Profilu →
+              </RouterLink>
+            </div>
+          </div>
+
+          <button
+            class="menu-toggle"
+            @click.stop="isMenuOpen = !isMenuOpen"
+            aria-label="Menu"
+            :class="{ active: isMenuOpen }"
+          >
+            <span></span><span></span><span></span>
+          </button>
+        </div>
       </div>
     </header>
+
+    <!-- POWIADOMIENIE NA ŻYWO (SSE TOAST) -->
+    <div v-if="activeToast" class="live-toast" @click="openNotification(activeToast)">
+      <div class="live-toast-body">
+        <strong>🔔 {{ activeToast.title }}</strong>
+        <span>{{ activeToast.message }}</span>
+        <small>Kliknij, aby otworzyć Draft →</small>
+      </div>
+      <button type="button" class="live-toast-close" @click.stop="dismissToast">&times;</button>
+    </div>
 
     <div v-if="isMenuOpen" class="menu-overlay" @click="isMenuOpen = false"></div>
 
@@ -324,47 +480,48 @@ onUnmounted(() => {
             <p class="gsi-hint">Bezpieczne logowanie OAuth 2.0 przez konto Google</p>
           </div>
 
-          <div class="auth-separator">
-            <span>lub szybkie logowanie e-mail</span>
-          </div>
+          <template v-if="showDevLogin">
+            <div class="auth-separator">
+              <span>lub szybkie logowanie e-mail</span>
+            </div>
 
-          <!-- Dev / Quick Login -->
-          <div class="dev-login-section">
-            <div class="form-group">
-              <label>Adres e-mail</label>
-              <input
-                type="email"
-                v-model="devEmail"
-                placeholder="twoj-email@domena.pl"
-                class="auth-input"
-              />
+            <!-- Dev / Quick Login -->
+            <div class="dev-login-section">
+              <div class="form-group">
+                <label>Adres e-mail</label>
+                <input
+                  type="email"
+                  v-model="devEmail"
+                  placeholder="twoj-email@domena.pl"
+                  class="auth-input"
+                />
+              </div>
+              <div class="form-group">
+                <label>Imię i nazwisko (opcjonalnie)</label>
+                <input
+                  type="text"
+                  v-model="devName"
+                  placeholder="Twoje imię"
+                  class="auth-input"
+                />
+              </div>
+              <button
+                class="dev-login-btn"
+                :disabled="auth.isLoading.value"
+                @click="handleDevLogin"
+              >
+                {{ auth.isLoading.value ? 'Logowanie...' : 'Zaloguj się' }}
+              </button>
+              <div v-if="devError" class="auth-error-msg">{{ devError }}</div>
             </div>
-            <div class="form-group">
-              <label>Imię i nazwisko (opcjonalnie)</label>
-              <input
-                type="text"
-                v-model="devName"
-                placeholder="Twoje imię"
-                class="auth-input"
-              />
-            </div>
-            <button
-              class="dev-login-btn"
-              :disabled="auth.isLoading.value"
-              @click="handleDevLogin"
-            >
-              {{ auth.isLoading.value ? 'Logowanie...' : 'Zaloguj się' }}
-            </button>
-            <div v-if="devError" class="auth-error-msg">{{ devError }}</div>
-          </div>
+          </template>
 
           <!-- Informacja o planach -->
           <div class="roles-explanation">
             <h4>Dostępne plany FantaSKI:</h4>
             <ul>
-              <li><strong>Konto podstawowe (darmowe):</strong> Wyniki FIS, baza skoczków, sesji, skoczni oraz oficjalne klasyfikacje generalne.</li>
-              <li><strong>FantaSKI LITE:</strong> Wgląd do porównywarki wyników (do 2 zawodników jednocześnie).</li>
-              <li><strong>FantaSKI PRO:</strong> Nielimitowana porównywarka Head-to-Head, wyceny Fantasy oraz zaawansowane predykcje AI.</li>
+              <li><strong>Konto darmowe (po zalogowaniu):</strong> Bazy FIS, klasyfikacje generalne, Porównywarka (max 2 skoczków i 10 skoków) oraz 1 liga Drafta.</li>
+              <li><strong>FantaSKI PRO:</strong> Nielimitowana Porównywarka &amp; ESM, nieograniczone ligi Drafta, wyceny Fantasy oraz Prognozy AI.</li>
             </ul>
           </div>
         </div>
@@ -423,6 +580,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  max-width: 100%;
+  overflow-x: clip;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   background-color: #f8fafc;
   color: #0f172a;
@@ -437,21 +596,34 @@ onUnmounted(() => {
   border-bottom: 1px solid #1e293b;
   color: white;
   padding: 10px 0;
+  width: 100%;
+  max-width: 100%;
   box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.25);
 }
 
 .header-container {
   max-width: 1350px;
+  width: 100%;
+  box-sizing: border-box;
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 20px;
+  gap: 12px;
+  padding: 0 16px;
+}
+
+.header-right-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .brand-link {
   text-decoration: none;
   color: white;
+  flex-shrink: 0;
 }
 
 .logo {
@@ -495,21 +667,23 @@ onUnmounted(() => {
 
 .nav-links {
   display: flex;
-  gap: 14px;
+  gap: 6px;
   align-items: center;
+  margin-left: auto;
+  min-width: 0;
 }
 
 .nav-links a {
   color: #94a3b8;
   text-decoration: none;
-  font-size: 0.88em;
+  font-size: 0.86em;
   font-weight: 500;
-  padding: 6px 10px;
+  padding: 6px 8px;
   border-radius: 6px;
   transition: all 0.2s;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   white-space: nowrap;
 }
 
@@ -701,6 +875,214 @@ onUnmounted(() => {
   background-color: #1e293b;
 }
 
+.notif-menu-container {
+  position: relative;
+}
+
+.notif-bell-btn {
+  position: relative;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 0.95em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notif-bell-btn:hover {
+  border-color: #64748b;
+}
+
+.notif-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.notif-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 350px;
+  max-width: calc(100vw - 24px);
+  background-color: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.55);
+  z-index: 10500;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.notif-history-link {
+  display: block;
+  text-align: center;
+  padding: 10px 14px;
+  background: #1e293b;
+  color: #38bdf8;
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-top: 1px solid #334155;
+}
+
+.notif-history-link:hover {
+  background: #0b1329;
+}
+
+.notif-dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 14px;
+  border-bottom: 1px solid #334155;
+  color: #ffffff;
+  font-size: 0.85rem;
+}
+
+.notif-read-all-btn {
+  background: none;
+  border: none;
+  color: #38bdf8;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.notif-empty {
+  padding: 20px 14px;
+  color: #94a3b8;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.notif-items-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.notif-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #1e293b;
+  padding: 11px 14px;
+  color: #cbd5e1;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 4px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.notif-item-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+}
+
+.notif-item-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #38bdf8;
+  flex-shrink: 0;
+}
+
+.notif-item-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #f8fafc;
+  text-align: left;
+}
+
+.notif-item-msg {
+  font-size: 0.77rem;
+  font-weight: 400;
+  color: #cbd5e1;
+  text-align: left;
+  line-height: 1.42;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.notif-item.unread {
+  background: rgba(56, 189, 248, 0.1);
+}
+
+.notif-item:hover {
+  background: #1e293b;
+}
+
+.live-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 21000;
+  max-width: min(380px, calc(100vw - 24px));
+  background: #0f172a;
+  color: #ffffff;
+  border: 1px solid #38bdf8;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  animation: modalIn 0.2s ease-out;
+}
+
+.live-toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.85em;
+}
+
+.live-toast-body small {
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.live-toast-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.3em;
+  line-height: 1;
+  cursor: pointer;
+}
+
 /* --- DROPDOWN MENU --- */
 .dropdown-container {
   position: relative;
@@ -810,8 +1192,8 @@ onUnmounted(() => {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 9999;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 9998;
 }
 
 /* --- AUTH MODAL --- */
@@ -1094,17 +1476,33 @@ onUnmounted(() => {
 .drawer-header-mobile,
 .drawer-user-card-mobile,
 .drawer-guest-card-mobile,
-.drawer-section-label {
+.drawer-section-label,
+.mobile-only-account {
   display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1120px) {
   .desktop-only {
     display: none !important;
   }
 
+  .mobile-only-account {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
   .menu-toggle {
     display: flex;
+  }
+
+  .notif-popover {
+    position: fixed;
+    top: 60px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
   }
 
   /* --- SLIDE-IN MOBILE DRAWER --- */
@@ -1135,13 +1533,14 @@ onUnmounted(() => {
     transform: translateX(0);
   }
 
+  /* Overlay musi pozostać pod .app-header (z-index: 10000), żeby nie wyszarzał otwartego menu! */
   .menu-overlay {
     position: fixed;
     inset: 0;
     background: rgba(15, 23, 42, 0.65);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    z-index: 10004;
+    z-index: 9998;
   }
 
   .drawer-header-mobile {

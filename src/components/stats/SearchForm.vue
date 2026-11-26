@@ -74,11 +74,11 @@ const filteredNames = computed(() => {
 })
 
 const addName = (name: string) => {
-  if (auth.isLite.value && localNames.value.length >= 2) {
+  if (!auth.isPro.value && localNames.value.length >= 2) {
     notice.showNotice({
-      title: 'Limit pakietu FantaSKI LITE',
-      message: 'Konto FantaSKI LITE pozwala na jednoczesne porównanie maksymalnie 2 zawodników. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków.',
-      badge: 'LIMIT LITE: 2',
+      title: 'Limit konta darmowego',
+      message: 'Darmowe konto pozwala na jednoczesne porównanie maksymalnie 2 zawodników. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków.',
+      badge: 'FREE: MAX 2',
     })
     return
   }
@@ -154,9 +154,15 @@ const saveCurrentSet = () => {
 const loadSet = (setName: string) => {
   if (savedSets.value[setName]) localNames.value = [...savedSets.value[setName]]
 }
+const deleteSavedSet = (setName: string) => {
+  const copy = { ...savedSets.value }
+  delete copy[setName]
+  savedSets.value = copy
+  localStorage.setItem('esm_saved_athlete_sets', JSON.stringify(savedSets.value))
+}
 
 // --- CZYSZCZENIE I PRESETY FILTRÓW ---
-const showAdvancedFilters = ref(true)
+const showAdvancedFilters = ref(false)
 
 // Licznik aktywnych kryteriów zaawansowanych
 const activeCriteriaCount = computed(() => {
@@ -260,7 +266,7 @@ const applyQuickPreset = (preset: 'wc' | 'flying' | 'individual' | 'recent') => 
   if (preset === 'wc') {
     localForm.value.category = ['WC']
     localForm.value.session_type = ''
-    localForm.value.limit = 20
+    localForm.value.limit = auth.isPro.value ? 20 : 10
   } else if (preset === 'flying') {
     localForm.value.hill_type = 'FLYING'
   } else if (preset === 'individual') {
@@ -321,11 +327,11 @@ const submitSearch = () => {
     finalNames = [...localNames.value]
   }
 
-  if (auth.isLite.value && finalNames.length > 2) {
+  if (!auth.isPro.value && finalNames.length > 2) {
     notice.showNotice({
-      title: 'Limit pakietu FantaSKI LITE',
-      message: 'Konto FantaSKI LITE pozwala na jednoczesne porównanie maksymalnie 2 zawodników. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków.',
-      badge: 'LIMIT LITE: 2',
+      title: 'Limit konta darmowego',
+      message: 'Darmowe konto pozwala na jednoczesne porównanie maksymalnie 2 zawodników. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków.',
+      badge: 'FREE: MAX 2',
     })
     return
   }
@@ -341,15 +347,20 @@ const submitSearch = () => {
 
 <template>
   <div class="card search-card">
-    <div class="card-header">
-      <h3>🔍 Kryteria Wyszukiwania w Bazie (Krok 1)</h3>
-      <p class="subtitle">
-        Wypełnij filtry i kliknij "Wyszukaj Wyniki", aby pobrać dane historyczne z bazy.
-      </p>
+    <div class="card-header header-flex-row">
+      <div>
+        <h3>🔍 Kryteria Wyszukiwania i Porównywarki</h3>
+        <p class="subtitle">
+          Wybierz skoczków (lub zapisany skład) i pobierz wyniki historyczne.
+        </p>
+      </div>
+      <button type="button" class="preset-chip reset-chip" @click="clearFilters">
+        🔄 Wyczyść wszystko
+      </button>
     </div>
 
     <form @submit.prevent="submitSearch" class="search-form">
-      <!-- SZYBKIE PRESETY 1-CLICK -->
+      <!-- SZYBKIE PRESETY 1-CLICK + ANALIZA CEN -->
       <div class="quick-presets-bar">
         <span class="presets-intro">⚡ Szybkie filtry:</span>
         <button
@@ -358,7 +369,7 @@ const submitSearch = () => {
           :class="{ active: localForm.category.length === 1 && localForm.category[0] === 'WC' }"
           @click="applyQuickPreset('wc')"
         >
-          🏆 Puchar Świata (PŚ)
+          🏆 Puchar Świata
         </button>
         <button
           type="button"
@@ -366,7 +377,7 @@ const submitSearch = () => {
           :class="{ active: localForm.hill_type === 'FLYING' }"
           @click="applyQuickPreset('flying')"
         >
-          🦅 Tylko Mamuty
+          🦅 Mamuty
         </button>
         <button
           type="button"
@@ -374,7 +385,7 @@ const submitSearch = () => {
           :class="{ active: localForm.session_type === 'INDIVIDUAL' }"
           @click="applyQuickPreset('individual')"
         >
-          🎯 Tylko Konkursy
+          🎯 Konkursy
         </button>
         <button
           type="button"
@@ -384,19 +395,23 @@ const submitSearch = () => {
         >
           ⏱️ Ostatnie 5 prób
         </button>
-        <button type="button" class="preset-chip reset-chip" @click="clearFilters">
-          🔄 Wyczyść filtry
-        </button>
-      </div>
-
-      <div class="options-container" style="border: none; margin-bottom: 10px; padding-top: 0">
         <label
+          v-if="auth.isPro.value"
           class="toggle-label toggle-esm"
-          title="Włącza filtrowanie po cenie z Fantasy i pobiera z automatu wszystkich zawodników z przedziału."
+          style="margin-left: auto"
+          title="Włącza filtrowanie po cenie z Fantasy i pobiera automatycznie wszystkich zawodników z przedziału."
         >
           <input v-model="localPriceMode" type="checkbox" />
-          <span style="font-weight: 500">🎯 Analiza cen zawodników</span>
+          <span style="font-weight: 600">🎯 Analiza cen</span>
         </label>
+        <span
+          v-else
+          class="toggle-label toggle-esm"
+          style="margin-left: auto; opacity: 0.65; cursor: not-allowed"
+          title="Analiza cen zawodników Fantasy jest dostępna w planie FantaSKI PRO."
+        >
+          <span style="font-weight: 600">🔒 Analiza cen (PRO)</span>
+        </span>
       </div>
 
       <div v-if="localPriceMode" class="price-sliders-container" style="margin-bottom: 20px">
@@ -467,13 +482,27 @@ const submitSearch = () => {
             </ul>
           </div>
 
-          <div class="saved-sets-toolbar">
-            <div v-if="Object.keys(savedSets).length > 0" class="set-picker">
-              <label for="set-select">Wczytaj zestaw:</label>
-              <select id="set-select" @change="loadSet(($event.target as HTMLSelectElement).value)">
-                <option value="">-- Wybierz zapisany skład --</option>
-                <option v-for="(_, name) in savedSets" :key="name" :value="name">{{ name }}</option>
-              </select>
+          <div v-if="auth.isPro.value" class="saved-sets-toolbar">
+            <div v-if="Object.keys(savedSets).length > 0" class="saved-sets-pills">
+              <span class="sets-label">Zapisane składy:</span>
+              <span v-for="(_, sName) in savedSets" :key="sName" class="saved-set-pill">
+                <button
+                  type="button"
+                  class="btn-load-set"
+                  @click="loadSet(String(sName))"
+                  title="Wczytaj ten zapisany skład"
+                >
+                  📋 {{ sName }}
+                </button>
+                <button
+                  type="button"
+                  class="btn-del-set"
+                  @click="deleteSavedSet(String(sName))"
+                  title="Usuń zapisany skład"
+                >
+                  ✕
+                </button>
+              </span>
             </div>
             <button
               v-if="localNames.length > 0"
@@ -488,7 +517,7 @@ const submitSearch = () => {
               <input
                 v-model="newSetName"
                 type="text"
-                placeholder="Nazwa zestawu..."
+                placeholder="Nazwa składu..."
                 @keyup.enter="saveCurrentSet"
               />
               <button type="button" @click="saveCurrentSet" class="btn-confirm-save">
@@ -505,10 +534,10 @@ const submitSearch = () => {
       <!-- ZWIJANY PANEL KRYTERIÓW ZAAWANSOWANYCH -->
       <div class="advanced-filters-toggle" @click="showAdvancedFilters = !showAdvancedFilters">
         <span class="toggle-text">
-          ⚙️ Kryteria obiektu i zawodów (miejsce, skocznia, kategoria, typ sesji, daty, limit)
+          ⚙️ Dodatkowe filtry (miejsce, skocznia, cykl, daty, limit)
           <span v-if="activeCriteriaCount > 0" class="criteria-counter">{{ activeCriteriaCount }} aktywne</span>
         </span>
-        <span class="toggle-icon">{{ showAdvancedFilters ? 'Zwiń filtry ▲' : 'Rozwiń filtry ▼' }}</span>
+        <span class="toggle-icon">{{ showAdvancedFilters ? 'Zwiń ▲' : 'Rozwiń ▼' }}</span>
       </div>
 
       <div v-show="showAdvancedFilters" class="form-grid mt-4">
@@ -584,7 +613,10 @@ const submitSearch = () => {
 
         <div class="filter-group slider-group">
           <div class="slider-header" style="margin-bottom: 5px">
-            <label>Ostatnie skoki (Limit):</label>
+            <label>
+              Ostatnie skoki (Limit)
+              <small v-if="!auth.isPro.value" style="color: #64748b; font-weight: 500">(Free: max 10)</small>:
+            </label>
             <span class="price-badge">{{ localForm.limit }}</span>
           </div>
           <input
@@ -592,7 +624,7 @@ const submitSearch = () => {
             class="styled-slider"
             v-model.number="localForm.limit"
             min="1"
-            max="100"
+            :max="auth.isPro.value ? 100 : 10"
             step="1"
           />
         </div>
@@ -613,9 +645,8 @@ const submitSearch = () => {
       </div>
 
       <div class="form-actions">
-        <button type="button" class="btn-clear" @click="clearFilters">🗑️ Wyczyść filtry</button>
         <button type="submit" class="btn-submit" :disabled="loading">
-          {{ loading ? 'Pobieranie Danych...' : 'Wyszukaj Wyniki' }}
+          {{ loading ? 'Pobieranie Danych...' : '🔍 Wyszukaj Wyniki' }}
         </button>
       </div>
     </form>
@@ -1104,5 +1135,65 @@ const submitSearch = () => {
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+.header-flex-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.saved-sets-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.sets-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.saved-set-pill {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.btn-load-set {
+  border: none;
+  background: transparent;
+  color: #0369a1;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 8px 4px 10px;
+  cursor: pointer;
+}
+
+.btn-load-set:hover {
+  background: #e0f2fe;
+}
+
+.btn-del-set {
+  border: none;
+  border-left: 1px solid #cbd5e1;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.btn-del-set:hover {
+  background: #fee2e2;
+  color: #b91c1c;
 }
 </style>

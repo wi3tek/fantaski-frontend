@@ -8,7 +8,7 @@ const activeTab = ref('scraper')
 // --- Stan Konfiguracji ---
 const availableCategories = ref<Record<string, any>>({})
 const availableSeasons = computed(() => {
-  const currentYear = new Date().getFullYear() + 2
+  const currentYear = new Date().getFullYear() + 1
   const years = []
   for (let i = 0; i <= 30; i++) {
     years.push((currentYear - i).toString())
@@ -146,8 +146,35 @@ const expandedAthlete = ref<number | null>(null)
 
 // Stan dla scrapowania PDF
 const isPdfScraping = ref(false)
+const isStoppingPdf = ref(false)
+const pdfStatus = ref<any>(null)
+const pdfMessage = ref<string | null>(null)
 const pdfScrapeResult = ref<any>(null)
+let pdfPollTimer: any = null
 const pdfSeason = ref<string>(new Date().getFullYear().toString())
+const maxSelectableSeason = new Date().getFullYear() + 1
+const pdfSeasonFrom = ref<number>(new Date().getFullYear())
+const pdfSeasonTo = ref<number>(maxSelectableSeason)
+const pdfCategories = ref<string[]>(['WC', 'OWG', 'WSC', 'SFWC'])
+const pdfForceReprocess = ref<boolean>(false)
+
+const allScraperCatOptions = [
+  { code: 'WC', label: 'PŚ (WC)' },
+  { code: 'OWG', label: 'IO (OWG)' },
+  { code: 'WSC', label: 'MŚ (WSC)' },
+  { code: 'SFWC', label: 'MŚ Loty (SFWC)' },
+  { code: 'GP', label: 'LGP (GP)' },
+  { code: 'COC', label: 'PK (COC)' },
+  { code: 'FC', label: 'FIS Cup (FC)' },
+  { code: 'WJC', label: 'MŚJ (WJC)' },
+  { code: 'FESA', label: 'FESA' },
+]
+
+const togglePdfCategory = (code: string) => {
+  const idx = pdfCategories.value.indexOf(code)
+  if (idx > -1) pdfCategories.value.splice(idx, 1)
+  else pdfCategories.value.push(code)
+}
 
 // --- Stan Wzbogacania Pogodą (Weather Enricher) ---
 const weatherStatus = ref<any>(null)
@@ -165,19 +192,42 @@ const isNightlyScraping = ref(false)
 const isStoppingNightly = ref(false)
 const isLoadingNightlyStatus = ref(false)
 const nightlyDelaySeconds = ref(1.8)
+const nightlySeasonFrom = ref<number>(2020)
+const nightlySeasonTo = ref<number>(maxSelectableSeason)
+const nightlyCategories = ref<string[]>(['WC', 'GP', 'COC', 'FC'])
 const nightlyMessage = ref<string | null>(null)
 let nightlyPollTimer: any = null
 
+const toggleNightlyCategory = (code: string) => {
+  const idx = nightlyCategories.value.indexOf(code)
+  if (idx > -1) nightlyCategories.value.splice(idx, 1)
+  else nightlyCategories.value.push(code)
+}
+
+const applyNightlyPreset = (fromYear: number, toYear: number, cats: string[]) => {
+  nightlySeasonFrom.value = fromYear
+  nightlySeasonTo.value = toYear
+  nightlyCategories.value = [...cats]
+}
+
 const hasActiveBackgroundProcess = computed(
-  () => isScraping.value || isNightlyScraping.value || isEnrichingWeather.value,
+  () => isScraping.value || isNightlyScraping.value || isEnrichingWeather.value || isPdfScraping.value,
 )
 
-// --- Stan Sieci Neuronowej (Training) ---
+// --- Stan Sieci Neuronowej (Training & Backtest) ---
 const modelInfo = ref<any>(null)
 const isTrainingModel = ref(false)
 const isLoadingModelInfo = ref(false)
 const modelTrainingMessage = ref<string | null>(null)
 let modelPollTimer: any = null
+const backtestStatus = ref<any>(null)
+const isRunningBacktest = ref(false)
+let backtestPollTimer: any = null
+const hyperparamsBundle = ref<any>(null)
+const autotuneStatus = ref<any>(null)
+const isAutoTuning = ref(false)
+const isStoppingAutotune = ref(false)
+let autotunePollTimer: any = null
 
 // --- Stan dla DEBUGGERA PDF ---
 const checkerForm = ref({ url: '', codex: '', race_id: '' })
@@ -309,6 +359,9 @@ const isLoadingUsers = ref(false)
 const updatingUserId = ref<string | null>(null)
 const userSuccessMessage = ref('')
 const userErrorMessage = ref('')
+const esmSeasonLeagueId = ref('6ae06420a36131d6eb48db15')
+const esmTeamDrafts = ref<Record<string, string>>({})
+const savingEsmUserId = ref<string | null>(null)
 
 // Filtrowanie i wyszukiwanie użytkowników
 const userSearchQuery = ref('')
@@ -316,17 +369,23 @@ const userRoleFilter = ref('ALL')
 
 const filteredUsersList = computed(() => {
   return usersList.value.filter((u) => {
-    // 1. Filtr roli
-    if (userRoleFilter.value !== 'ALL' && u.role !== userRoleFilter.value) {
-      return false
+    // 1. Filtr roli (legacy USER_LITE zaliczamy do kont darmowych USER)
+    if (userRoleFilter.value !== 'ALL') {
+      if (userRoleFilter.value === 'USER') {
+        if (u.role === 'ADMIN' || u.role === 'USER_PRO') return false
+      } else if (u.role !== userRoleFilter.value) {
+        return false
+      }
     }
-    // 2. Szukanie po nazwie lub emailu
+    // 2. Szukanie po nazwie, emailu lub drużynie ESM
     const query = userSearchQuery.value.trim().toLowerCase()
     if (!query) return true
 
     const nameMatch = (u.name || '').toLowerCase().includes(query)
     const emailMatch = (u.email || '').toLowerCase().includes(query)
-    return nameMatch || emailMatch
+    const esmNameMatch = (u.esm_summary?.team_name || '').toLowerCase().includes(query)
+    const esmIdMatch = (u.esm_summary?.team_id || '').toLowerCase().includes(query)
+    return nameMatch || emailMatch || esmNameMatch || esmIdMatch
   })
 })
 
@@ -335,14 +394,12 @@ const userRoleCounts = computed(() => {
     ALL: usersList.value.length,
     ADMIN: 0,
     USER_PRO: 0,
-    USER_LITE: 0,
     USER: 0,
   }
   usersList.value.forEach((u) => {
     if (u.role === 'ADMIN') counts.ADMIN++
     else if (u.role === 'USER_PRO') counts.USER_PRO++
-    else if (u.role === 'USER_LITE') counts.USER_LITE++
-    else if (u.role === 'USER') counts.USER++
+    else counts.USER++
   })
   return counts
 })
@@ -358,11 +415,84 @@ const loadUsers = async () => {
   try {
     const res = await fetch(`${API_BASE_URL}/auth/users`, { headers: getHeaders() })
     if (!res.ok) throw new Error(`Błąd pobierania (${res.status})`)
-    usersList.value = await res.json()
+    const data = await res.json()
+    usersList.value = data
+    const drafts: Record<string, string> = {}
+    for (const u of data) {
+      drafts[u.id] = u.esm_summary?.team_id || ''
+    }
+    esmTeamDrafts.value = drafts
   } catch (e: any) {
     userErrorMessage.value = e.message || 'Nie udało się pobrać listy użytkowników'
   } finally {
     isLoadingUsers.value = false
+  }
+}
+
+const assignUserEsmTeam = async (targetUser: any) => {
+  const rawTid = (esmTeamDrafts.value[targetUser.id] || '').trim()
+  if (!rawTid) {
+    userErrorMessage.value = `Podaj ESM Team ID dla użytkownika ${targetUser.email}.`
+    return
+  }
+  savingEsmUserId.value = targetUser.id
+  userErrorMessage.value = ''
+  userSuccessMessage.value = ''
+  try {
+    const res = await fetch(`${API_BASE_URL}/esm/admin/users/${targetUser.id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        team_id: rawTid,
+        league_id: esmSeasonLeagueId.value.trim() || '6ae06420a36131d6eb48db15',
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      throw new Error(data.detail || 'Nie udało się przypisać drużyny ESM.')
+    }
+    targetUser.esm_summary = data.esm_summary
+    esmTeamDrafts.value[targetUser.id] = data.esm_summary?.team_id || rawTid
+    userSuccessMessage.value = data.message || `Zsynchronizowano ESM dla ${targetUser.email}.`
+    setTimeout(() => {
+      userSuccessMessage.value = ''
+    }, 4500)
+  } catch (e: any) {
+    userErrorMessage.value = e.message || 'Błąd przypisywania drużyny ESM.'
+  } finally {
+    savingEsmUserId.value = null
+  }
+}
+
+const unlinkUserEsmTeam = async (targetUser: any) => {
+  if (!confirm(`Czy odpiąć drużynę ESM od konta ${targetUser.email}?`)) return
+  savingEsmUserId.value = targetUser.id
+  userErrorMessage.value = ''
+  userSuccessMessage.value = ''
+  try {
+    const res = await fetch(`${API_BASE_URL}/esm/admin/users/${targetUser.id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      throw new Error(data.detail || 'Błąd odpinania drużyny ESM.')
+    }
+    targetUser.esm_summary = {
+      connected: false,
+      team_id: null,
+      league_id: null,
+      team_name: null,
+    }
+    esmTeamDrafts.value[targetUser.id] = ''
+    userSuccessMessage.value = data.message || `Odpięto ESM od ${targetUser.email}.`
+    setTimeout(() => {
+      userSuccessMessage.value = ''
+    }, 4000)
+  } catch (e: any) {
+    userErrorMessage.value = e.message || 'Błąd odpinania ESM.'
+  } finally {
+    savingEsmUserId.value = null
   }
 }
 
@@ -693,9 +823,19 @@ const stopNightlyPolling = () => {
 }
 
 const triggerStartNightlyScrape = async () => {
+  const lo = Math.min(nightlySeasonFrom.value, nightlySeasonTo.value)
+  const hi = Math.max(nightlySeasonFrom.value, nightlySeasonTo.value)
+  if (nightlyCategories.value.length === 0) {
+    return alert('Wybierz przynajmniej jedną kategorię zawodów do nocnego przetwarzania.')
+  }
+  const seasonsRange: string[] = []
+  for (let y = hi; y >= lo; y--) {
+    seasonsRange.push(String(y))
+  }
+
   if (
     !confirm(
-      'Czy na pewno chcesz uruchomić nocne przetwarzanie całej bazy? Operacja przetworzy wszystkie sezony ze sztucznym opóźnieniem chroniącym przed błędem 429 i automatycznie dołączy dane pogodowe.'
+      `Czy na pewno chcesz uruchomić nocne przetwarzanie bazy dla sezonów ${lo}–${hi} (${seasonsRange.length} lat) i kategorii: ${nightlyCategories.value.join(', ')}?`
     )
   ) {
     return
@@ -706,6 +846,8 @@ const triggerStartNightlyScrape = async () => {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({
+        seasons: seasonsRange,
+        categories: nightlyCategories.value,
         delay_seconds: Number(nightlyDelaySeconds.value) || 1.8,
         mode: 'IND',
       }),
@@ -746,26 +888,113 @@ const triggerStopNightlyScrape = async () => {
   }
 }
 
-const runPdfScraper = async () => {
-  isPdfScraping.value = true
-  pdfScrapeResult.value = null
+const stopPdfPolling = () => {
+  if (pdfPollTimer) {
+    clearInterval(pdfPollTimer)
+    pdfPollTimer = null
+  }
+}
+
+const loadPdfStatus = async () => {
   try {
-    const res = await fetch(`${API_BASE_URL}/admin/refresh-trainings`, {
+    const res = await fetch(`${API_BASE_URL}/admin/refresh-trainings/status`, { headers: getHeaders() })
+    if (res.ok) {
+      const data = await res.json()
+      pdfStatus.value = data
+      isPdfScraping.value = Boolean(data.is_running)
+      if (!data.is_running && data.last_result) {
+        pdfScrapeResult.value = data.last_result
+      }
+      if (isPdfScraping.value && !pdfPollTimer) {
+        startPdfPolling()
+      } else if (!isPdfScraping.value && pdfPollTimer) {
+        stopPdfPolling()
+      }
+    }
+  } catch (e) {
+    console.error('Błąd pobierania statusu ekstrakcji PDF:', e)
+  }
+}
+
+const startPdfPolling = () => {
+  if (pdfPollTimer) clearInterval(pdfPollTimer)
+  pdfPollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/refresh-trainings/status`, { headers: getHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        pdfStatus.value = data
+        const stillRunning = Boolean(data.is_running)
+        isPdfScraping.value = stillRunning
+        if (!stillRunning) {
+          stopPdfPolling()
+          isStoppingPdf.value = false
+          if (data.last_result) {
+            pdfScrapeResult.value = data.last_result
+          }
+          pdfMessage.value = data.last_message || 'Ekstrakcja PDF została zakończona.'
+          fetchReviews()
+          loadSeasonsSummary()
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }, 2000)
+}
+
+const runPdfScraper = async () => {
+  if (isPdfScraping.value) return
+  pdfScrapeResult.value = null
+  pdfMessage.value = null
+  const lo = Math.min(pdfSeasonFrom.value, pdfSeasonTo.value)
+  const hi = Math.max(pdfSeasonFrom.value, pdfSeasonTo.value)
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/refresh-trainings/start`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ season: pdfSeason.value || null }),
+      body: JSON.stringify({
+        season_from: lo,
+        season_to: hi,
+        categories: pdfCategories.value.length > 0 ? pdfCategories.value : null,
+        force_reprocess: pdfForceReprocess.value,
+      }),
     })
     const data = await res.json()
     if (res.ok) {
-      pdfScrapeResult.value = data
+      isPdfScraping.value = true
+      pdfMessage.value = data.message || 'Ekstrakcja plików PDF została uruchomiona w tle.'
+      await loadPdfStatus()
+      startPdfPolling()
     } else {
       alert('Błąd serwera: ' + (data.detail || 'Nieznany błąd'))
     }
   } catch (e) {
     console.error(e)
     alert('Błąd połączenia z backendem.')
+  }
+}
+
+const triggerStopPdfScraper = async () => {
+  if (isStoppingPdf.value) return
+  isStoppingPdf.value = true
+  if (pdfStatus.value) {
+    pdfStatus.value.stop_requested = true
+  }
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/refresh-trainings/stop`, {
+      method: 'POST',
+      headers: getHeaders(),
+    })
+    if (res.ok) {
+      pdfMessage.value = 'Wysłano sygnał bezpiecznego zatrzymania ekstrakcji PDF...'
+    }
+  } catch (e) {
+    console.error('Błąd zatrzymywania ekstrakcji PDF:', e)
   } finally {
-    isPdfScraping.value = false
+    setTimeout(() => {
+      isStoppingPdf.value = false
+    }, 2500)
   }
 }
 
@@ -965,6 +1194,181 @@ const stopModelPolling = () => {
   }
 }
 
+const stopBacktestPolling = () => {
+  if (backtestPollTimer) {
+    clearInterval(backtestPollTimer)
+    backtestPollTimer = null
+  }
+}
+
+const stopAutotunePolling = () => {
+  if (autotunePollTimer) {
+    clearInterval(autotunePollTimer)
+    autotunePollTimer = null
+  }
+}
+
+const loadHyperparams = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/prediction/hyperparams`, { headers: getHeaders() })
+    if (res.ok) {
+      hyperparamsBundle.value = await res.json()
+    }
+  } catch (e) {
+    console.error('Błąd pobierania hiperparametrów:', e)
+  }
+}
+
+const resetHyperparams = async () => {
+  if (!confirm('Przywrócić domyślne hiperparametry sieci w MongoDB?')) return
+  try {
+    const res = await fetch(`${API_BASE_URL}/prediction/hyperparams/reset`, {
+      method: 'POST',
+      headers: getHeaders(),
+    })
+    if (res.ok) {
+      hyperparamsBundle.value = await res.json()
+      modelTrainingMessage.value = '↩️ Przywrócono domyślne hiperparametry w MongoDB. Uruchom „Trenuj model”, aby przebudować wagi.'
+    }
+  } catch (e: any) {
+    alert(`Błąd sieci: ${e.message}`)
+  }
+}
+
+const loadAutotuneStatus = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/prediction/autotune/status`, { headers: getHeaders() })
+    if (res.ok) {
+      const data = await res.json()
+      autotuneStatus.value = data
+      isAutoTuning.value = Boolean(data.is_running)
+      if (isAutoTuning.value && !autotunePollTimer) {
+        startAutotunePolling()
+      } else if (!isAutoTuning.value && autotunePollTimer) {
+        stopAutotunePolling()
+      }
+    }
+  } catch (e) {
+    console.error('Błąd pobierania statusu Auto-Tunera:', e)
+  }
+}
+
+const startAutotunePolling = () => {
+  if (autotunePollTimer) clearInterval(autotunePollTimer)
+  autotunePollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/prediction/autotune/status`, { headers: getHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        autotuneStatus.value = data
+        isAutoTuning.value = Boolean(data.is_running)
+        if (!isAutoTuning.value) {
+          stopAutotunePolling()
+          isStoppingAutotune.value = false
+          await loadHyperparams()
+          await loadModelInfo()
+          await loadBacktestStatus()
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }, 2500)
+}
+
+const triggerAutoTune = async () => {
+  if (isAutoTuning.value) return
+  if (!confirm('Uruchomić 2-etapowy Auto-Tuning na podstawie Walk-Forward Backtestu? Jeśli znajdzie lepsze parametry, zapisze je w MongoDB i automatycznie przetrenowuje model.')) return
+  try {
+    const res = await fetch(`${API_BASE_URL}/prediction/autotune/start`, {
+      method: 'POST',
+      headers: getHeaders(),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      isAutoTuning.value = true
+      await loadAutotuneStatus()
+      startAutotunePolling()
+    } else {
+      alert(`Błąd: ${data.detail || 'Nie udało się uruchomić Auto-Tunera'}`)
+    }
+  } catch (e: any) {
+    alert(`Błąd sieci: ${e.message}`)
+  }
+}
+
+const triggerStopAutoTune = async () => {
+  if (isStoppingAutotune.value) return
+  isStoppingAutotune.value = true
+  try {
+    await fetch(`${API_BASE_URL}/prediction/autotune/stop`, {
+      method: 'POST',
+      headers: getHeaders(),
+    })
+  } catch (e) {
+    console.error(e)
+  } finally {
+    setTimeout(() => (isStoppingAutotune.value = false), 2500)
+  }
+}
+
+const loadBacktestStatus = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/prediction/backtest/status`, { headers: getHeaders() })
+    if (res.ok) {
+      const data = await res.json()
+      backtestStatus.value = data
+      isRunningBacktest.value = Boolean(data.is_running)
+      if (isRunningBacktest.value && !backtestPollTimer) {
+        startBacktestPolling()
+      } else if (!isRunningBacktest.value && backtestPollTimer) {
+        stopBacktestPolling()
+      }
+    }
+  } catch (e) {
+    console.error('Błąd pobierania statusu backtestu:', e)
+  }
+}
+
+const startBacktestPolling = () => {
+  if (backtestPollTimer) clearInterval(backtestPollTimer)
+  backtestPollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/prediction/backtest/status`, { headers: getHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        backtestStatus.value = data
+        isRunningBacktest.value = Boolean(data.is_running)
+        if (!isRunningBacktest.value) {
+          stopBacktestPolling()
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }, 2500)
+}
+
+const triggerWalkForwardBacktest = async () => {
+  if (isRunningBacktest.value) return
+  try {
+    const res = await fetch(`${API_BASE_URL}/prediction/backtest/start`, {
+      method: 'POST',
+      headers: getHeaders(),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      isRunningBacktest.value = true
+      await loadBacktestStatus()
+      startBacktestPolling()
+    } else {
+      alert(`Błąd: ${data.detail || 'Nie udało się uruchomić backtestu'}`)
+    }
+  } catch (e: any) {
+    alert(`Błąd sieci: ${e.message}`)
+  }
+}
+
 const triggerModelRetrain = async () => {
   if (!confirm('Czy na pewno chcesz przetrenować sieć neuronową na aktualnych danych z bazy? Operacja może potrwać kilka minut.')) return
   modelTrainingMessage.value = null
@@ -1000,15 +1404,22 @@ onMounted(() => {
   loadScrapeStatus()
   loadWeatherStatus()
   loadNightlyStatus()
+  loadPdfStatus()
   fetchReviews()
   loadModelInfo()
+  loadBacktestStatus()
+  loadHyperparams()
+  loadAutotuneStatus()
 })
 
 onUnmounted(() => {
   stopScrapePolling()
   stopWeatherPolling()
   stopNightlyPolling()
+  stopPdfPolling()
   stopModelPolling()
+  stopBacktestPolling()
+  stopAutotunePolling()
 })
 </script>
 
@@ -1018,7 +1429,6 @@ onUnmounted(() => {
     <SkiLoader v-if="isLoadingReviews">Wczytywanie kwarantanny...</SkiLoader>
     <SkiLoader v-if="isApprovingAll">Masowe zatwierdzanie...</SkiLoader>
     <SkiLoader v-if="isRejectingAll">Odrzucanie wszystkich sesji...</SkiLoader>
-    <SkiLoader v-if="isPdfScraping">Pobieranie i czytanie dokumentów PDF z FIS...</SkiLoader>
 
     <div
       v-if="showCategoryDropdown || showSeasonDropdown"
@@ -1060,6 +1470,8 @@ onUnmounted(() => {
                 ? 'Nocne przetwarzanie bazy w toku (Batch Scrape)'
                 : isEnrichingWeather
                 ? 'Wzbogacanie bazy pogodą (Open-Meteo Archive)'
+                : isPdfScraping
+                ? 'Ekstrakcja wyników treningów z PDF'
                 : scrapeStatus?.job_type === 'retry_missing'
                 ? 'Dociąganie brakujących sesji / 429'
                 : 'Scrapowanie wyników FIS'
@@ -1071,6 +1483,9 @@ onUnmounted(() => {
           </span>
           <span v-else-if="isNightlyScraping && nightlyStatus?.current_season" class="active-process-sub">
             • Sezon {{ nightlyStatus.current_season }} ({{ nightlyStatus.current_category }})
+          </span>
+          <span v-else-if="isPdfScraping && pdfStatus?.total_files > 0" class="active-process-sub">
+            • {{ pdfStatus.files_done }} / {{ pdfStatus.total_files }} plików ({{ pdfStatus.percent_complete }}%)
           </span>
         </div>
         <div class="active-process-actions">
@@ -1104,6 +1519,16 @@ onUnmounted(() => {
             <span>⏹️</span>
             {{ (weatherStatus?.status?.stop_requested || isStoppingWeather) ? 'Zatrzymywanie...' : 'Zatrzymaj pogodę' }}
           </button>
+          <button
+            v-else-if="isPdfScraping"
+            type="button"
+            @click="triggerStopPdfScraper"
+            class="btn-danger btn-compact-stop"
+            :disabled="pdfStatus?.stop_requested || isStoppingPdf"
+          >
+            <span>⏹️</span>
+            {{ (pdfStatus?.stop_requested || isStoppingPdf) ? 'Zatrzymywanie...' : 'Zatrzymaj PDF' }}
+          </button>
         </div>
       </div>
 
@@ -1115,6 +1540,8 @@ onUnmounted(() => {
               ? `${nightlyStatus?.percent_complete || 0}%`
               : isEnrichingWeather
               ? `${weatherStatus?.status?.percent_complete || 0}%`
+              : isPdfScraping
+              ? `${pdfStatus?.percent_complete || 0}%`
               : `${scrapeStatus?.percent_complete || 0}%`
           }"
         ></div>
@@ -1129,6 +1556,9 @@ onUnmounted(() => {
         </span>
         <span v-else-if="isEnrichingWeather && weatherStatus?.status?.current_item" class="active-item-label">
           🌤️ {{ weatherStatus.status.current_item }}
+        </span>
+        <span v-else-if="isPdfScraping && pdfStatus?.current_item" class="active-item-label">
+          📄 {{ pdfStatus.current_item }}
         </span>
 
         <div class="active-stats-pills">
@@ -1158,6 +1588,20 @@ onUnmounted(() => {
             </span>
             <span class="mini-stat-pill pill-gray">
               ⏱️ {{ Math.floor((nightlyStatus.elapsed_seconds || 0) / 60) }}m {{ (nightlyStatus.elapsed_seconds || 0) % 60 }}s
+            </span>
+          </template>
+          <template v-else-if="isPdfScraping && pdfStatus">
+            <span class="mini-stat-pill pill-green">
+              Kwarantanna: {{ pdfStatus.saved_to_review || 0 }}
+            </span>
+            <span class="mini-stat-pill pill-cyan">
+              Bez zmian: {{ pdfStatus.unchanged_files || 0 }}
+            </span>
+            <span v-if="pdfStatus.failed_files > 0" class="mini-stat-pill pill-red">
+              Błędy: {{ pdfStatus.failed_files }}
+            </span>
+            <span class="mini-stat-pill pill-gray">
+              ⏱️ {{ Math.floor((pdfStatus.elapsed_seconds || 0) / 60) }}m {{ (pdfStatus.elapsed_seconds || 0) % 60 }}s
             </span>
           </template>
         </div>
@@ -1703,6 +2147,56 @@ onUnmounted(() => {
         </div>
 
         <!-- Parametry i akcje -->
+        <div class="range-config-box">
+          <div class="range-sliders-block">
+            <div class="range-header-row">
+              <label class="field-label">Zakres sezonów (od – do):</label>
+              <span class="range-badge font-mono">
+                {{ Math.min(nightlySeasonFrom, nightlySeasonTo) }} – {{ Math.max(nightlySeasonFrom, nightlySeasonTo) }}
+                ({{ Math.abs(nightlySeasonTo - nightlySeasonFrom) + 1 }} lat)
+              </span>
+            </div>
+            <div class="dual-sliders-grid">
+              <div class="slider-item">
+                <span>Od sezonu: <strong class="font-mono">{{ nightlySeasonFrom }}</strong></span>
+                <input type="range" min="2000" :max="maxSelectableSeason" v-model.number="nightlySeasonFrom" :disabled="isNightlyScraping" class="styled-slider" />
+              </div>
+              <div class="slider-item">
+                <span>Do sezonu: <strong class="font-mono">{{ nightlySeasonTo }}</strong></span>
+                <input type="range" min="2000" :max="maxSelectableSeason" v-model.number="nightlySeasonTo" :disabled="isNightlyScraping" class="styled-slider" />
+              </div>
+            </div>
+            <div class="range-presets-row">
+              <button type="button" class="btn-preset-chip" :disabled="isNightlyScraping" @click="applyNightlyPreset(maxSelectableSeason - 1, maxSelectableSeason, ['WC', 'GP', 'COC'])">
+                Ostatnie 2 sezony
+              </button>
+              <button type="button" class="btn-preset-chip" :disabled="isNightlyScraping" @click="applyNightlyPreset(2020, maxSelectableSeason, ['WC', 'GP', 'COC', 'FC'])">
+                2020–{{ maxSelectableSeason }}
+              </button>
+              <button type="button" class="btn-preset-chip" :disabled="isNightlyScraping" @click="applyNightlyPreset(2000, maxSelectableSeason, ['WC', 'GP', 'COC', 'FC', 'OWG', 'WSC', 'SFWC'])">
+                Pełna historia (2000–{{ maxSelectableSeason }})
+              </button>
+            </div>
+          </div>
+
+          <div class="categories-pills-block">
+            <label class="field-label">Rodzaje zawodów (kategorie FIS):</label>
+            <div class="cat-pills-wrap">
+              <button
+                v-for="cat in allScraperCatOptions"
+                :key="cat.code"
+                type="button"
+                class="cat-pill-toggle"
+                :class="{ active: nightlyCategories.includes(cat.code) }"
+                :disabled="isNightlyScraping"
+                @click="toggleNightlyCategory(cat.code)"
+              >
+                {{ cat.label }}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="batch-controls-row">
           <div class="control-group">
             <label class="field-label">Opóźnienie między żądaniami (sekundy):</label>
@@ -1980,19 +2474,123 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="filter-row">
-          <div class="filter-section" style="max-width: 250px">
-            <label class="field-label">Sezon zawodów:</label>
-            <select v-model="pdfSeason" class="form-select">
-              <option v-for="year in availableSeasons" :key="year" :value="year">{{ year }}</option>
-            </select>
+        <div class="range-config-box">
+          <div class="range-sliders-block">
+            <div class="range-header-row">
+              <label class="field-label">Zakres sezonów do ekstrakcji PDF:</label>
+              <span class="range-badge font-mono">
+                {{ Math.min(pdfSeasonFrom, pdfSeasonTo) }} – {{ Math.max(pdfSeasonFrom, pdfSeasonTo) }}
+              </span>
+            </div>
+            <div class="dual-sliders-grid">
+              <div class="slider-item">
+                <span>Od sezonu: <strong class="font-mono">{{ pdfSeasonFrom }}</strong></span>
+                <input type="range" min="2000" :max="maxSelectableSeason" v-model.number="pdfSeasonFrom" :disabled="isPdfScraping" class="styled-slider" />
+              </div>
+              <div class="slider-item">
+                <span>Do sezonu: <strong class="font-mono">{{ pdfSeasonTo }}</strong></span>
+                <input type="range" min="2000" :max="maxSelectableSeason" v-model.number="pdfSeasonTo" :disabled="isPdfScraping" class="styled-slider" />
+              </div>
+            </div>
           </div>
+
+          <div class="categories-pills-block">
+            <label class="field-label">Rodzaje zawodów:</label>
+            <div class="cat-pills-wrap">
+              <button
+                v-for="cat in allScraperCatOptions"
+                :key="cat.code"
+                type="button"
+                class="cat-pill-toggle"
+                :class="{ active: pdfCategories.includes(cat.code) }"
+                :disabled="isPdfScraping"
+                @click="togglePdfCategory(cat.code)"
+              >
+                {{ cat.label }}
+              </button>
+            </div>
+          </div>
+
+          <label class="checkbox-control-card mt-2">
+            <input type="checkbox" v-model="pdfForceReprocess" :disabled="isPdfScraping" />
+            <div class="checkbox-control-text">
+              <strong>🔄 Przetwórz ponownie istniejące sesje</strong>
+              <span class="help-desc">Ponownie pobiera i parsuje PDF-y nawet dla oznaczonych sesji (uzupełnia fis_code i klasyfikacje)</span>
+            </div>
+          </label>
         </div>
 
         <div class="action-footer">
-          <button @click="runPdfScraper" :disabled="isPdfScraping" class="btn-primary">
+          <button v-if="!isPdfScraping" @click="runPdfScraper" class="btn-primary">
             <span>📄</span> Przeprowadź Ekstrakcję Treningów (PDF)
           </button>
+          <button
+            v-else
+            type="button"
+            @click="triggerStopPdfScraper"
+            class="btn-danger"
+            :disabled="pdfStatus?.stop_requested || isStoppingPdf"
+          >
+            <span>⏹️</span> {{ (pdfStatus?.stop_requested || isStoppingPdf) ? 'Zatrzymywanie...' : 'Zatrzymaj Ekstrakcję PDF' }}
+          </button>
+          <button type="button" @click="loadPdfStatus" class="btn-refresh-summary">
+            <span>🔄</span> Odśwież stan
+          </button>
+        </div>
+
+        <div v-if="pdfMessage" class="info-alert mt-4">
+          ℹ️ {{ pdfMessage }}
+        </div>
+
+        <!-- Postęp live dla ekstrakcji PDF -->
+        <div v-if="pdfStatus && (pdfStatus.is_running || pdfStatus.total_files > 0)" class="live-progress-box mt-4">
+          <div class="progress-header">
+            <div class="progress-title">
+              <span>Postęp ekstrakcji PDF:</span>
+              <span v-if="pdfStatus.current_item && isPdfScraping" class="current-item-text">
+                • {{ pdfStatus.current_item }}
+              </span>
+              <span v-else-if="!isPdfScraping && pdfStatus.last_message" class="current-item-text text-green font-semibold">
+                • {{ pdfStatus.last_message }}
+              </span>
+            </div>
+            <div class="progress-stat font-mono">
+              {{ pdfStatus.files_done }} / {{ pdfStatus.total_files }} plików ({{ pdfStatus.percent_complete }}%)
+            </div>
+          </div>
+
+          <div class="progress-bar-bg mb-3">
+            <div
+              class="progress-bar-fill"
+              :class="isPdfScraping ? 'fill-running' : 'fill-complete'"
+              :style="{ width: `${pdfStatus.percent_complete || 0}%` }"
+            ></div>
+          </div>
+
+          <div class="live-metrics-grid">
+            <div class="live-metric-card">
+              <span class="metric-label">Sesji w paczce</span>
+              <strong class="metric-value text-blue font-mono">{{ pdfStatus.total_sessions ?? 0 }}</strong>
+            </div>
+            <div class="live-metric-card">
+              <span class="metric-label">Do kwarantanny</span>
+              <strong class="metric-value text-yellow font-mono">{{ pdfStatus.saved_to_review ?? 0 }}</strong>
+            </div>
+            <div class="live-metric-card">
+              <span class="metric-label">Bez zmian</span>
+              <strong class="metric-value font-mono">{{ pdfStatus.unchanged_files ?? 0 }}</strong>
+            </div>
+            <div class="live-metric-card" v-if="(pdfStatus.failed_files ?? 0) > 0">
+              <span class="metric-label">Błędy pobierania</span>
+              <strong class="metric-value text-red font-mono">{{ pdfStatus.failed_files }}</strong>
+            </div>
+            <div class="live-metric-card">
+              <span class="metric-label">Czas trwania</span>
+              <strong class="metric-value font-mono">
+                {{ Math.floor((pdfStatus.elapsed_seconds || 0) / 60) }}m {{ (pdfStatus.elapsed_seconds || 0) % 60 }}s
+              </strong>
+            </div>
+          </div>
         </div>
 
         <div v-if="pdfScrapeResult" class="results-box">
@@ -2002,11 +2600,11 @@ onUnmounted(() => {
 
           <div class="summary-stats-grid">
             <div class="summary-stat-card">
-              <span class="stat-number text-yellow">{{ pdfScrapeResult.saved_to_review }}</span>
+              <span class="stat-number text-yellow">{{ pdfScrapeResult.saved_to_review ?? 0 }}</span>
               <span class="stat-label">Wysłano do Kwarantanny</span>
             </div>
             <div class="summary-stat-card">
-              <span class="stat-number text-muted">{{ pdfScrapeResult.unchanged_files }}</span>
+              <span class="stat-number text-muted">{{ pdfScrapeResult.unchanged_files ?? 0 }}</span>
               <span class="stat-label">Pominięto (Brak zmian)</span>
             </div>
             <div class="summary-stat-card">
@@ -2015,12 +2613,13 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- BŁĘDY / RAPORT POBIERANIA (np. 502 Bad Gateway z FIS) -->
-          <div v-if="pdfScrapeResult.report && pdfScrapeResult.report.length > 0" class="report-error-card">
-            <h4>⚠️ Zgłoszone błędy serwera FIS podczas pobierania ({{ pdfScrapeResult.report.length }}):</h4>
-            <div v-for="(item, idx) in pdfScrapeResult.report" :key="idx" class="report-error-item">
+          <!-- BŁĘDY / RAPORT POBIERANIA (np. ReadTimeout / 502 z FIS) -->
+          <div v-if="(pdfScrapeResult.errors || pdfScrapeResult.report)?.length > 0" class="report-error-card">
+            <h4>⚠️ Zgłoszone błędy podczas pobierania/parsowania ({{ (pdfScrapeResult.errors || pdfScrapeResult.report).length }}):</h4>
+            <div v-for="(item, idx) in (pdfScrapeResult.errors || pdfScrapeResult.report)" :key="idx" class="report-error-item">
               <div class="report-error-header">
                 <span class="badge-codex">Codex {{ item.codex }}</span>
+                <span v-if="item.race_id" class="badge-codex">Race {{ item.race_id }}</span>
                 <span class="badge-type">{{ item.type }}</span>
               </div>
               <pre class="report-error-msg">{{ item.error }}</pre>
@@ -2413,19 +3012,11 @@ onUnmounted(() => {
               </button>
               <button
                 type="button"
-                class="role-filter-pill pill-lite"
-                :class="{ active: userRoleFilter === 'USER_LITE' }"
-                @click="userRoleFilter = 'USER_LITE'"
-              >
-                LITE ({{ userRoleCounts.USER_LITE }})
-              </button>
-              <button
-                type="button"
                 class="role-filter-pill pill-user"
                 :class="{ active: userRoleFilter === 'USER' }"
                 @click="userRoleFilter = 'USER'"
               >
-                Standard ({{ userRoleCounts.USER }})
+                Darmowe ({{ userRoleCounts.USER }})
               </button>
             </div>
 
@@ -2437,6 +3028,17 @@ onUnmounted(() => {
             >
               ✕ Wyczyść filtry
             </button>
+          </div>
+
+          <div class="esm-season-bar">
+            <label for="esmSeasonLeagueInput" class="esm-season-label">🏆 ID Ligi ESM (bieżący sezon):</label>
+            <input
+              id="esmSeasonLeagueInput"
+              v-model="esmSeasonLeagueId"
+              type="text"
+              class="form-input esm-season-input"
+              placeholder="np. 6ae06420a36131d6eb48db15"
+            />
           </div>
         </div>
 
@@ -2458,6 +3060,7 @@ onUnmounted(() => {
                   <th>Ostatnie logowanie</th>
                   <th>Aktualna rola</th>
                   <th>Zmień uprawnienia</th>
+                  <th>esmManager (Team ID)</th>
                 </tr>
               </thead>
               <tbody>
@@ -2478,25 +3081,58 @@ onUnmounted(() => {
                       :class="{
                         'role-admin': u.role === 'ADMIN',
                         'role-pro': u.role === 'USER_PRO',
-                        'role-lite': u.role === 'USER_LITE',
-                        'role-user': u.role === 'USER',
+                        'role-user': u.role !== 'ADMIN' && u.role !== 'USER_PRO',
                       }"
                     >
-                      {{ u.role === 'ADMIN' ? 'ADMIN' : (u.role === 'USER_PRO' ? 'PRO' : (u.role === 'USER_LITE' ? 'LITE' : 'STANDARD')) }}
+                      {{ u.role === 'ADMIN' ? 'ADMIN' : (u.role === 'USER_PRO' ? 'PRO' : 'FREE') }}
                     </span>
                   </td>
                   <td>
                     <select
                       class="form-select role-select"
-                      :value="u.role"
+                      :value="u.role === 'USER_LITE' ? 'USER' : u.role"
                       :disabled="updatingUserId === u.id"
                       @change="changeUserRole(u, ($event.target as HTMLSelectElement).value)"
                     >
-                      <option value="USER">Konto standardowe (Darmowe)</option>
-                      <option value="USER_LITE">FantaSKI LITE (Porównywarka do 2 skoczków)</option>
-                      <option value="USER_PRO">FantaSKI PRO (Pełna analityka & Predykcje)</option>
+                      <option value="USER">Konto darmowe (1 liga Draft, max 2 w Porównywarce)</option>
+                      <option value="USER_PRO">FantaSKI PRO (Pełna analityka, Draft &amp; Predykcje AI)</option>
                       <option value="ADMIN">Administrator</option>
                     </select>
+                  </td>
+                  <td>
+                    <div class="admin-esm-cell">
+                      <div v-if="u.esm_summary?.connected" class="admin-esm-status">
+                        <span class="esm-linked-pill">✅ {{ u.esm_summary.team_name || 'Zsynchronizowano' }}</span>
+                      </div>
+                      <div class="admin-esm-controls">
+                        <input
+                          v-model="esmTeamDrafts[u.id]"
+                          type="text"
+                          class="form-input esm-tid-input"
+                          placeholder="ESM Team ID..."
+                          :disabled="savingEsmUserId === u.id"
+                        />
+                        <button
+                          type="button"
+                          class="btn-esm-save"
+                          :disabled="savingEsmUserId === u.id || !(esmTeamDrafts[u.id] || '').trim()"
+                          @click="assignUserEsmTeam(u)"
+                          title="Przypisz i pobierz aktualny skład z ESM"
+                        >
+                          {{ savingEsmUserId === u.id ? '⏳' : (u.esm_summary?.connected ? '🔄' : '🔗') }}
+                        </button>
+                        <button
+                          v-if="u.esm_summary?.connected"
+                          type="button"
+                          class="btn-esm-unlink"
+                          :disabled="savingEsmUserId === u.id"
+                          @click="unlinkUserEsmTeam(u)"
+                          title="Odepnij ESM od użytkownika"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -2546,7 +3182,7 @@ onUnmounted(() => {
         <div v-if="modelInfo && !modelInfo.is_trained && !isTrainingModel" class="nn-warning-banner">
           <span>⚠️</span>
           <div>
-            <strong>Model nie jest jeszcze wytrenowany (lub zmieniła się liczba cech wejściowych):</strong> Uruchom trening przyciskiem „Trenuj model” poniżej, aby aktywować predykcje na podstronie Predykcje.
+            <strong>Model nie jest jeszcze wytrenowany (lub zmieniła się liczba cech wejściowych):</strong> Uruchom trening przyciskiem „Trenuj model” poniżej, aby aktywować prognozy na podstronie Prognozy.
           </div>
         </div>
 
@@ -2614,6 +3250,10 @@ onUnmounted(() => {
                 {{ modelInfo.metadata.epochs }}<template v-if="modelInfo.metadata?.best_epoch"> (best: {{ modelInfo.metadata.best_epoch }})</template>
               </strong>
             </div>
+            <div class="nn-metric-card" v-if="modelInfo.metadata?.training_seasons_range">
+              <span class="metric-label">Okno sezonów nauki</span>
+              <strong class="metric-value font-mono">{{ modelInfo.metadata.training_seasons_range }}</strong>
+            </div>
           </div>
         </div>
 
@@ -2634,19 +3274,211 @@ onUnmounted(() => {
         <div class="action-footer nn-action-footer">
           <button
             @click="triggerModelRetrain"
-            :disabled="isTrainingModel"
+            :disabled="isTrainingModel || isAutoTuning"
             class="btn-primary"
           >
             <span>🧠</span> {{ isTrainingModel ? 'Trening modelu w toku...' : 'Trenuj model' }}
           </button>
           <button
             type="button"
-            @click="loadModelInfo"
+            @click="triggerWalkForwardBacktest"
+            :disabled="isRunningBacktest || isTrainingModel || isAutoTuning"
+            class="btn-secondary"
+          >
+            <span>📊</span> {{ isRunningBacktest ? 'Trwa Walk-Forward Backtest...' : 'Uruchom Walk-Forward Backtest' }}
+          </button>
+          <button
+            v-if="!isAutoTuning"
+            type="button"
+            @click="triggerAutoTune"
+            :disabled="isRunningBacktest || isTrainingModel"
+            class="btn-secondary"
+          >
+            <span>🎯</span> Uruchom Auto-Tuning (MongoDB)
+          </button>
+          <button
+            v-else
+            type="button"
+            @click="triggerStopAutoTune"
+            :disabled="isStoppingAutotune || autotuneStatus?.stop_requested"
+            class="btn-danger"
+          >
+            <span>⏹️</span> {{ isStoppingAutotune ? 'Zatrzymywanie...' : 'Zatrzymaj Auto-Tuning' }}
+          </button>
+          <button
+            type="button"
+            @click="() => { loadModelInfo(); loadBacktestStatus(); loadHyperparams(); }"
             :disabled="isLoadingModelInfo"
             class="btn-refresh-summary"
           >
             <span :class="{ spinning: isLoadingModelInfo }">🔄</span> Odśwież metryki
           </button>
+        </div>
+
+        <!-- Sekcja MongoDB Hyperparams & Auto-Tuner -->
+        <div class="nn-backtest-section mt-6">
+          <div class="nn-backtest-header flex-between" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+            <div>
+              <h4>🎛️ Aktywne Hiperparametry (MongoDB) & Auto-Tuner</h4>
+              <p class="subtitle">
+                2-etapowe strojenie wag czasowych i sieci neuronowej z walidacją holdout na najnowszym sezonie i zapisem w MongoDB.
+              </p>
+            </div>
+            <button
+              v-if="hyperparamsBundle?.source === 'autotuned'"
+              type="button"
+              @click="resetHyperparams"
+              :disabled="isAutoTuning || isTrainingModel"
+              class="btn-refresh-summary"
+            >
+              <span>↩️</span> Przywróć domyślne
+            </button>
+          </div>
+
+          <div v-if="isAutoTuning" class="live-progress-box mt-3 mb-4">
+            <div class="progress-header">
+              <div class="progress-title">
+                <span>Auto-Tuning w toku ({{ autotuneStatus?.trials_done || 0 }}/{{ autotuneStatus?.trials_total || 16 }}):</span>
+                <strong>{{ autotuneStatus?.message || 'Strojenie hiperparametrów...' }}</strong>
+              </div>
+              <div class="progress-stat font-mono">
+                {{ autotuneStatus?.percent_complete ?? 0 }}% • {{ autotuneStatus?.elapsed_seconds ?? 0 }}s
+              </div>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill fill-running" :style="{ width: `${Math.max(5, autotuneStatus?.percent_complete ?? 5)}%` }"></div>
+            </div>
+          </div>
+
+          <div v-if="autotuneStatus?.results" class="nn-message mb-3" :class="autotuneStatus.results.improved ? 'nn-message-success' : 'nn-message-info'">
+            {{ autotuneStatus.message || (autotuneStatus.results.improved ? `Zapisano lepszą konfigurację: ${autotuneStatus.results.best_candidate_label}` : 'Obecna konfiguracja pozostała najlepsza.') }}
+          </div>
+
+          <div v-if="hyperparamsBundle?.params" class="nn-metrics-grid mb-3">
+            <div class="nn-metric-card">
+              <span class="metric-label">Źródło konfiguracji</span>
+              <strong class="metric-value" :class="hyperparamsBundle.source === 'autotuned' ? 'text-green' : ''">
+                {{ hyperparamsBundle.source === 'autotuned' ? '🎯 Dostrojone (MongoDB)' : '⚙️ Domyślne' }}
+              </strong>
+            </div>
+            <div class="nn-metric-card">
+              <span class="metric-label">Półokres COMP / QUA</span>
+              <strong class="metric-value font-mono">{{ hyperparamsBundle.params.comp_half_life_days }}d / {{ hyperparamsBundle.params.qua_half_life_days }}d</strong>
+            </div>
+            <div class="nn-metric-card">
+              <span class="metric-label">Półokres TRIAL / TRAIN</span>
+              <strong class="metric-value font-mono">{{ hyperparamsBundle.params.trial_half_life_days }}d / {{ hyperparamsBundle.params.training_half_life_days }}d</strong>
+            </div>
+            <div class="nn-metric-card">
+              <span class="metric-label">Wagi weekend (Q / T / TR)</span>
+              <strong class="metric-value font-mono">{{ hyperparamsBundle.params.weekend_qua_weight }} / {{ hyperparamsBundle.params.weekend_trial_weight }} / {{ hyperparamsBundle.params.weekend_training_weight }}</strong>
+            </div>
+            <div class="nn-metric-card">
+              <span class="metric-label">Strata / Blend pkt (Qual)</span>
+              <strong class="metric-value font-mono">{{ Math.round(hyperparamsBundle.params.loss_quality_weight * 100) }}% / {{ Math.round(hyperparamsBundle.params.points_blend_quality_weight * 100) }}%</strong>
+            </div>
+            <div class="nn-metric-card">
+              <span class="metric-label">LR / Dropout / Okno</span>
+              <strong class="metric-value font-mono">{{ hyperparamsBundle.params.lr }} / {{ hyperparamsBundle.params.dropout }} / {{ hyperparamsBundle.params.rolling_window_seasons }} lat</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Walk-Forward Backtest (sezon po sezonie bez wycieku przyszłości) -->
+        <div class="nn-backtest-section mt-6">
+          <div class="nn-backtest-header">
+            <div>
+              <h4>📈 Walidacja Krocząca (Walk-Forward Backtest)</h4>
+              <p class="subtitle">
+                Symulacja kolejnych sezonów konkurs po konkursie (nauka na latach &lt; T, predykcja konkursu w sezonie T z treningami/QUA sprzed zawodów).
+              </p>
+            </div>
+          </div>
+
+          <div v-if="isRunningBacktest" class="live-progress-box mb-4">
+            <div class="progress-header">
+              <div class="progress-title">
+                <span>Postęp walidacji kroczącej:</span>
+                <strong>{{ backtestStatus?.message || 'Obliczanie prognoz historycznych...' }}</strong>
+              </div>
+              <div class="progress-stat font-mono">{{ backtestStatus?.percent_complete ?? 0 }}%</div>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill fill-running" :style="{ width: `${Math.max(5, backtestStatus?.percent_complete ?? 5)}%` }"></div>
+            </div>
+          </div>
+
+          <div v-if="backtestStatus?.error" class="nn-message nn-message-error">
+            ❌ Błąd backtestu: {{ backtestStatus.error }}
+          </div>
+
+          <div v-if="backtestStatus?.results?.overall" class="nn-backtest-results">
+            <div class="nn-metrics-grid mb-4">
+              <div class="nn-metric-card">
+                <span class="metric-label">Przetestowane konkursy</span>
+                <strong class="metric-value font-mono">{{ backtestStatus.results.overall.competitions_evaluated }}</strong>
+              </div>
+              <div class="nn-metric-card">
+                <span class="metric-label">Trafność TOP 30</span>
+                <strong class="metric-value text-green font-mono">{{ backtestStatus.results.overall.top30_hit_pct }}%</strong>
+              </div>
+              <div class="nn-metric-card">
+                <span class="metric-label">Trafność TOP 10</span>
+                <strong class="metric-value text-blue font-mono">{{ backtestStatus.results.overall.top10_hit_pct }}%</strong>
+              </div>
+              <div class="nn-metric-card">
+                <span class="metric-label">Trafność Podium</span>
+                <strong class="metric-value text-yellow font-mono">{{ backtestStatus.results.overall.podium_hit_pct }}%</strong>
+              </div>
+              <div class="nn-metric-card">
+                <span class="metric-label">Zwycięzca w TOP 3</span>
+                <strong class="metric-value font-mono">{{ backtestStatus.results.overall.winner_top3_pct }}%</strong>
+              </div>
+              <div class="nn-metric-card">
+                <span class="metric-label">Śr. błąd miejsca (MAE)</span>
+                <strong class="metric-value font-mono">{{ backtestStatus.results.overall.avg_rank_mae }} poz.</strong>
+              </div>
+              <div class="nn-metric-card">
+                <span class="metric-label">Korelacja Spearmana</span>
+                <strong class="metric-value font-mono">{{ backtestStatus.results.overall.spearman_corr }}</strong>
+              </div>
+              <div class="nn-metric-card">
+                <span class="metric-label">Błąd dystansu (MAE)</span>
+                <strong class="metric-value font-mono">~{{ backtestStatus.results.overall.dist_mae_m }} m</strong>
+              </div>
+            </div>
+
+            <div class="table-responsive" v-if="backtestStatus.results.folds?.length">
+              <table class="backtest-table">
+                <thead>
+                  <tr>
+                    <th>Sezon testowy</th>
+                    <th>Próbki nauki (&lt; T)</th>
+                    <th>Konkursy</th>
+                    <th>TOP 30</th>
+                    <th>TOP 10</th>
+                    <th>Podium</th>
+                    <th>Zw. w TOP 3</th>
+                    <th>MAE miejsca</th>
+                    <th>Spearman</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="fold in backtestStatus.results.folds" :key="fold.season">
+                    <td class="font-mono"><strong>{{ fold.season }}</strong></td>
+                    <td class="font-mono">{{ fold.train_samples.toLocaleString('pl-PL') }}</td>
+                    <td class="font-mono">{{ fold.competitions_evaluated }}</td>
+                    <td class="font-mono text-green">{{ fold.top30_hit_pct }}%</td>
+                    <td class="font-mono text-blue">{{ fold.top10_hit_pct }}%</td>
+                    <td class="font-mono">{{ fold.podium_hit_pct }}%</td>
+                    <td class="font-mono">{{ fold.winner_top3_pct }}%</td>
+                    <td class="font-mono">{{ fold.avg_rank_mae }}</td>
+                    <td class="font-mono">{{ fold.spearman_corr }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -2878,6 +3710,7 @@ onUnmounted(() => {
 }
 .btn-secondary {
   background: #475569;
+  color: #ffffff;
 }
 .btn-secondary:hover:not(:disabled) {
   background: #334155;
@@ -4384,6 +5217,68 @@ onUnmounted(() => {
   font-size: 0.78em;
 }
 
+.nn-backtest-section {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 20px;
+}
+
+.nn-backtest-header h4 {
+  margin: 0 0 4px 0;
+  font-size: 1.05em;
+  color: #0f172a;
+}
+
+.nn-backtest-results {
+  margin-top: 14px;
+}
+
+.backtest-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88em;
+}
+
+.backtest-table th,
+.backtest-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.backtest-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+  font-size: 0.82em;
+  text-transform: uppercase;
+}
+
+.btn-secondary {
+  background: #f1f5f9;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.92em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .nn-retrain-hint-inline {
   margin-top: 14px;
   padding: 10px 14px;
@@ -4705,5 +5600,264 @@ onUnmounted(() => {
   background: rgba(148, 163, 184, 0.15);
   color: #cbd5e1;
   border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+/* --- Kontrolki zakresu lat i kategorii (Nocny Scraper & PDF) --- */
+.range-config-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.range-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.range-badge {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-weight: 700;
+  font-size: 0.85em;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.dual-sliders-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.slider-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85em;
+  color: #334155;
+}
+
+.range-presets-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.btn-preset-chip {
+  background: white;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  font-size: 0.78em;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.btn-preset-chip:hover:not(:disabled) {
+  border-color: #0284c7;
+  color: #0284c7;
+}
+
+.cat-pills-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.cat-pill-toggle {
+  background: white;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  font-size: 0.8em;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cat-pill-toggle.active {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: white;
+}
+
+/* ========================================================
+   MOBILE UX RESPONSIVENESS (ADMIN VIEW)
+   ======================================================== */
+@media (max-width: 768px) {
+  .admin-page {
+    padding: 12px 10px;
+  }
+  .tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    gap: 4px;
+  }
+  .tabs button {
+    flex-shrink: 0;
+    padding: 8px 12px;
+    font-size: 0.88em;
+  }
+  .admin-card {
+    padding: 14px;
+  }
+  .admin-card-header.flex-between {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .filter-row,
+  .batch-controls-row,
+  .weather-controls-row,
+  .seasons-header-row,
+  .users-toolbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px;
+  }
+  .filter-section,
+  .dropdown-container {
+    max-width: none !important;
+    width: 100%;
+  }
+  .dual-sliders-grid {
+    grid-template-columns: 1fr;
+  }
+  .seasons-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .live-metrics-grid,
+  .summary-stats-grid,
+  .nn-metrics-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px;
+  }
+  .seasons-header-actions,
+  .control-actions,
+  .action-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .active-process-header,
+  .active-process-stats {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .active-item-label {
+    max-width: 100%;
+  }
+  .btn-compact-stop {
+    width: 100%;
+    justify-content: center;
+  }
+  .diff-container {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 440px) {
+  .live-metrics-grid,
+  .summary-stats-grid,
+  .nn-metrics-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.esm-season-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.esm-season-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #0369a1;
+}
+
+.esm-season-input {
+  max-width: 260px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  padding: 5px 9px;
+}
+
+.admin-esm-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+}
+
+.esm-linked-pill {
+  display: inline-block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #065f46;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.admin-esm-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.esm-tid-input {
+  flex: 1;
+  min-width: 145px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.76rem;
+  padding: 5px 8px;
+}
+
+.btn-esm-save,
+.btn-esm-unlink {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-esm-save:hover:not(:disabled) {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+}
+
+.btn-esm-unlink {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.btn-esm-save:disabled,
+.btn-esm-unlink:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

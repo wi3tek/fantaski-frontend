@@ -2,10 +2,13 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SkiLoader from '@/components/SkiLoader.vue'
+import CountryFlag from '@/components/CountryFlag.vue'
 import { api } from '@/api/client'
+import { useAuth } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuth()
 const sessionId = route.params.id
 
 const session = ref<any>(null)
@@ -18,6 +21,47 @@ export interface AthletePackage {
   id: string
   name: string
   athletes: string[] // Lista nazwisk zawodników (agnostyczna do konkursu)
+}
+
+export interface EsmPlayer {
+  esm_id?: string | null
+  esm_fullname?: string | null
+  fis_code?: number | null
+  fis_name?: string | null
+  country?: string | null
+  price?: number | null
+  is_captain?: boolean
+  group?: number
+}
+
+export interface EsmTeam {
+  team_id: string
+  team_name?: string | null
+  league_id?: string | null
+  value?: number | null
+  income?: number | null
+  total_points?: number | null
+  starters: EsmPlayer[]
+  bench: EsmPlayer[]
+  all_players: EsmPlayer[]
+  synced_at?: string | null
+}
+
+export interface EsmFriendTeam extends EsmTeam {
+  id: string
+  display_name: string
+  source?: string
+}
+
+export interface EsmStatusResponse {
+  connected: boolean
+  has_token: boolean
+  token_email?: string | null
+  league_id: string
+  team_id?: string | null
+  my_team?: EsmTeam | null
+  friends: EsmFriendTeam[]
+  last_synced_at?: string | null
 }
 
 const STORAGE_KEY = 'fantaski_athlete_packages'
@@ -123,10 +167,10 @@ const currentSelectionPoints = computed(() => {
   return calcPackagePoints(selectedAthletes.value)
 })
 
-// Najwyższy wynik punktowy wśród zapisanych pakietów
+// Najwyższy wynik punktowy wśród wszystkich składów (ESM + zapisane własne)
 const bestPackagePoints = computed(() => {
-  if (savedPackages.value.length === 0) return 0
-  return Math.max(...savedPackages.value.map(p => calcPackagePoints(p.athletes)))
+  if (allComparisonSquads.value.length === 0) return 0
+  return Math.max(...allComparisonSquads.value.map((s) => calcPackagePoints(s.athletes)))
 })
 
 // Przełączanie zaznaczenia zawodnika
@@ -136,7 +180,7 @@ const toggleAthlete = (name: string) => {
     selectedAthletes.value.splice(idx, 1)
   } else {
     if (selectedAthletes.value.length >= 8) {
-      alert('Możesz zaznaczyć maksymalnie 8 zawodników w jednym pakiecie!')
+      alert('Możesz zaznaczyć maksymalnie 8 zawodników w jednym składzie!')
       return
     }
     selectedAthletes.value.push(name)
@@ -151,14 +195,16 @@ const clearSelection = () => {
   selectedAthletes.value = []
 }
 
-// Zapisanie bieżącego pakietu do localStorage
+// Zapisanie bieżącego składu do localStorage (tylko PRO)
 const saveCurrentPackage = () => {
+  if (!auth.isPro.value) return
   if (selectedAthletes.value.length === 0) {
     alert('Zaznacz przynajmniej jednego zawodnika w tabeli!')
     return
   }
 
-  const name = newPackageName.value.trim() || `Pakiet #${savedPackages.value.length + 1} (${selectedAthletes.value.length} skoczków)`
+  const customCount = customSavedPackages.value.length
+  const name = newPackageName.value.trim() || `Skład #${customCount + 1} (${selectedAthletes.value.length} skoczków)`
 
   const newPkg: AthletePackage = {
     id: 'pkg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -169,50 +215,19 @@ const saveCurrentPackage = () => {
   savedPackages.value.push(newPkg)
   savePackagesToStorage()
   newPackageName.value = ''
-  showPackageDrawer.value = true // Automatycznie pokazujemy panel porównania po zapisie
+  showPackageDrawer.value = true
 }
 
-// Zastosowanie zapisanego pakietu jako bieżące zaznaczenie
-const applyPackageToSelection = (pkg: AthletePackage) => {
-  selectedAthletes.value = [...pkg.athletes.slice(0, 8)]
+// Zastosowanie składu jako bieżące zaznaczenie w tabeli
+const applyPackageToSelection = (athletes: string[]) => {
+  selectedAthletes.value = [...athletes.slice(0, 8)]
 }
 
-// Usunięcie pakietu
+// Usunięcie własnego zapisanego składu (tylko PRO)
 const deletePackage = (id: string) => {
+  if (!auth.isPro.value) return
   savedPackages.value = savedPackages.value.filter((p) => p.id !== id)
   savePackagesToStorage()
-}
-
-// Usunięcie zawodnika z pakietu
-const removeAthleteFromPackage = (pkgId: string, athleteName: string) => {
-  const pkg = savedPackages.value.find((p) => p.id === pkgId)
-  if (!pkg) return
-  pkg.athletes = pkg.athletes.filter((a) => a !== athleteName)
-  savePackagesToStorage()
-}
-
-// Dodanie aktualnie zaznaczonych zawodników do istniejącego pakietu
-const addSelectionToPackage = (pkgId: string) => {
-  const pkg = savedPackages.value.find((p) => p.id === pkgId)
-  if (!pkg) return
-  const merged = Array.from(new Set([...pkg.athletes, ...selectedAthletes.value]))
-  pkg.athletes = merged
-  savePackagesToStorage()
-}
-
-// Edycja nazwy pakietu
-const startRenamePackage = (pkg: AthletePackage) => {
-  editingPackageId.value = pkg.id
-  editingPackageName.value = pkg.name
-}
-
-const saveRenamePackage = (pkgId: string) => {
-  const pkg = savedPackages.value.find((p) => p.id === pkgId)
-  if (pkg && editingPackageName.value.trim()) {
-    pkg.name = editingPackageName.value.trim()
-    savePackagesToStorage()
-  }
-  editingPackageId.value = null
 }
 
 const fetchDetails = async () => {
@@ -227,10 +242,188 @@ const fetchDetails = async () => {
   }
 }
 
+// ========================================================
+// --- INTEGRACJA Z ESMMANAGER (SKŁAD + ZNAJOMI) ---
+// ========================================================
+const ESM_SCOPE_STORAGE_KEY = 'fantaski_esm_squad_scope'
+const savedScope = typeof window !== 'undefined' ? localStorage.getItem(ESM_SCOPE_STORAGE_KEY) : null
+const esmStatus = ref<EsmStatusResponse | null>(null)
+const esmSquadScope = ref<'starters' | 'all'>(savedScope === 'all' ? 'all' : 'starters')
+const isSyncingEsmInline = ref(false)
+const esmActionMessage = ref('')
+
+const normalizeAthName = (name?: string | null): string =>
+  (name || '').trim().replace(/\s+/g, ' ').toUpperCase()
+
+const resolveEsmPlayerNameInSession = (player: EsmPlayer): string | null => {
+  const results = session.value?.results_data?.results || []
+  if (player.fis_code != null) {
+    const byCode = results.find((r: any) => r.fis_code != null && Number(r.fis_code) === Number(player.fis_code))
+    if (byCode?.name) return byCode.name
+  }
+  const candNames = [player.fis_name, player.esm_fullname].filter(Boolean).map((n) => normalizeAthName(n))
+  if (candNames.length > 0) {
+    const byName = results.find((r: any) => candNames.includes(normalizeAthName(r.name)))
+    if (byName?.name) return byName.name
+  }
+  return player.fis_name || player.esm_fullname || null
+}
+
+const getTeamPlayersForScope = (team: EsmTeam, scope: 'starters' | 'all' = esmSquadScope.value): EsmPlayer[] => {
+  if (scope === 'starters') {
+    return Array.isArray(team.starters) && team.starters.length > 0
+      ? team.starters
+      : (team.all_players || []).slice(0, 4)
+  }
+  if (Array.isArray(team.all_players) && team.all_players.length > 0) {
+    return team.all_players
+  }
+  return [...(team.starters || []), ...(team.bench || [])]
+}
+
+const resolveTeamAthleteNames = (team: EsmTeam, scope: 'starters' | 'all' = esmSquadScope.value): string[] => {
+  const players = getTeamPlayersForScope(team, scope)
+  const resolved = players
+    .map((p) => resolveEsmPlayerNameInSession(p))
+    .filter((name): name is string => Boolean(name))
+  return Array.from(new Set(resolved)).slice(0, 8)
+}
+
+const esmStarterLookup = computed(() => {
+  const codes = new Set<number>()
+  const names = new Set<string>()
+  for (const p of esmStatus.value?.my_team?.starters || []) {
+    if (p.fis_code != null) codes.add(Number(p.fis_code))
+    if (p.fis_name) names.add(normalizeAthName(p.fis_name))
+    if (p.esm_fullname) names.add(normalizeAthName(p.esm_fullname))
+  }
+  return { codes, names }
+})
+
+const esmBenchLookup = computed(() => {
+  const codes = new Set<number>()
+  const names = new Set<string>()
+  for (const p of esmStatus.value?.my_team?.bench || []) {
+    if (p.fis_code != null) codes.add(Number(p.fis_code))
+    if (p.fis_name) names.add(normalizeAthName(p.fis_name))
+    if (p.esm_fullname) names.add(normalizeAthName(p.esm_fullname))
+  }
+  return { codes, names }
+})
+
+const isEsmStarter = (athlete: any): boolean => {
+  if (athlete?.fis_code != null && esmStarterLookup.value.codes.has(Number(athlete.fis_code))) return true
+  return esmStarterLookup.value.names.has(normalizeAthName(athlete?.name))
+}
+
+const isEsmBench = (athlete: any): boolean => {
+  if (isEsmStarter(athlete)) return false
+  if (athlete?.fis_code != null && esmBenchLookup.value.codes.has(Number(athlete.fis_code))) return true
+  return esmBenchLookup.value.names.has(normalizeAthName(athlete?.name))
+}
+
+const setEsmSquadScope = (scope: 'starters' | 'all') => {
+  esmSquadScope.value = scope
+  try {
+    localStorage.setItem(ESM_SCOPE_STORAGE_KEY, scope)
+  } catch {
+    // ignore storage errors
+  }
+}
+
+const customSavedPackages = computed(() =>
+  auth.isPro.value ? savedPackages.value.filter((p) => !String(p.id).startsWith('esm_')) : []
+)
+
+const hasEsmTeams = computed(() =>
+  Boolean(esmStatus.value?.my_team || (esmStatus.value?.friends || []).some((f) => f.all_players?.length || f.starters?.length))
+)
+
+const allComparisonSquads = computed(() => {
+  const cards: { id: string; name: string; badge: string; athletes: string[]; removable: boolean }[] = []
+
+  if (esmStatus.value?.my_team) {
+    const myAth = resolveTeamAthleteNames(esmStatus.value.my_team, esmSquadScope.value)
+    if (myAth.length > 0) {
+      cards.push({
+        id: `esm_my_${esmStatus.value.my_team.team_id}`,
+        name: esmStatus.value.my_team.team_name || 'Mój skład ESM',
+        badge: '⭐ Mój ESM',
+        athletes: myAth,
+        removable: false,
+      })
+    }
+  }
+
+  for (const fr of esmStatus.value?.friends || []) {
+    const fAth = resolveTeamAthleteNames(fr, esmSquadScope.value)
+    if (fAth.length > 0) {
+      cards.push({
+        id: `esm_friend_${fr.team_id || fr.id}`,
+        name: fr.display_name || fr.team_name || 'Znajomy',
+        badge: '👥 Znajomy',
+        athletes: fAth,
+        removable: false,
+      })
+    }
+  }
+
+  for (const pkg of customSavedPackages.value) {
+    cards.push({
+      id: pkg.id,
+      name: pkg.name,
+      badge: '💾 Własny',
+      athletes: pkg.athletes,
+      removable: true,
+    })
+  }
+
+  return cards
+})
+
+const fetchEsmStatus = async () => {
+  if (!auth.isAuthenticated.value) return
+  try {
+    esmStatus.value = await api.get('/esm/status')
+  } catch {
+    // Brak połączenia ESM – widok sesji działa normalnie
+  }
+}
+
+const syncEsmInline = async () => {
+  if (!auth.isAuthenticated.value || isSyncingEsmInline.value) return
+  isSyncingEsmInline.value = true
+  esmActionMessage.value = ''
+  try {
+    const res = await api.post('/esm/sync', {})
+    esmStatus.value = res
+    esmActionMessage.value = 'Odświeżono składy z esmManager.'
+    setTimeout(() => {
+      esmActionMessage.value = ''
+    }, 3500)
+  } catch (e: any) {
+    esmActionMessage.value = e?.message || 'Nie udało się odświeżyć składów z ESM.'
+  } finally {
+    isSyncingEsmInline.value = false
+  }
+}
+
+const maxRoundsCount = computed(() => {
+  const res = session.value?.results_data?.results || []
+  let maxR = session.value?.session_type === 'TRAINING' || session.value?.session_type === 'TRIAL' ? 1 : 2
+  for (const ath of res) {
+    if (Array.isArray(ath.jumps) && ath.jumps.length > maxR) {
+      maxR = ath.jumps.length
+    }
+  }
+  return maxR
+})
+
 onMounted(() => {
   loadPackagesFromStorage()
   fetchDetails()
   fetchPrices()
+  fetchEsmStatus()
 })
 </script>
 
@@ -245,14 +438,14 @@ onMounted(() => {
         <div class="title-section">
           <div class="place-row">
             <h2>{{ session.event_place }}</h2>
-            <span v-if="session.event_country" class="country-badge">{{ session.event_country }}</span>
+            <CountryFlag v-if="session.event_country" :code="session.event_country" size="md" :show-code="true" />
           </div>
           <h3 class="session-sub">{{ session.title }}</h3>
         </div>
         <div class="badges">
           <span class="badge blue">{{ session.category_code }}</span>
           <span class="badge gray">{{ session.session_type }}</span>
-          <a v-if="session.raceUrl" :href="session.raceUrl" target="_blank" class="btn-fis" title="Oficjalny protokół FIS">
+          <a v-if="session.raceUrl" :href="session.raceUrl" target="_blank" rel="noopener noreferrer" class="btn-fis" title="Oficjalny protokół FIS">
             Wyniki FIS ↗
           </a>
         </div>
@@ -281,7 +474,7 @@ onMounted(() => {
           <div class="card-text">
             <span class="card-label">Protokoły PDF</span>
             <div class="doc-links">
-              <a v-for="doc in session.documents.slice(0, 2)" :key="doc.url" :href="doc.url" target="_blank" class="doc-link">
+              <a v-for="doc in session.documents.slice(0, 2)" :key="doc.url" :href="doc.url" target="_blank" rel="noopener noreferrer" class="doc-link">
                 {{ doc.type }} ↗
               </a>
             </div>
@@ -290,17 +483,16 @@ onMounted(() => {
       </div>
 
       <!-- ======================================================== -->
-      <!-- SMART PANEL PAKIETÓW ZAWODNIKÓW (KOMPAKTOWY, ERGONOMICZNY) -->
+      <!-- PORÓWNYWARKA SKŁADÓW (UPROSZCZONA, CZYSTA)               -->
       <!-- ======================================================== -->
       <div class="smart-package-hub">
-        <!-- Pasek główny Smart Bar -->
+        <!-- Pasek główny -->
         <div class="hub-main-bar">
           <div class="hub-left">
             <div class="hub-title">
               <span class="ski-icon">🎿</span>
-              <strong>Porównywarka Pakietów</strong>
+              <strong>Porównywarka Składów</strong>
             </div>
-            <!-- Licznik 8 miejsc -->
             <div class="selection-pill" :class="{ active: selectedAthletes.length > 0, full: selectedAthletes.length >= 8 }">
               <span class="dots-meter">
                 <span
@@ -314,7 +506,6 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- Wynik bieżącego wyboru -->
           <div class="hub-center">
             <div class="active-score" v-if="selectedAthletes.length > 0">
               <span class="score-caption">Suma Pkt PŚ:</span>
@@ -324,21 +515,28 @@ onMounted(() => {
               </span>
             </div>
             <span v-else class="hub-hint">
-              Kliknij skoczków na liście poniżej, aby złożyć pakiet (max 8)
+              Kliknij skoczków na liście poniżej, aby złożyć testowy skład (max 8)
             </span>
           </div>
 
-          <!-- Akcje i przełącznik porównania -->
           <div class="hub-right">
             <button
-              v-if="savedPackages.length > 0"
+              v-if="allComparisonSquads.length > 0"
               @click="showPackageDrawer = !showPackageDrawer"
               class="btn-toggle-drawer"
               :class="{ open: showPackageDrawer }"
             >
-              ⚖️ Porównaj pakiety ({{ savedPackages.length }})
+              ⚖️ Porównaj składy ({{ allComparisonSquads.length }})
               <span class="arrow-icon">{{ showPackageDrawer ? '▴' : '▾' }}</span>
             </button>
+            <RouterLink
+              v-else-if="auth.isAuthenticated.value && !esmStatus?.connected"
+              to="/profile"
+              class="btn-esm-connect-link"
+              title="Sprawdź status esmManager i znajomych w swoim profilu"
+            >
+              🏆 Składy ESM w Profilu
+            </RouterLink>
             <button
               v-if="selectedAthletes.length > 0"
               @click="clearSelection"
@@ -350,7 +548,7 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- Pasek edycji bieżącego zaznaczenia (widoczny tylko gdy zaznaczono skoczków) -->
+        <!-- Pasek zapisu bieżącego ręcznego wyboru (widoczny tylko gdy zaznaczono skoczków) -->
         <div class="selection-detail-strip" v-if="selectedAthletes.length > 0">
           <div class="selected-chips-scroll">
             <span
@@ -366,113 +564,130 @@ onMounted(() => {
               <button
                 @click="toggleAthlete(athName)"
                 class="chip-x"
-                title="Usuń z pakietu"
+                title="Usuń ze składu"
               >
                 ✕
               </button>
             </span>
           </div>
 
-          <div class="quick-save-form">
+          <div v-if="auth.isPro.value" class="quick-save-form">
             <input
               type="text"
               v-model="newPackageName"
-              placeholder="Nazwa pakietu (np. Team A)..."
+              placeholder="Nazwa składu (np. Skład A)..."
               class="save-input-compact"
               @keyup.enter="saveCurrentPackage"
             />
             <button @click="saveCurrentPackage" class="btn-save-compact">
-              💾 Zapisz pakiet
+              💾 Zapisz jako skład
             </button>
           </div>
         </div>
 
-        <!-- Rozwijana sekcja porównawcza zapisanych pakietów -->
-        <div class="drawer-content" v-if="showPackageDrawer && savedPackages.length > 0">
-          <div class="drawer-header">
-            <span class="drawer-title">
-              📊 Wyniki zapisanych zestawów w tym konkursie ({{ session.event_place }})
-            </span>
-            <small class="drawer-subtitle">
-              Pakiety automatycznie przeliczają punkty PŚ w każdym wybranym konkursie.
-            </small>
+        <!-- Jeden wspólny panel porównania składów (ESM + Zapisane własne) -->
+        <div class="drawer-content" v-if="showPackageDrawer && allComparisonSquads.length > 0">
+          <div class="drawer-header drawer-header-flex">
+            <div>
+              <span class="drawer-title">
+                📊 Porównanie składów w tym konkursie ({{ session.event_place }})
+              </span>
+              <small class="drawer-subtitle">
+                Twój skład ESM, składy znajomych oraz zapisane zestawy w jednym miejscu.
+              </small>
+            </div>
+            <div v-if="hasEsmTeams" class="drawer-esm-controls">
+              <div class="esm-scope-switch" title="Zakres zawodników w kartach esmManager">
+                <button
+                  type="button"
+                  class="scope-btn"
+                  :class="{ active: esmSquadScope === 'starters' }"
+                  @click="setEsmSquadScope('starters')"
+                >
+                  Podst. 4
+                </button>
+                <button
+                  type="button"
+                  class="scope-btn"
+                  :class="{ active: esmSquadScope === 'all' }"
+                  @click="setEsmSquadScope('all')"
+                >
+                  Cały 8
+                </button>
+              </div>
+              <button
+                type="button"
+                @click="syncEsmInline"
+                :disabled="isSyncingEsmInline"
+                class="btn-esm-action"
+              >
+                {{ isSyncingEsmInline ? '⏳ Odświeżanie...' : '🔄 Odśwież ESM' }}
+              </button>
+            </div>
           </div>
+
+          <p v-if="esmActionMessage" class="esm-action-msg">{{ esmActionMessage }}</p>
 
           <div class="packages-compact-grid">
             <div
-              v-for="pkg in savedPackages"
-              :key="pkg.id"
+              v-for="sq in allComparisonSquads"
+              :key="sq.id"
               class="pkg-compact-card"
-              :class="{ 'is-leader': calcPackagePoints(pkg.athletes) === bestPackagePoints && bestPackagePoints > 0 }"
+              :class="{ 'is-leader': calcPackagePoints(sq.athletes) === bestPackagePoints && bestPackagePoints > 0 }"
             >
               <div class="card-top">
-                <div v-if="editingPackageId === pkg.id" class="rename-inline">
-                  <input
-                    v-model="editingPackageName"
-                    class="rename-input-sm"
-                    @keyup.enter="saveRenamePackage(pkg.id)"
-                  />
-                  <button @click="saveRenamePackage(pkg.id)" class="btn-micro-ok">OK</button>
-                </div>
-                <div v-else class="title-with-actions">
-                  <strong class="pkg-label">{{ pkg.name }}</strong>
-                  <button
-                    @click="startRenamePackage(pkg)"
-                    class="btn-icon-rename"
-                    title="Zmień nazwę"
-                  >
-                    ✏️
-                  </button>
+                <div class="title-with-actions">
+                  <span class="squad-origin-tag">{{ sq.badge }}</span>
+                  <strong class="pkg-label">{{ sq.name }}</strong>
                 </div>
 
                 <div class="card-corner-actions">
                   <button
-                    @click="applyPackageToSelection(pkg)"
+                    @click="applyPackageToSelection(sq.athletes)"
                     class="btn-apply-micro"
-                    title="Załaduj jako bieżący wybór"
+                    title="Zaznacz tych skoczków w tabeli poniżej"
                   >
-                    Wczytaj
+                    Pokaż w tabeli
                   </button>
                   <button
-                    @click="deletePackage(pkg.id)"
+                    v-if="sq.removable"
+                    @click="deletePackage(sq.id)"
                     class="btn-delete-micro"
-                    title="Usuń ten pakiet"
+                    title="Usuń zapisany skład"
                   >
                     🗑️
                   </button>
                 </div>
               </div>
 
-              <!-- Pasek punktów ze statusem lidera i deltą -->
               <div class="card-score-row">
                 <div class="score-cluster">
-                  <span class="pts-big">+{{ calcPackagePoints(pkg.athletes) }}</span>
+                  <span class="pts-big">+{{ calcPackagePoints(sq.athletes) }}</span>
                   <span class="pts-unit">pkt PŚ</span>
                 </div>
                 <div class="score-meta">
                   <span
-                    v-if="calcPackagePoints(pkg.athletes) === bestPackagePoints && bestPackagePoints > 0"
+                    v-if="calcPackagePoints(sq.athletes) === bestPackagePoints && bestPackagePoints > 0"
                     class="leader-badge"
                   >
                     👑 Lider
                   </span>
                   <span
-                    v-else-if="bestPackagePoints > calcPackagePoints(pkg.athletes)"
+                    v-else-if="bestPackagePoints > calcPackagePoints(sq.athletes)"
                     class="delta-badge"
                   >
-                    {{ calcPackagePoints(pkg.athletes) - bestPackagePoints }} pkt
+                    {{ calcPackagePoints(sq.athletes) - bestPackagePoints }} pkt
                   </span>
-                  <span class="count-tag">{{ pkg.athletes.length }} skoczków</span>
-                  <span v-if="calcPackagePrice(pkg.athletes) > 0" class="price-tag">
-                    Koszt: {{ calcPackagePrice(pkg.athletes).toFixed(1) }}
+                  <span class="count-tag">{{ sq.athletes.length }} skoczków</span>
+                  <span v-if="calcPackagePrice(sq.athletes) > 0" class="price-tag">
+                    Koszt: {{ calcPackagePrice(sq.athletes).toFixed(1) }}
                   </span>
                 </div>
               </div>
 
-              <!-- Lista zawodników w kompaktowych pigułkach -->
               <div class="compact-athletes-list">
                 <div
-                  v-for="ath in pkg.athletes"
+                  v-for="ath in sq.athletes"
                   :key="ath"
                   class="ath-pill"
                 >
@@ -483,24 +698,7 @@ onMounted(() => {
                   <span class="ath-pill-pts" :class="{ zero: getAthletePts(ath) === 0 }">
                     +{{ getAthletePts(ath) }}
                   </span>
-                  <button
-                    @click="removeAthleteFromPackage(pkg.id, ath)"
-                    class="ath-pill-remove"
-                    title="Usuń z pakietu"
-                  >
-                    ✕
-                  </button>
                 </div>
-              </div>
-
-              <!-- Opcjonalne dodanie bieżących zaznaczonych -->
-              <div class="card-bottom-action" v-if="selectedAthletes.length > 0">
-                <button
-                  @click="addSelectionToPackage(pkg.id)"
-                  class="btn-merge-selection"
-                >
-                  + Dodaj zaznaczonych ({{ selectedAthletes.length }})
-                </button>
               </div>
             </div>
           </div>
@@ -519,7 +717,7 @@ onMounted(() => {
             </span>
           </div>
           <span class="table-tip">
-            💡 Kliknij wiersz lub pole 📦 aby dodać skoczka do pakietu
+            💡 Kliknij wiersz lub pole 📦 aby dodać skoczka do testowego składu
           </span>
         </div>
 
@@ -531,24 +729,27 @@ onMounted(() => {
           <table class="results-table">
             <thead>
               <tr>
-                <th class="th-pkg" title="Dodaj do pakietu">📦</th>
+                <th class="th-pkg" title="Dodaj do składu">📦</th>
                 <th class="th-rank">Poz.</th>
                 <th class="th-bib">Bib</th>
                 <th class="th-name">Zawodnik</th>
                 <th class="th-price">Cena</th>
                 <th class="th-country">Kraj</th>
-                <th class="th-jump">Seria 1</th>
-                <th class="th-jump">Seria 2</th>
+                <th v-for="rNum in maxRoundsCount" :key="rNum" class="th-jump">
+                  {{ (session.session_type === 'TRAINING' || session.session_type === 'TRIAL') ? `Skok ${rNum}` : `Seria ${rNum}` }}
+                </th>
                 <th class="th-total">Łączna nota</th>
                 <th class="th-points">Pkt PŚ</th>
               </tr>
             </thead>
             <tbody>
               <tr
-                v-for="athlete in session.results_data.results"
-                :key="athlete.fis_code"
+                v-for="(athlete, aIdx) in session.results_data.results"
+                :key="athlete.fis_code || `${athlete.name}_${aIdx}`"
                 :class="{
                   'row-selected': isAthleteSelected(athlete.name),
+                  'row-esm-starter': isEsmStarter(athlete),
+                  'row-esm-bench': isEsmBench(athlete),
                   'podium-gold': athlete.rank === 1,
                   'podium-silver': athlete.rank === 2,
                   'podium-bronze': athlete.rank === 3,
@@ -577,20 +778,36 @@ onMounted(() => {
 
                 <!-- Numer startowy bib -->
                 <td class="td-bib">
-                  <span class="bib-tag">{{ athlete.bib }}</span>
+                  <span class="bib-tag">{{ athlete.bib || '-' }}</span>
                 </td>
 
                 <!-- Imię i Nazwisko -->
                 <td class="td-name">
                   <RouterLink
+                    v-if="athlete.fis_code"
                     :to="`/athletes/${athlete.fis_code}`"
                     class="athlete-link"
                     @click.stop
                   >
                     {{ athlete.name }}
                   </RouterLink>
+                  <span v-else class="athlete-name-plain">{{ athlete.name }}</span>
                   <span v-if="athlete.status && athlete.status !== 'Classified'" class="status-dns">
                     {{ athlete.status }}
+                  </span>
+                  <span
+                    v-if="isEsmStarter(athlete)"
+                    class="esm-badge esm-starter"
+                    title="W Twoim podstawowym składzie esmManager"
+                  >
+                    ⭐ ESM
+                  </span>
+                  <span
+                    v-else-if="isEsmBench(athlete)"
+                    class="esm-badge esm-bench"
+                    title="Na ławce rezerwowych w esmManager"
+                  >
+                    🪑 ESM (R)
                   </span>
                 </td>
 
@@ -604,38 +821,32 @@ onMounted(() => {
 
                 <!-- Kraj -->
                 <td class="td-country">
-                  <span class="country-pill">{{ athlete.country }}</span>
-                </td>
-
-                <!-- Skok 1 -->
-                <td class="td-jump">
-                  <div v-if="athlete.jumps && athlete.jumps[0]" class="jump-block">
-                    <span class="distance-main">{{ athlete.jumps[0].distance }} m</span>
-                    <span class="jump-sub">
-                      {{ athlete.jumps[0].points }} pkt ({{ athlete.jumps[0].rank }}.)
-                    </span>
-                  </div>
+                  <CountryFlag v-if="athlete.country" :code="athlete.country" size="sm" />
                   <span v-else class="dim-dash">-</span>
                 </td>
 
-                <!-- Skok 2 -->
-                <td class="td-jump">
-                  <div v-if="athlete.jumps && athlete.jumps[1]" class="jump-block">
-                    <span class="distance-main">{{ athlete.jumps[1].distance }} m</span>
+                <!-- Skoki dynamiczne (1..maxRoundsCount) -->
+                <td v-for="rNum in maxRoundsCount" :key="rNum" class="td-jump">
+                  <div v-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].distance" class="jump-block">
+                    <span class="distance-main font-mono">{{ athlete.jumps[rNum - 1].distance }} m</span>
                     <span class="jump-sub">
-                      {{ athlete.jumps[1].points }} pkt ({{ athlete.jumps[1].rank }}.)
+                      <template v-if="athlete.jumps[rNum - 1].points != null">{{ athlete.jumps[rNum - 1].points }} pkt</template>
+                      <template v-if="athlete.jumps[rNum - 1].rank != null"> ({{ athlete.jumps[rNum - 1].rank }}.)</template>
                     </span>
                   </div>
+                  <span v-else-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].status" class="status-dns">
+                    {{ athlete.jumps[rNum - 1].status }}
+                  </span>
                   <span v-else class="dim-dash">-</span>
                 </td>
 
                 <!-- Punkty łączne -->
-                <td class="td-total">
-                  <strong>{{ athlete.total_points || '-' }}</strong>
+                <td class="td-total font-mono">
+                  <strong>{{ athlete.total_points != null ? athlete.total_points : '-' }}</strong>
                 </td>
 
                 <!-- Punkty Pucharu Świata -->
-                <td class="td-points">
+                <td class="td-points font-mono">
                   <span
                     class="comp-pts-chip"
                     :class="{ active: athlete.competition_points > 0 }"
@@ -1513,13 +1724,21 @@ onMounted(() => {
 }
 
 /* RESPONSYWNOŚĆ */
+.athlete-name-plain {
+  font-weight: 600;
+  color: #334155;
+}
+
 @media (max-width: 768px) {
   .page {
-    padding: 14px;
+    padding: 12px;
   }
   .header {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .info-grid {
+    grid-template-columns: 1fr;
   }
   .hub-main-bar {
     flex-direction: column;
@@ -1540,5 +1759,308 @@ onMounted(() => {
     flex: 1;
     min-width: 0;
   }
+  .packages-compact-grid {
+    grid-template-columns: 1fr;
+  }
+  /* Zamrożona pozycja i nazwisko w tabeli wyników sesji */
+  .results-table th.th-rank,
+  .results-table td.td-rank {
+    position: sticky;
+    left: 0;
+    z-index: 8;
+    background: #ffffff;
+    min-width: 44px;
+  }
+  .results-table th.th-rank {
+    z-index: 10;
+    background: #f8fafc;
+  }
+  .results-table th.th-name,
+  .results-table td.td-name {
+    position: sticky;
+    left: 44px;
+    z-index: 8;
+    background: #ffffff;
+    min-width: 145px;
+    max-width: 165px;
+    white-space: normal;
+    box-shadow: 4px 0 6px -2px rgba(0, 0, 0, 0.08);
+  }
+  .results-table th.th-name {
+    z-index: 10;
+    background: #f8fafc;
+  }
+  .results-table tr.podium-gold td.td-rank,
+  .results-table tr.podium-gold td.td-name { background: #fefce8; }
+  .results-table tr.podium-silver td.td-rank,
+  .results-table tr.podium-silver td.td-name { background: #f8fafc; }
+  .results-table tr.podium-bronze td.td-rank,
+  .results-table tr.podium-bronze td.td-name { background: #fff7ed; }
+  .results-table tr.row-selected td.td-rank,
+  .results-table tr.row-selected td.td-name { background: #e0f2fe; }
+}
+
+/* ======================================================== */
+/* --- ESM MANAGER INTEGRATION (SESJA + PAKIETY)        --- */
+/* ======================================================== */
+.esm-scope-switch {
+  display: inline-flex;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.scope-btn {
+  border: none;
+  background: transparent;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.scope-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.btn-esm-action,
+.btn-esm-import,
+.btn-esm-connect-link {
+  border: 1px solid #bae6fd;
+  background: #f0f9ff;
+  color: #0369a1;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-esm-action:hover,
+.btn-esm-import:hover,
+.btn-esm-connect-link:hover,
+.btn-esm-import.open {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+}
+
+.esm-import-panel {
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  padding: 12px 16px;
+}
+
+.esm-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.esm-panel-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #0f172a;
+}
+
+.esm-panel-sub {
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.esm-panel-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn-esm-panel-sync,
+.btn-esm-import-all {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn-esm-import-all {
+  background: #0284c7;
+  border-color: #0284c7;
+  color: #ffffff;
+}
+
+.btn-esm-import-all:hover {
+  background: #0369a1;
+}
+
+.esm-action-msg {
+  margin: 0 0 10px 0;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #0369a1;
+  background: #e0f2fe;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.esm-teams-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.esm-team-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.esm-my-card {
+  border-color: #38bdf8;
+  background: #f0f9ff;
+}
+
+.esm-team-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.esm-team-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: #fef3c7;
+  color: #b45309;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-right: 6px;
+}
+
+.esm-team-badge.friend {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.esm-team-name {
+  font-size: 0.92rem;
+  color: #0f172a;
+}
+
+.esm-team-meta {
+  font-size: 0.76rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.esm-team-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-esm-card-select,
+.btn-esm-card-pkg {
+  flex: 1;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.btn-esm-card-pkg {
+  background: #f8fafc;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.btn-esm-card-select:hover {
+  background: #f1f5f9;
+}
+
+.btn-esm-card-pkg:hover {
+  background: #eff6ff;
+}
+
+.esm-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.esm-badge.esm-starter {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.esm-badge.esm-bench {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.results-table tr.row-esm-starter:not(.row-selected) {
+  background-color: #fffbeb;
+}
+
+.results-table tr.row-esm-bench:not(.row-selected) {
+  background-color: #f8fafc;
+}
+
+.drawer-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.drawer-esm-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.squad-origin-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #e2e8f0;
+  color: #334155;
+  white-space: nowrap;
 }
 </style>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
+import CountryFlag from '@/components/CountryFlag.vue'
 import { api } from '@/api/client'
 
 interface Hill {
@@ -95,21 +96,6 @@ interface WeekendSessionInfo {
   type: string
   title: string
   jumpers_count: number
-}
-
-// Mapowanie kodów FIS na ISO dla flag
-const fisToIso: Record<string, string> = {
-  POL: 'pl', GER: 'de', AUT: 'at', SLO: 'si', NOR: 'no', FIN: 'fi',
-  JPN: 'jp', SUI: 'ch', USA: 'us', CAN: 'ca', FRA: 'fr', ITA: 'it',
-  CZE: 'cz', EST: 'ee', KAZ: 'kz', BUL: 'bg', UKR: 'ua', SVK: 'sk',
-  SWE: 'se', ROU: 'ro', TUR: 'tr', CHN: 'cn', KOR: 'kr'
-}
-
-const getFlagUrl = (code?: string | null): string | null => {
-  if (!code) return null
-  const cleaned = code.trim().toUpperCase()
-  const iso = fisToIso[cleaned] || cleaned.toLowerCase().substring(0, 2)
-  return `https://flagcdn.com/w40/${iso}.png`
 }
 
 // --- Stan Skoczni i Daty ---
@@ -559,7 +545,7 @@ onMounted(async () => {
           <span class="badge-icon">🔮</span>
           <span>NEURAL NETWORK FIS ANALYTICS</span>
         </div>
-        <h1 class="hero-title">Centrum Predykcji AI</h1>
+        <h1 class="hero-title">Prognozy</h1>
         <p class="hero-desc">
           Model sieci neuronowej z hierarchią sesji (konkurs > kwalifikacje > trening), normalizacją jakości obsady, wskaźnikiem powtarzalności skoków, profilami psychologii presji, doświadczeniem kariery i wektorową kompensacją wiatru FIS (K-wind).
         </p>
@@ -834,7 +820,7 @@ onMounted(async () => {
               @click="runPrediction"
               :disabled="isPredicting"
             >
-              <span v-if="!isPredicting">🚀 GENERUJ PRZEWIDYWANIA AI ({{ selectedFisCodes.length }} SKOCZKÓW)</span>
+              <span v-if="!isPredicting">🚀 GENERUJ PROGNOZY ({{ selectedFisCodes.length }} SKOCZKÓW)</span>
               <span v-else>Przetwarzanie przez sieć neuronową...</span>
             </button>
           </div>
@@ -891,7 +877,7 @@ onMounted(async () => {
                   class="autocomplete-item"
                   @click="addAthlete(ath)"
                 >
-                  <img :src="getFlagUrl(ath.country_code) || ''" class="mini-flag" alt="" />
+                  <CountryFlag :code="ath.country_code" size="xs" />
                   <span class="ath-name">{{ ath.full_name }}</span>
                   <span class="ath-country">({{ ath.country_code }})</span>
                   <span v-if="ath.price" class="ath-price-tag">💰 {{ Number(ath.price).toFixed(1) }}</span>
@@ -909,7 +895,7 @@ onMounted(async () => {
               :key="ath.fis_code"
               class="athlete-chip"
             >
-              <img :src="getFlagUrl(ath.country_code) || ''" class="mini-flag" alt="" />
+              <CountryFlag :code="ath.country_code" size="xs" />
               <span class="chip-name">{{ ath.full_name }}</span>
               <span v-if="ath.price" class="chip-price">💰 {{ Number(ath.price).toFixed(1) }}</span>
               <button
@@ -945,8 +931,7 @@ onMounted(async () => {
             <div class="podium-card silver" v-if="podiumAthletes[1]">
               <div class="podium-step">2</div>
               <div class="podium-flag-box">
-                <img :src="getFlagUrl(podiumAthletes[1].country) || ''" class="p-flag" alt="" />
-                <span class="p-country">{{ podiumAthletes[1].country }}</span>
+                <CountryFlag :code="podiumAthletes[1].country" size="md" :show-code="true" />
                 <span v-if="podiumAthletes[1].price" class="p-price">💰 {{ Number(podiumAthletes[1].price).toFixed(1) }}</span>
               </div>
               <h4 class="p-name">{{ podiumAthletes[1].name }}</h4>
@@ -970,8 +955,7 @@ onMounted(async () => {
               <div class="gold-crown">👑</div>
               <div class="podium-step">1</div>
               <div class="podium-flag-box">
-                <img :src="getFlagUrl(podiumAthletes[0].country) || ''" class="p-flag" alt="" />
-                <span class="p-country">{{ podiumAthletes[0].country }}</span>
+                <CountryFlag :code="podiumAthletes[0].country" size="lg" :show-code="true" />
                 <span v-if="podiumAthletes[0].price" class="p-price">💰 {{ Number(podiumAthletes[0].price).toFixed(1) }}</span>
               </div>
               <h3 class="p-name">{{ podiumAthletes[0].name }}</h3>
@@ -994,8 +978,7 @@ onMounted(async () => {
             <div class="podium-card bronze" v-if="podiumAthletes[2]">
               <div class="podium-step">3</div>
               <div class="podium-flag-box">
-                <img :src="getFlagUrl(podiumAthletes[2].country) || ''" class="p-flag" alt="" />
-                <span class="p-country">{{ podiumAthletes[2].country }}</span>
+                <CountryFlag :code="podiumAthletes[2].country" size="md" :show-code="true" />
                 <span v-if="podiumAthletes[2].price" class="p-price">💰 {{ Number(podiumAthletes[2].price).toFixed(1) }}</span>
               </div>
               <h4 class="p-name">{{ podiumAthletes[2].name }}</h4>
@@ -1313,7 +1296,7 @@ onMounted(async () => {
                   <!-- SKOCZEK -->
                   <td class="td-athlete">
                     <div class="athlete-cell">
-                      <img :src="getFlagUrl(ath.country) || ''" class="mini-flag" alt="" />
+                      <CountryFlag :code="ath.country" size="sm" />
                       <RouterLink :to="'/athletes/' + ath.fis_code" class="athlete-link">
                         {{ ath.name }}
                       </RouterLink>
@@ -3024,6 +3007,12 @@ onMounted(async () => {
   border: 1px solid #bae6fd;
 }
 
+.badge-gem {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
 /* REPEAT BOX */
 .repeat-box {
   display: flex;
@@ -3362,5 +3351,144 @@ onMounted(async () => {
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+}
+
+/* ========================================================
+   MOBILE UX & STICKY TABLE COLUMNS (PROGNOZY)
+   ======================================================== */
+.dist-num,
+.pts-bold,
+.price-badge,
+.p-val,
+.meta-val {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .page-hero {
+    padding: 20px 14px;
+  }
+  .model-meta-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .meta-divider {
+    display: none;
+  }
+  .container.main-layout {
+    padding: 0 8px 40px;
+  }
+  .card-body {
+    padding: 14px;
+  }
+  .upcoming-comp-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px;
+  }
+  .btn-apply-upcoming {
+    width: 100%;
+    justify-content: center;
+  }
+  .table-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 14px;
+  }
+  .toolbar-left,
+  .toolbar-right {
+    width: 100%;
+  }
+  .title-with-legend {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .filter-pills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 6px;
+  }
+  .pill-btn {
+    flex-shrink: 0;
+  }
+  .search-input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Zamrożone kolumny: Pozycja (#) i Zawodnik */
+  .predictions-table th.th-rank,
+  .predictions-table td.td-rank {
+    position: sticky;
+    left: 0;
+    z-index: 8;
+    background: #ffffff;
+    width: 40px;
+    min-width: 40px;
+    padding: 6px 4px;
+  }
+  .predictions-table th.th-rank {
+    z-index: 10;
+    background: #f8fafc;
+  }
+  .predictions-table th.th-athlete,
+  .predictions-table td.td-athlete {
+    position: sticky;
+    left: 40px;
+    z-index: 8;
+    background: #ffffff;
+    min-width: 155px;
+    max-width: 175px;
+    box-shadow: 4px 0 6px -2px rgba(0, 0, 0, 0.08);
+  }
+  .predictions-table th.th-athlete {
+    z-index: 10;
+    background: #f8fafc;
+  }
+  .predictions-table tr.row-gold td.td-rank,
+  .predictions-table tr.row-gold td.td-athlete {
+    background-color: #fefce8 !important;
+  }
+  .predictions-table tr.row-silver td.td-rank,
+  .predictions-table tr.row-silver td.td-athlete {
+    background-color: #f8fafc !important;
+  }
+  .predictions-table tr.row-bronze td.td-rank,
+  .predictions-table tr.row-bronze td.td-athlete {
+    background-color: #fff7ed !important;
+  }
+  .predictions-table tr.row-top10 td.td-rank,
+  .predictions-table tr.row-top10 td.td-athlete {
+    background-color: #f0fdf4 !important;
+  }
+  .predictions-table tr.row-top30 td.td-rank,
+  .predictions-table tr.row-top30 td.td-athlete {
+    background-color: #ffffff !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .form-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .sliders-row {
+    grid-template-columns: 1fr !important;
+  }
+  .manager-presets {
+    display: flex;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 6px;
+  }
+  .small-preset-btn {
+    flex-shrink: 0;
+  }
 }
 </style>

@@ -156,14 +156,18 @@ watch(
 
 // --- FETCH WYNIKÓW ---
 const performSearch = async (payload: any, finalNames: string[]) => {
-  if (auth.isLite.value && finalNames.length > 2) {
+  if (!auth.isPro.value && finalNames.length > 2) {
     notice.showNotice({
-      title: 'Limit pakietu FantaSKI LITE',
-      message: 'Konto FantaSKI LITE pozwala na jednoczesne porównanie maksymalnie 2 zawodników. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków.',
-      badge: 'LIMIT LITE: 2',
+      title: 'Limit konta darmowego',
+      message: 'Darmowe konto pozwala na jednoczesne porównanie maksymalnie 2 zawodników i 10 skoków. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków i pełną historię.',
+      badge: 'FREE: MAX 2',
     })
     return
   }
+
+  const safePayload = !auth.isPro.value
+    ? { ...payload, limit: Math.min(Number(payload.limit || 10), 10) }
+    : payload
 
   searchedNames.value = finalNames
   excludedNames.value = []
@@ -171,7 +175,7 @@ const performSearch = async (payload: any, finalNames: string[]) => {
   results.value = []
 
   try {
-    results.value = await api.post('/stats/search', payload)
+    results.value = await api.post('/stats/search', safePayload)
   } catch (e: any) {
     notice.showNotice({
       title: 'Błąd pobierania danych',
@@ -298,10 +302,10 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <h2>Porównywarka &amp; Analiza Skoczków {{ auth.isLite.value ? '(FantaSKI LITE)' : '(FantaSKI PRO)' }}</h2>
+    <h2>Porównywarka &amp; Analiza Skoczków {{ auth.isPro.value ? '(FantaSKI PRO)' : '(Konto darmowe)' }}</h2>
 
-    <div v-if="auth.isLite.value" class="lite-notice-banner">
-      <span>ℹ️ <strong>Pakiet FantaSKI LITE:</strong> Możesz porównywać do 2 zawodników jednocześnie. Aby analizować całą stawkę lub większe grupy, przejdź na <strong>FantaSKI PRO</strong>.</span>
+    <div v-if="!auth.isPro.value" class="lite-notice-banner">
+      <span>ℹ️ <strong>Konto darmowe:</strong> Możesz porównywać do <strong>2 zawodników</strong> i maksymalnie <strong>10 ostatnich skoków</strong>. Przejdź na <strong>FantaSKI PRO</strong>, aby zdjąć limity.</span>
     </div>
 
     <SearchForm

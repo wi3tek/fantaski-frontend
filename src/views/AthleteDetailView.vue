@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import SkiLoader from '@/components/SkiLoader.vue'
+import CountryFlag from '@/components/CountryFlag.vue'
 import { API_BASE_URL } from '@/api/client'
 import { useAuth } from '@/stores/auth'
 
@@ -66,7 +67,7 @@ onMounted(async () => {
 
         <div class="info">
           <h2>
-            <img class="mini-flag" :src="athlete.flag" alt="Flaga" />
+            <CountryFlag :code="athlete.country_code" :src="athlete.flag" size="lg" />
             {{ athlete.full_name }}
           </h2>
 
@@ -83,7 +84,9 @@ onMounted(async () => {
             </div>
             <div class="data-item">
               <span class="label">Kraj</span>
-              <span class="value">{{ athlete.country_code }}</span>
+              <span class="value">
+                <CountryFlag :code="athlete.country_code" :src="athlete.flag" size="sm" :show-code="true" />
+              </span>
             </div>
             <div class="data-item">
               <span class="label">Klub</span>
@@ -290,5 +293,26 @@ onMounted(async () => {
   font-style: italic;
   font-size: 0.9em;
 }
-.price-value { color: #16a34a; font-weight: 700; font-size: 1.1em; }
+.price-value {
+  color: #16a34a;
+  font-weight: 700;
+  font-size: 1.1em;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 12px;
+  }
+  .info h2 {
+    font-size: 1.25em;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .data-grid {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+}
 </style>

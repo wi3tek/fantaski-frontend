@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
+import CountryFlag from '@/components/CountryFlag.vue'
 import { api } from '@/api/client'
 
 interface StandingAthlete {
@@ -160,7 +161,7 @@ onMounted(() => {
                 </RouterLink>
               </td>
               <td style="text-align: center">
-                <span class="country-chip"><img class="mini-flag" :src="athlete.flag" alt="" /></span>
+                <CountryFlag :code="athlete.country" :src="athlete.flag" size="sm" />
               </td>
               <td style="text-align: center" class="starts-col">{{ athlete.starts }}</td>
               <td style="text-align: right; padding-right: 15px" class="points-col">
@@ -374,6 +375,12 @@ onMounted(() => {
   color: #334155;
 }
 
+.starts-col,
+.points-col {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 768px) {
   .page {
     padding: 12px;
@@ -385,5 +392,35 @@ onMounted(() => {
   .filter-box {
     width: 100%;
   }
+  .results-table th:first-child,
+  .results-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 8;
+    background: #ffffff;
+  }
+  .results-table th:first-child {
+    z-index: 10;
+    background: #f1f5f9;
+  }
+  .results-table th:nth-child(2),
+  .results-table td:nth-child(2) {
+    position: sticky;
+    left: 60px;
+    z-index: 8;
+    background: #ffffff;
+    min-width: 150px;
+    box-shadow: 4px 0 6px -2px rgba(0, 0, 0, 0.08);
+  }
+  .results-table th:nth-child(2) {
+    z-index: 10;
+    background: #f1f5f9;
+  }
+  .results-table tr.podium-gold td:first-child,
+  .results-table tr.podium-gold td:nth-child(2) { background: #fefce8; }
+  .results-table tr.podium-silver td:first-child,
+  .results-table tr.podium-silver td:nth-child(2) { background: #f8fafc; }
+  .results-table tr.podium-bronze td:first-child,
+  .results-table tr.podium-bronze td:nth-child(2) { background: #fff7ed; }
 }
 </style>

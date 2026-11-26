@@ -16,7 +16,8 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/athletes',
+      name: 'welcome',
+      component: () => import('@/views/LoginView.vue'),
     },
     {
       path: '/athletes',
@@ -47,13 +48,12 @@ const router = createRouter({
       path: '/standings',
       name: 'standings',
       component: StandingsView,
-      meta: { requiresAuth: true },
     },
     {
       path: '/stats',
       name: 'stats',
       component: SearchView,
-      meta: { requiresSearch: true },
+      meta: { requiresAuth: true },
     },
     {
       path: '/predictions',
@@ -62,10 +62,21 @@ const router = createRouter({
       meta: { requiresPro: true },
     },
     {
+      path: '/draft',
+      name: 'draft',
+      component: () => import('@/views/DraftView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/profile',
       name: 'profile',
       component: () => import('@/views/ProfileView.vue'),
       meta: { requiresAuth: true },
+    },
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('@/views/LoginView.vue'),
     },
     {
       path: '/admin',
@@ -80,13 +91,30 @@ const router = createRouter({
   ],
 })
 
+const isProtectedRouteMeta = (meta: Record<string, any>) =>
+  Boolean(meta?.requiresAuth || meta?.requiresPro || meta?.requiresAdmin)
+
 router.beforeEach(async (to, from, next) => {
   const auth = useAuth()
   const notice = useNotice()
 
+  if (auth.token.value && auth.isTokenExpired()) {
+    auth.expireSession()
+    if (isProtectedRouteMeta(to.meta)) {
+      return next({ path: '/login', query: { expired: '1', redirect: to.fullPath } })
+    }
+  }
+
   // If token exists but user profile is missing, refresh it
   if (auth.token.value && !auth.user.value) {
     await auth.fetchMe()
+    if (!auth.isAuthenticated.value && isProtectedRouteMeta(to.meta)) {
+      return next({ path: '/login', query: { expired: '1', redirect: to.fullPath } })
+    }
+  }
+
+  if ((to.path === '/login' || to.path === '/') && auth.isAuthenticated.value) {
+    return next('/athletes')
   }
 
   const handleBlockedRoute = (title: string, message: string, badge?: string, requiresLogin = false) => {
@@ -104,6 +132,15 @@ router.beforeEach(async (to, from, next) => {
 
   // Admin route protection
   if (to.meta.requiresAdmin) {
+    if (!auth.isAuthenticated.value) {
+      return next({
+        path: '/login',
+        query: {
+          ...(auth.sessionExpiredReason.value === 'expired' ? { expired: '1' } : {}),
+          redirect: to.fullPath,
+        },
+      })
+    }
     if (!auth.isAdmin.value) {
       return handleBlockedRoute(
         'Brak dostępu',
@@ -113,33 +150,14 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
-  // Auth route protection (np. klasyfikacja generalna dla każdego zalogowanego)
+  // Auth route protection (Porównywarka, Draft, Profil)
   if (to.meta.requiresAuth) {
     if (!auth.isAuthenticated.value) {
       return handleBlockedRoute(
-        'Wymagane logowanie',
-        'Przeglądanie oficjalnych klasyfikacji generalnych FIS wymaga zalogowania do serwisu.',
-        'LOGOWANIE',
+        'Wymagane darmowe logowanie',
+        'Zaloguj się bezpłatnie kontem Google, aby korzystać z porównywarki skoczków i lig Drafta.',
+        'ZALOGUJ SIĘ',
         true
-      )
-    }
-  }
-
-  // Search / Comparison route protection (LITE, PRO, ADMIN)
-  if (to.meta.requiresSearch) {
-    if (!auth.isAuthenticated.value) {
-      return handleBlockedRoute(
-        'Wymagane logowanie',
-        'Dostęp do porównywarki i analizy skoczków wymaga logowania do serwisu.',
-        'LOGOWANIE',
-        true
-      )
-    }
-    if (!auth.hasSearchAccess.value) {
-      return handleBlockedRoute(
-        'Wymagany pakiet FantaSKI LITE lub PRO',
-        'Dostęp do porównywarki skoczków wymaga aktywnego pakietu FantaSKI LITE (do 2 zawodników) lub PRO (bez limitu). Skontaktuj się z administratorem, aby aktywować pakiet.',
-        'LITE / PRO'
       )
     }
   }
@@ -149,8 +167,8 @@ router.beforeEach(async (to, from, next) => {
     if (!auth.isAuthenticated.value) {
       return handleBlockedRoute(
         'Wymagane logowanie',
-        'Dostęp do modułu przewidywań AI wymaga logowania do serwisu.',
-        'LOGOWANIE',
+        'Dostęp do modułu przewidywań AI wymaga zalogowania i aktywnego pakietu PRO.',
+        'PRO',
         true
       )
     }

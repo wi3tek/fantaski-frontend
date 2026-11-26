@@ -630,7 +630,7 @@ const getTrendPath = (athleteName: string) => {
                 @click="sortBy('bestRank')"
                 title="Zakres zajmowanych miejsc (Najlepsze - Najgorsze)"
               >
-                Zakres (Min-Max) {{ sortKey === 'bestRank' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                Min–Max {{ sortKey === 'bestRank' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
                 class="sortable-th th-rate"
@@ -670,10 +670,10 @@ const getTrendPath = (athleteName: string) => {
                 @click="sortBy('stdDev')"
                 title="Odchylenie standardowe miejsc (im mniejsza liczba, tym większa powtarzalność)"
               >
-                Stabilność (σ) {{ sortKey === 'stdDev' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                σ {{ sortKey === 'stdDev' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
-              <th class="th-profile" title="Rozkład pozycji w zależności od rozmiaru skoczni">
-                Rozkład Obiektów
+              <th class="th-profile" title="Rozkład pozycji w zależności od rozmiaru skoczni (najedź po szczegóły)">
+                Obiekty
               </th>
             </tr>
           </thead>
@@ -821,7 +821,15 @@ const getTrendPath = (athleteName: string) => {
                   <!-- ROZKŁAD SKOCZNI -->
                   <td class="td-profile">
                     <span class="hill-note-tag" :title="stat.hillBreakdown.preferenceText">
-                      {{ stat.hillBreakdown.preferenceText }}
+                      {{
+                        stat.hillBreakdown.preferenceText.includes('mamut')
+                          ? '🦅 Mamuty'
+                          : stat.hillBreakdown.preferenceText.includes('dużych')
+                            ? '⛷️ Duże'
+                            : stat.hillBreakdown.preferenceText.includes('Brak')
+                              ? '—'
+                              : '⚖️ Równy'
+                      }}
                     </span>
                   </td>
                 </template>
@@ -1280,17 +1288,20 @@ const getTrendPath = (athleteName: string) => {
 .analytics-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   text-align: left;
+  table-layout: auto;
 }
 
 .analytics-table th {
   background: #f8fafc;
   color: #475569;
   font-weight: 700;
-  padding: 10px 12px;
+  font-size: 0.74rem;
+  padding: 8px 6px;
   border-bottom: 2px solid #e2e8f0;
-  white-space: nowrap;
+  white-space: normal;
+  line-height: 1.2;
   user-select: none;
   position: sticky;
   top: 0;
@@ -1326,7 +1337,7 @@ const getTrendPath = (athleteName: string) => {
 }
 
 .analytics-table td {
-  padding: 10px 12px;
+  padding: 8px 6px;
   border-bottom: 1px solid #f1f5f9;
   white-space: nowrap;
 }
@@ -1351,12 +1362,17 @@ const getTrendPath = (athleteName: string) => {
 .expansion-chevron {
   font-size: 0.7rem;
   color: #94a3b8;
-  margin-right: 6px;
+  margin-right: 5px;
 }
 
 .athlete-name-text {
   font-weight: 700;
   color: #0f172a;
+  display: inline-block;
+  max-width: 165px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
 }
 
 .price-badge-fantasy {
@@ -1432,13 +1448,14 @@ const getTrendPath = (athleteName: string) => {
 .rate-cell {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-width: 90px;
+  gap: 5px;
+  min-width: 56px;
 }
 
 .rate-bar-track {
   flex: 1;
-  height: 6px;
+  min-width: 20px;
+  height: 5px;
   background: #f1f5f9;
   border-radius: 3px;
   overflow: hidden;
@@ -1695,5 +1712,63 @@ const getTrendPath = (athleteName: string) => {
   color: white;
   font-weight: 700;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* ========================================================
+   MOBILE UX & TABULAR NUMBERS (PORÓWNYWARKA ANALITYKA)
+   ======================================================== */
+.analytics-table td,
+.insight-val {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .insights-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .analytics-filters-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px;
+  }
+  .filter-search-box {
+    width: 100%;
+    min-width: 0;
+  }
+  .filter-toggles-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .analytics-table th:first-child,
+  .analytics-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 8;
+    background: #ffffff;
+    box-shadow: 4px 0 6px -2px rgba(0, 0, 0, 0.08);
+    min-width: 145px;
+  }
+  .analytics-table th:first-child {
+    z-index: 10;
+    background: #f8fafc;
+  }
+  .trend-svg,
+  .scatter-svg {
+    width: 100%;
+    height: auto;
+  }
+  .scatter-wrapper {
+    padding: 10px;
+    overflow-x: auto;
+  }
+  .quadrant {
+    display: none;
+  }
+  .hill-matrix-grid,
+  .comparison-cards-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 </style>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import SkiLoader from '@/components/SkiLoader.vue'
+import CountryFlag from '@/components/CountryFlag.vue'
 import { api, clearApiCache } from '@/api/client'
 import { useAuth } from '@/stores/auth'
 
@@ -66,34 +67,76 @@ const hillForm = ref<Partial<HillVersion> & { is_new_complex?: boolean }>({
 
 const editingVersionId = ref<string | null>(null)
 
-const flagMap: Record<string, string> = {
-  POL: '🇵🇱',
-  GER: '🇩🇪',
-  AUT: '🇦🇹',
-  NOR: '🇳🇴',
-  SLO: '🇸🇮',
-  FIN: '🇫🇮',
-  JPN: '🇯🇵',
-  SUI: '🇨🇭',
-  USA: '🇺🇸',
-  ITA: '🇮🇹',
-  FRA: '🇫🇷',
-  CZE: '🇨🇿',
-  KAZ: '🇰🇿',
-  CHN: '🇨🇳',
-  EST: '🇪🇪',
-  SWE: '🇸🇪',
-  ROU: '🇷🇴',
-  TUR: '🇹🇷',
-  CAN: '🇨🇦',
-  RUS: '🇷🇺',
-  UKR: '🇺🇦',
-  KOR: '🇰🇷',
+// --- Łączenie duplikatów skoczni (Admin Merge) ---
+const selectedMergeIds = ref<string[]>([])
+const targetMergeId = ref<string>('')
+
+const selectedMergeHills = computed(() => {
+  const map: Record<string, HillVersion> = {}
+  for (const c of complexes.value) {
+    for (const tg of c.types) {
+      for (const v of tg.versions) {
+        map[v.hill_id] = v
+      }
+    }
+  }
+  return selectedMergeIds.value.map((id) => map[id]).filter((v): v is HillVersion => !!v)
+})
+
+const mergeCompatibilityError = computed(() => {
+  const list = selectedMergeHills.value
+  if (list.length < 2) return null
+  const types = new Set(list.map((h) => (h.type || 'LARGE').toUpperCase()))
+  const sizes = new Set(list.map((h) => Number(h.size || 0)))
+  if (types.size > 1 || sizes.size > 1) {
+    return 'Możesz łączyć wyłącznie skocznie o tym samym profilu (np. Duża/Mamucia) oraz takim samym rozmiarze HS!'
+  }
+  return null
+})
+
+const toggleMergeSelection = (version: HillVersion) => {
+  const idx = selectedMergeIds.value.indexOf(version.hill_id)
+  if (idx > -1) {
+    selectedMergeIds.value.splice(idx, 1)
+  } else {
+    selectedMergeIds.value.push(version.hill_id)
+  }
+  // Ustaw domyślny cel jeśli obecny nie jest już na liście
+  if (!selectedMergeIds.value.includes(targetMergeId.value)) {
+    const preferred =
+      selectedMergeHills.value.find((h) => h.is_current) || selectedMergeHills.value[0]
+    targetMergeId.value = preferred ? preferred.hill_id : ''
+  }
 }
 
-const getCountryFlag = (code?: string | null) => {
-  if (!code) return '🌐'
-  return flagMap[code.toUpperCase()] || '🌐'
+const clearMergeSelection = () => {
+  selectedMergeIds.value = []
+  targetMergeId.value = ''
+}
+
+const handleMergeHills = () => {
+  if (selectedMergeIds.value.length < 2 || mergeCompatibilityError.value) return
+  const targetId = targetMergeId.value || selectedMergeIds.value[0]
+  const others = selectedMergeIds.value.filter((id) => id !== targetId).join(', ')
+  confirmAction.value = {
+    title: `Połączenie ${selectedMergeIds.value.length} skoczni`,
+    text: `Czy na pewno chcesz połączyć skocznie (${others}) w jedną kanoniczną skocznię "${targetId}"? Wszystkie powiązane sesje, wyniki i kwarantanna w bazie zostaną automatycznie zsynchronizowane.`,
+    action: async () => {
+      try {
+        const res = await api.post<any>('/hills/merge', {
+          source_hill_ids: selectedMergeIds.value,
+          target_hill_id: targetId,
+        })
+        clearApiCache('/hills')
+        clearMergeSelection()
+        showMessage('success', res.message || 'Pomyślnie połączono wybrane skocznie.')
+        await fetchHierarchy()
+      } catch (err: any) {
+        showMessage('error', err.message || 'Błąd podczas łączenia skoczni.')
+      }
+    },
+  }
+  showConfirmModal.value = true
 }
 
 const getTypeIcon = (type: string) => {
@@ -233,6 +276,7 @@ const openAddModal = (targetComplex?: HillComplex, targetType?: string) => {
 
 // 3. Zapisanie nowej wersji
 const saveNewVersion = async () => {
+  if (!auth.isAdmin.value) return
   if (!hillForm.value.place || !hillForm.value.size) {
     showMessage('error', 'Wypełnij wymagane pola: miejscowość oraz rozmiar skoczni.')
     return
@@ -287,6 +331,7 @@ const openEditModal = (version: HillVersion) => {
 
 // 5. Zapisanie edycji
 const saveEditVersion = async () => {
+  if (!auth.isAdmin.value) return
   if (!editingVersionId.value) return
 
   isSaving.value = true
@@ -441,6 +486,45 @@ onMounted(() => {
       <span class="count-badge">Widoczne kompleksy: {{ filteredComplexes.length }}</span>
     </div>
 
+    <!-- Pasek łączenia skoczni (tylko ADMIN) -->
+    <div v-if="auth.isAdmin.value && selectedMergeHills.length > 0" class="admin-merge-sticky-bar">
+      <div class="merge-bar-top">
+        <div class="merge-title-row">
+          <strong>🔗 Łączenie skoczni ({{ selectedMergeHills.length }})</strong>
+          <button type="button" @click="clearMergeSelection" class="btn-clear-merge">Wyczyść</button>
+        </div>
+        <div class="merge-chips">
+          <span v-for="mh in selectedMergeHills" :key="mh.hill_id" class="merge-chip">
+            <code>{{ mh.hill_id }}</code> ({{ mh.unit || 'HS' }}{{ mh.size }})
+            <button type="button" @click="toggleMergeSelection(mh)">&times;</button>
+          </span>
+        </div>
+      </div>
+
+      <div v-if="mergeCompatibilityError" class="merge-error-msg">
+        ⚠️ {{ mergeCompatibilityError }}
+      </div>
+
+      <div class="merge-bar-actions">
+        <div v-if="selectedMergeHills.length >= 2 && !mergeCompatibilityError" class="merge-target-picker">
+          <label>Skocznia docelowa (kanoniczna):</label>
+          <select v-model="targetMergeId" class="form-input merge-select">
+            <option v-for="mh in selectedMergeHills" :key="mh.hill_id" :value="mh.hill_id">
+              {{ mh.place }} ({{ mh.hill_id }}) — {{ mh.total_sessions || 0 }} sesji
+            </option>
+          </select>
+        </div>
+        <button
+          type="button"
+          class="btn-merge-submit"
+          :disabled="selectedMergeHills.length < 2 || !!mergeCompatibilityError || isSaving"
+          @click="handleMergeHills"
+        >
+          🔗 Połącz w jedną ({{ selectedMergeHills.length }})
+        </button>
+      </div>
+    </div>
+
     <!-- Stan ładowania -->
     <SkiLoader v-if="loading">Ładowanie hierarchii skoczni narciarskich...</SkiLoader>
 
@@ -454,9 +538,7 @@ onMounted(() => {
         <!-- Nagłówek kompleksu (Poziom 1) -->
         <div class="complex-header">
           <div class="complex-title-group">
-            <span class="complex-flag" :title="complex.country_code">{{
-              getCountryFlag(complex.country_code)
-            }}</span>
+            <CountryFlag :code="complex.country_code" size="lg" />
             <div>
               <h3 class="complex-place">{{ complex.place }}</h3>
               <span class="complex-country-pill">{{ complex.country_code }}</span>
@@ -541,8 +623,16 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- Narzędzia edycji aktualnej dla Admina -->
+              <!-- Narzędzia edycji i łączenia aktualnej dla Admina -->
               <div v-if="auth.isAdmin.value" class="admin-quick-actions">
+                <label class="merge-checkbox-label" title="Zaznacz tę skocznię do scalenia z duplikatem">
+                  <input
+                    type="checkbox"
+                    :checked="selectedMergeIds.includes(typeGroup.current_version.hill_id)"
+                    @change="toggleMergeSelection(typeGroup.current_version)"
+                  />
+                  <span>Połącz</span>
+                </label>
                 <button
                   @click="openEditModal(typeGroup.current_version)"
                   class="btn-icon edit"
@@ -624,6 +714,13 @@ onMounted(() => {
                       </td>
                       <td v-if="auth.isAdmin.value" style="text-align: right">
                         <div class="actions-flex">
+                          <label class="merge-checkbox-label compact" title="Zaznacz wersję do scalenia">
+                            <input
+                              type="checkbox"
+                              :checked="selectedMergeIds.includes(ver.hill_id)"
+                              @change="toggleMergeSelection(ver)"
+                            />
+                          </label>
                           <button
                             v-if="!ver.is_current"
                             @click="handleSetCurrent(ver)"
@@ -669,7 +766,7 @@ onMounted(() => {
     </div>
 
     <!-- Modal dodawania nowej skoczni / wersji -->
-    <div v-if="showAddModal" class="modal-overlay" @click.self="showAddModal = false">
+    <div v-if="showAddModal && auth.isAdmin.value" class="modal-overlay" @click.self="showAddModal = false">
       <div class="modal-card">
         <div class="modal-header">
           <h3>Dodaj nową skocznię / wersję</h3>
@@ -789,7 +886,7 @@ onMounted(() => {
     </div>
 
     <!-- Modal edycji wersji -->
-    <div v-if="showEditModal" class="modal-overlay" @click.self="showEditModal = false">
+    <div v-if="showEditModal && auth.isAdmin.value" class="modal-overlay" @click.self="showEditModal = false">
       <div class="modal-card">
         <div class="modal-header">
           <h3>Edycja wersji skoczni: {{ editingVersionId }}</h3>
@@ -873,7 +970,7 @@ onMounted(() => {
     </div>
 
     <!-- Niestandardowy modal potwierdzenia akcji (zamiast window.confirm) -->
-    <div v-if="showConfirmModal && confirmAction" class="modal-overlay" @click.self="showConfirmModal = false">
+    <div v-if="showConfirmModal && confirmAction && auth.isAdmin.value" class="modal-overlay" @click.self="showConfirmModal = false">
       <div class="modal-card confirm-dialog">
         <div class="confirm-icon">⚠️</div>
         <h3>{{ confirmAction.title }}</h3>
@@ -1672,5 +1769,222 @@ onMounted(() => {
 }
 .text-dim {
   color: #94a3b8;
+}
+
+/* Admin Merge Bar & Checkboxes */
+.admin-merge-sticky-bar {
+  position: sticky;
+  top: 66px;
+  z-index: 90;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #f8fafc;
+  border: 1px solid #334155;
+  border-left: 4px solid #10b981;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.merge-bar-top {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.merge-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-clear-merge {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid #475569;
+  color: #cbd5e1;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.78em;
+  cursor: pointer;
+}
+
+.merge-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.merge-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #0b1329;
+  border: 1px solid #334155;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.8em;
+}
+.merge-chip code {
+  color: #38bdf8;
+  font-family: var(--font-mono);
+}
+.merge-chip button {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.merge-error-msg {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid #ef4444;
+  color: #fecaca;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.84em;
+  font-weight: 600;
+}
+
+.merge-bar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.merge-target-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 240px;
+}
+.merge-target-picker label {
+  color: #cbd5e1;
+  font-size: 0.82em;
+  white-space: nowrap;
+}
+.merge-select {
+  background: #0f172a;
+  color: white;
+  border-color: #475569;
+  flex: 1;
+}
+
+.btn-merge-submit {
+  background: #10b981;
+  color: #064e3b;
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-merge-submit:hover:not(:disabled) {
+  background: #34d399;
+}
+.btn-merge-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.merge-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.merge-checkbox-label.compact {
+  padding: 3px 6px;
+}
+
+.history-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+  .page {
+    padding: 14px 12px;
+  }
+  .header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .stats-overview {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .stat-box {
+    padding: 8px 10px;
+  }
+  .stat-number {
+    font-size: 1.25em;
+  }
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .search-box {
+    min-width: 0;
+  }
+  .type-filter-group {
+    display: flex;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .filter-btn {
+    flex-shrink: 0;
+  }
+  .complexes-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .specs-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .type-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .checkbox-group {
+    grid-column: span 1;
+  }
+  .merge-bar-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .merge-target-picker {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-overview {
+    grid-template-columns: 1fr;
+  }
+  .specs-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 </style>

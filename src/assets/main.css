@@ -3,6 +3,28 @@
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     --touch-target-min: 44px;
     --header-height: 56px;
+
+    /* Spójna paleta kolorów FantaSKI (Winter / Alpine Sky Theme) */
+    --color-primary: #0284c7;
+    --color-primary-hover: #0369a1;
+    --color-primary-soft: #e0f2fe;
+    --color-accent: #2563eb;
+    --color-bg: #f8fafc;
+    --color-surface: #ffffff;
+    --color-surface-subtle: #f1f5f9;
+    --color-border: #e2e8f0;
+    --color-border-strong: #cbd5e1;
+    --color-text: #0f172a;
+    --color-text-secondary: #334155;
+    --color-text-muted: #64748b;
+    --color-success: #16a34a;
+    --color-warning: #d97706;
+    --color-danger: #dc2626;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
+    --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 /* 1. Zerowanie marginesów i ustawienie poprawnego liczenia wielkości (box-sizing) */
@@ -10,14 +32,30 @@ html, body, #app {
     margin: 0;
     padding: 0;
     width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
     min-height: 100%;
     box-sizing: border-box;
-    background-color: #f8fafc;
+    background-color: var(--color-bg);
     font-family: var(--font-sans);
-    color: #1e293b;
+    color: var(--color-text);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     line-height: 1.5;
+}
+
+/* Dostępność klawiatury (WCAG Focus Visible) */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+/* Spójny wygląd kontenera podstron */
+.page {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
 }
 
 /* Wymuszenie czytelności liczb w tabelach i danych (tabular figures) */

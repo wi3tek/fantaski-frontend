@@ -2,6 +2,34 @@
 
 export const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
 
+const triggerAuthExpired = () => {
+  if (typeof window === 'undefined') return
+  const hadToken = !!localStorage.getItem('token')
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+  if (hadToken) {
+    window.dispatchEvent(new CustomEvent('auth:expired'))
+  }
+}
+
+// Globalny przechwyt 401 dla bezpośrednich wywołań fetch() (np. w Panelu Admina)
+if (typeof window !== 'undefined' && !(window as any).__fantaskiFetchPatched) {
+  ;(window as any).__fantaskiFetchPatched = true
+  const origFetch = window.fetch.bind(window)
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const res = await origFetch(input, init)
+    if (res.status === 401) {
+      const reqUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const isApiCall = reqUrl.startsWith(API_BASE_URL)
+      const isLoginEndpoint = reqUrl.includes('/auth/google') || reqUrl.includes('/auth/dev-login')
+      if (isApiCall && !isLoginEndpoint) {
+        triggerAuthExpired()
+      }
+    }
+    return res
+  }
+}
+
 // Lightweight in-memory cache for static dictionary endpoints
 interface CacheEntry {
   data: any
@@ -56,9 +84,7 @@ export async function apiFetch<T = any>(endpoint: string, options: ApiFetchOptio
 
   if (response.status === 401) {
     // Token expired or invalid
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    window.dispatchEvent(new CustomEvent('auth:expired'))
+    triggerAuthExpired()
   }
 
   if (!response.ok) {
