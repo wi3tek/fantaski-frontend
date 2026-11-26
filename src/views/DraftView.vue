@@ -988,7 +988,7 @@ onUnmounted(() => {
         <section class="league-main">
           <div v-if="!selectedLeague" class="card empty-main">
             <h3>Wybierz lub utwórz ligę drafta</h3>
-            <p>Zaproś innych graczy (LITE, PRO lub ADMIN), skonfiguruj turniej i wystartuj Draft w formacie Snake.</p>
+            <p>Zaproś innych graczy, skonfiguruj turniej i wystartuj Draft w formacie Snake.</p>
           </div>
 
           <template v-else>
