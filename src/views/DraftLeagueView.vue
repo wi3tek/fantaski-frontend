@@ -1397,7 +1397,13 @@ onUnmounted(() => {
                 <div v-else-if="displayedPoolAthletes.length === 0" class="empty-side">
                   {{ t('draft.poolEmptyFilter') }}
                 </div>
-                <div v-else v-for="ath in displayedPoolAthletes" :key="ath.fis_code" class="pool-athlete-row">
+                <div
+                  v-else
+                  v-for="ath in displayedPoolAthletes"
+                  :key="ath.fis_code"
+                  class="pool-athlete-row"
+                  :class="{ 'is-picked': Boolean(isAthleteAlreadyPicked(ath.fis_code)) }"
+                >
                   <div class="ath-meta">
                     <CountryFlag :code="ath.country_code" size="sm" />
                     <span class="ath-mini-avatar-wrap">
@@ -2276,6 +2282,8 @@ onUnmounted(() => {
   padding: 9px 12px; border: 1px solid #e2e8f0; border-radius: 10px; transition: border-color 0.14s;
 }
 .pool-athlete-row:hover { border-color: #93c5fd; background: #f8fafc; }
+.pool-athlete-row.is-picked { background: #f1f5f9; border-color: #e2e8f0; opacity: 0.58; filter: grayscale(0.65); }
+.pool-athlete-row.is-picked:hover { border-color: #cbd5e1; background: #f1f5f9; }
 .ath-meta { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ath-text-col { display: flex; flex-direction: column; min-width: 0; }
 .esm-price-pill { background: #e0f2fe; color: #0369a1; font-weight: 800; padding: 1px 6px; border-radius: 5px; }
