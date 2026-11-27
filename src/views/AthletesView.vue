@@ -7,7 +7,7 @@ import { useAuth } from '@/stores/auth'
 import { useI18n } from '@/i18n'
 
 const auth = useAuth()
-const { t } = useI18n()
+const { t, formatLocaleDate } = useI18n()
 
 interface Athlete {
   fis_code: string
@@ -350,12 +350,12 @@ onUnmounted(() => {
 
     <div class="filters-bar-primary">
       <div class="filter-box filter-search-box flex-grow">
-        <label>Szukaj zawodnika:</label>
+        <label>{{ t('athletes.searchLabel') }}</label>
         <input
           v-model="filters.search_name"
           @input="onSearchInput"
           type="text"
-          placeholder="Wpisz imię lub nazwisko..."
+          :placeholder="t('athletes.searchPh')"
           class="filter-input"
         />
       </div>
@@ -365,7 +365,7 @@ onUnmounted(() => {
         class="mobile-filters-toggle"
         @click="showMobileFilters = !showMobileFilters"
       >
-        <span>🎛️ Filtry{{ activeExtraFiltersCount ? ` (${activeExtraFiltersCount})` : '' }}</span>
+        <span>🎛️ {{ activeExtraFiltersCount ? `(${activeExtraFiltersCount})` : '' }}</span>
         <span>{{ showMobileFilters ? '▴' : '▾' }}</span>
       </button>
     </div>
@@ -373,46 +373,46 @@ onUnmounted(() => {
     <div class="filters-advanced-wrapper" :class="{ 'mobile-open': showMobileFilters }">
       <div class="filters-container filters-compact-grid">
         <div class="filter-box filter-box-fixed">
-          <label>Wiek od:</label>
-          <input type="number" v-model="filters.age_min" @change="fetchAthletes(false)" class="filter-input" placeholder="np. 18" min="10" max="100"/>
+          <label>{{ t('athletes.ageFrom') }}</label>
+          <input type="number" v-model="filters.age_min" @change="fetchAthletes(false)" class="filter-input" :placeholder="t('athletes.ageFromPh')" min="10" max="100"/>
         </div>
 
         <div class="filter-box filter-box-fixed">
-          <label>Wiek do:</label>
-          <input type="number" v-model="filters.age_max" @change="fetchAthletes(false)" class="filter-input" placeholder="np. 25" min="10" max="100"/>
+          <label>{{ t('athletes.ageTo') }}</label>
+          <input type="number" v-model="filters.age_max" @change="fetchAthletes(false)" class="filter-input" :placeholder="t('athletes.ageToPh')" min="10" max="100"/>
         </div>
 
         <div class="filter-box filter-box-select filter-span-2-mobile">
-          <label>Status:</label>
+          <label>{{ t('athletes.statusLabel') }}</label>
           <select v-model="filters.status" @change="fetchAthletes(false)" class="filter-input">
-            <option value="ACTIVE">Tylko aktywni</option>
-            <option value="">Wszyscy skoczkowie</option>
-            <option value="INACTIVE">Koniec kariery</option>
+            <option value="ACTIVE">{{ t('athletes.statusActiveOnly') }}</option>
+            <option value="">{{ t('athletes.statusAll') }}</option>
+            <option value="INACTIVE">{{ t('athletes.statusRetired') }}</option>
           </select>
         </div>
       </div>
 
       <div class="filters-container mt-0 filters-compact-grid">
-        <!-- Filtr Sezonów (Rozwijana lista z checkboxami) -->
+        <!-- Filtr Sezonów -->
         <div class="filter-box dropdown-container">
-          <label>Sezon startów:</label>
+          <label>{{ t('athletes.seasonsLabel') }}</label>
           <div class="dropdown-wrapper">
             <button
               type="button"
               class="dropdown-toggle-btn"
               @click.stop="showSeasonDropdown = !showSeasonDropdown; showCategoryDropdown = false"
-              title="Wybierz sezony, w których startowali zawodnicy"
+              :title="t('athletes.seasonsTitle')"
             >
               <span>
-                {{ filters.seasons.length === 0 ? 'Wszystkie' : (filters.seasons.length === 1 ? `Sezon ${filters.seasons[0]}` : `Sezony: ${filters.seasons.length}`) }}
+                {{ filters.seasons.length === 0 ? t('common.all') : (filters.seasons.length === 1 ? `${t('common.season')} ${filters.seasons[0]}` : `${t('common.seasons')}: ${filters.seasons.length}`) }}
               </span>
               <span class="dropdown-arrow">▼</span>
             </button>
 
             <div v-if="showSeasonDropdown" class="dropdown-panel" @click.stop>
               <div class="dropdown-panel-actions">
-                <button type="button" class="btn-text-xs" @click="selectAllSeasons">Zaznacz wszystkie</button>
-                <button type="button" class="btn-text-xs" @click="clearSeasons">Wyczyść</button>
+                <button type="button" class="btn-text-xs" @click="selectAllSeasons">{{ t('common.selectAll') }}</button>
+                <button type="button" class="btn-text-xs" @click="clearSeasons">{{ t('common.clear') }}</button>
               </div>
               <div class="dropdown-panel-items">
                 <label v-for="s in availableSeasons" :key="s" class="dropdown-checkbox-item">
@@ -422,33 +422,33 @@ onUnmounted(() => {
                     :checked="filters.seasons.includes(s)"
                     @change="toggleSeason(s)"
                   />
-                  <span>Sezon {{ s }}</span>
+                  <span>{{ t('common.season') }} {{ s }}</span>
                 </label>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Filtr Rodzaju Zawodów (PŚ, COC, LGP, FC itd.) -->
+        <!-- Filtr Rodzaju Zawodów -->
         <div class="filter-box dropdown-container dropdown-align-right-mobile">
-          <label>Rodzaj zawodów:</label>
+          <label>{{ t('athletes.categoriesLabel') }}</label>
           <div class="dropdown-wrapper">
             <button
               type="button"
               class="dropdown-toggle-btn"
               @click.stop="showCategoryDropdown = !showCategoryDropdown; showSeasonDropdown = false"
-              title="Wybierz rodzaj zawodów, w których startowali zawodnicy"
+              :title="t('athletes.categoriesTitle')"
             >
               <span>
-                {{ filters.categories.length === 0 ? 'Wszystkie' : (filters.categories.length === 1 ? getCategoryLabel(filters.categories[0]) : `Rodzaje: ${filters.categories.length}`) }}
+                {{ filters.categories.length === 0 ? t('common.all') : (filters.categories.length === 1 ? getCategoryLabel(filters.categories[0]) : `${t('common.category')}: ${filters.categories.length}`) }}
               </span>
               <span class="dropdown-arrow">▼</span>
             </button>
 
             <div v-if="showCategoryDropdown" class="dropdown-panel" @click.stop>
               <div class="dropdown-panel-actions">
-                <button type="button" class="btn-text-xs" @click="selectAllCategories">Zaznacz wszystkie</button>
-                <button type="button" class="btn-text-xs" @click="clearCategories">Wyczyść</button>
+                <button type="button" class="btn-text-xs" @click="selectAllCategories">{{ t('common.selectAll') }}</button>
+                <button type="button" class="btn-text-xs" @click="clearCategories">{{ t('common.clear') }}</button>
               </div>
               <div class="dropdown-panel-items">
                 <label v-for="cat in availableCategories" :key="cat.code" class="dropdown-checkbox-item">
@@ -467,7 +467,7 @@ onUnmounted(() => {
 
         <!-- Filtr Krajów -->
         <div class="filter-box flex-grow multi-select-container filter-span-2-mobile">
-          <label>Filtruj po krajach:</label>
+          <label>{{ t('athletes.countriesLabel') }}</label>
           <div class="chips-box">
             <span v-for="code in filters.countries" :key="code" class="chip">
               <CountryFlag :code="code" size="xs" />
@@ -482,7 +482,7 @@ onUnmounted(() => {
                 @blur="onBlurCountry"
                 @keydown="onCountryKeyDown"
                 type="text"
-                placeholder="Wpisz kraj (np. POL, Niemcy)..."
+                :placeholder="t('athletes.countriesPh')"
               />
               <ul v-if="showCountryDropdown && filteredCountries.length > 0" class="autocomplete-list">
                 <li
@@ -502,15 +502,15 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Pasek aktywnych filtrów (szybkie czyszczenie) -->
+    <!-- Pasek aktywnych filtrów -->
     <div v-if="hasActiveExtraFilters" class="active-filters-row">
-      <span class="active-filters-label">Aktywne filtry:</span>
+      <span class="active-filters-label">{{ t('athletes.activeFilters') }}</span>
       <span v-if="filters.status !== 'ACTIVE'" class="active-filter-badge badge-status">
-        Status: {{ filters.status === '' ? 'Wszyscy' : 'Koniec kariery' }}
+        {{ t('common.status') }}: {{ filters.status === '' ? t('common.allM') : t('common.retired') }}
         <button type="button" @click="filters.status = 'ACTIVE'; fetchAthletes(false)">&times;</button>
       </span>
       <span v-for="s in filters.seasons" :key="s" class="active-filter-badge badge-season">
-        Sezon {{ s }}
+        {{ t('common.season') }} {{ s }}
         <button type="button" @click="toggleSeason(s)">&times;</button>
       </span>
       <span v-for="c in filters.categories" :key="c" class="active-filter-badge badge-cat">
@@ -522,11 +522,11 @@ onUnmounted(() => {
         <button type="button" @click="removeCountry(co)">&times;</button>
       </span>
       <button type="button" class="btn-clear-all" @click="clearAllFilters">
-        ✕ Wyczyść filtry
+        ✕ {{ t('common.clearFilters') }}
       </button>
     </div>
 
-    <SkiLoader v-if="loading">Pobieranie bazy skoczków FIS...</SkiLoader>
+    <SkiLoader v-if="loading">{{ t('athletes.loading') }}</SkiLoader>
 
     <div v-else>
       <div class="table-responsive desktop-only" v-if="athletes.length > 0">
@@ -534,22 +534,22 @@ onUnmounted(() => {
           <thead>
           <tr>
             <th @click="toggleSort('country_code')" class="sortable col-country">
-              Kraj <span class="sort-icon">{{ sortIcon('country_code') }}</span>
+              {{ t('athletes.thCountry') }} <span class="sort-icon">{{ sortIcon('country_code') }}</span>
             </th>
             <th @click="toggleSort('full_name')" class="sortable col-name">
-              Imię i Nazwisko <span class="sort-icon">{{ sortIcon('full_name') }}</span>
+              {{ t('athletes.thFullName') }} <span class="sort-icon">{{ sortIcon('full_name') }}</span>
             </th>
-            <th v-if="auth.isPro.value" class="col-price">Cena Fantasy</th>
-            <th @click="toggleSort('birthdate')" class="sortable col-age" title="Sortowanie po wieku">
-              Wiek <span class="sort-icon">{{ sortIconAge() }}</span>
+            <th v-if="auth.isPro.value" class="col-price">{{ t('athletes.thPrice') }}</th>
+            <th @click="toggleSort('birthdate')" class="sortable col-age" :title="t('athletes.thAgeTitle')">
+              {{ t('athletes.thAge') }} <span class="sort-icon">{{ sortIconAge() }}</span>
             </th>
             <th @click="toggleSort('birthdate')" class="sortable col-birthdate">
-              Data ur. <span class="sort-icon">{{ sortIcon('birthdate') }}</span>
+              {{ t('athletes.thBirthdate') }} <span class="sort-icon">{{ sortIcon('birthdate') }}</span>
             </th>
             <th @click="toggleSort('club')" class="sortable col-club">
-              Klub <span class="sort-icon">{{ sortIcon('club') }}</span>
+              {{ t('athletes.thClub') }} <span class="sort-icon">{{ sortIcon('club') }}</span>
             </th>
-            <th class="col-actions">Akcje</th>
+            <th class="col-actions">{{ t('athletes.thActions') }}</th>
           </tr>
           </thead>
           <tbody>
@@ -566,8 +566,8 @@ onUnmounted(() => {
               <RouterLink :to="'/athletes/' + athlete.fis_code" class="athlete-name-link">
                 {{ athlete.full_name }}
               </RouterLink>
-              <span v-if="athlete.status !== 'Active'" class="status-dot inactive" title="Koniec kariery"></span>
-              <span v-else class="status-dot active" title="Aktywny"></span>
+              <span v-if="athlete.status !== 'Active'" class="status-dot inactive" :title="t('common.retired')"></span>
+              <span v-else class="status-dot active" :title="t('common.active')"></span>
             </td>
             <td v-if="auth.isPro.value" class="col-price">
               <span v-if="getAthletePrice(athlete) != null" class="price-chip">
@@ -577,16 +577,16 @@ onUnmounted(() => {
             </td>
             <td class="col-age">{{ calculateAge(athlete.birthdate) }}</td>
             <td class="col-birthdate">
-              {{ athlete.birthdate ? new Date(athlete.birthdate).toLocaleDateString() : 'Brak' }}
+              {{ athlete.birthdate ? formatLocaleDate(athlete.birthdate) : t('common.none') }}
             </td>
             <td class="col-club" :title="athlete.club || ''">{{ athlete.club || '-' }}</td>
             <td class="col-actions">
               <RouterLink
                 :to="{ path: '/stats', query: { fis_code: athlete.fis_code, name: athlete.full_name } }"
                 class="btn-details"
-                title="Zobacz statystyki"
+                :title="t('athletes.viewStats')"
               >
-                Statystyki ↗
+                {{ t('athletes.viewStats') }}
               </RouterLink>
             </td>
           </tr>
@@ -608,29 +608,29 @@ onUnmounted(() => {
               <RouterLink :to="'/athletes/' + athlete.fis_code" class="athlete-name-link amc-name">
                 {{ athlete.full_name }}
               </RouterLink>
-              <span v-if="athlete.status !== 'Active'" class="status-dot inactive" title="Koniec kariery"></span>
-              <span v-else class="status-dot active" title="Aktywny"></span>
+              <span v-if="athlete.status !== 'Active'" class="status-dot inactive" :title="t('common.retired')"></span>
+              <span v-else class="status-dot active" :title="t('common.active')"></span>
             </div>
             <span v-if="auth.isPro.value && getAthletePrice(athlete) != null" class="price-chip">
-              Cena: {{ getAthletePrice(athlete)!.toFixed(1) }} mln
+              {{ t('common.price') }}: {{ getAthletePrice(athlete)!.toFixed(1) }} {{ t('common.mln') }}
             </span>
           </div>
 
           <div class="amc-meta">
             <span class="amc-country-code">{{ getCountryDisplay(athlete.country_code) }}</span>
-            <span>🎂 {{ calculateAge(athlete.birthdate) }} lat</span>
+            <span>🎂 {{ calculateAge(athlete.birthdate) }} {{ t('common.yearsShort') }}</span>
             <span v-if="athlete.club" class="amc-club">🎿 {{ athlete.club }}</span>
           </div>
 
           <div class="amc-actions">
             <RouterLink :to="'/athletes/' + athlete.fis_code" class="amc-btn-profile">
-              Profil
+              {{ t('athletes.viewProfile') }}
             </RouterLink>
             <RouterLink
               :to="{ path: '/stats', query: { fis_code: athlete.fis_code, name: athlete.full_name } }"
               class="btn-details amc-btn-stats"
             >
-              Statystyki ↗
+              {{ t('athletes.viewStats') }}
             </RouterLink>
           </div>
         </div>
@@ -638,12 +638,12 @@ onUnmounted(() => {
 
       <div v-if="athletes.length >= filters.limit" class="load-more-container">
         <button @click="loadMore" :disabled="loadingMore" class="btn-load-more">
-          {{ loadingMore ? 'Ładowanie...' : 'Pokaż kolejnych ↓' }}
+          {{ loadingMore ? t('common.loading') : t('athletes.loadMore') }}
         </button>
       </div>
 
       <div v-if="athletes.length === 0" class="no-results">
-        🎿 Brak skoczków spełniających kryteria.
+        {{ t('athletes.empty') }}
       </div>
     </div>
   </div>

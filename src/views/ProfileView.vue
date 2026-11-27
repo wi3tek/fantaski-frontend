@@ -10,7 +10,7 @@ import { api } from '@/api/client'
 const auth = useAuth()
 const route = useRoute()
 const router = useRouter()
-const { locale, locales, setLocale, t } = useI18n()
+const { locale, locales, setLocale, t, bcp47Locale, formatLocaleDate } = useI18n()
 const {
   notifications: notifHistory,
   unreadCount: notifUnreadCount,
@@ -90,12 +90,12 @@ const handleFileUpload = (event: Event) => {
   if (!file) return
 
   if (!file.type.startsWith('image/')) {
-    errorMsg.value = 'Wybrany plik musi być obrazem (JPG, PNG, WebP).'
+    errorMsg.value = t('profile.errInvalidImg')
     return
   }
 
   if (file.size > 1024 * 1024) {
-    errorMsg.value = 'Maksymalny dopuszczalny rozmiar pliku to 1 MB.'
+    errorMsg.value = t('profile.errMaxSize')
     return
   }
 
@@ -174,7 +174,7 @@ const sendSupportReply = async () => {
     supportThread.value = await api.post<any>('/support/messages', { message: clean })
     supportReplyText.value = ''
   } catch (e: any) {
-    supportReplyError.value = e?.message || 'Nie udało się wysłać wiadomości.'
+    supportReplyError.value = e?.message || t('profile.errSendMsg')
   } finally {
     isSendingSupportMsg.value = false
   }
@@ -218,10 +218,10 @@ const syncEsmNow = async () => {
   try {
     const data = await api.post<any>('/esm/sync', {})
     esmStatus.value = data
-    esmSuccessMsg.value = data.message || 'Składy zostały zaktualizowane!'
+    esmSuccessMsg.value = data.message || t('profile.okSync')
     await searchDirectory()
   } catch (e: any) {
-    esmErrorMsg.value = e.message || 'Nie udało się odświeżyć danych z ESM.'
+    esmErrorMsg.value = e.message || t('profile.errSync')
   } finally {
     isSyncingEsm.value = false
   }
@@ -247,10 +247,10 @@ const sendFriendRequest = async (targetUserId: string) => {
   try {
     const data = await api.post<any>(`/esm/friends/request/${encodeURIComponent(targetUserId)}`, {})
     esmStatus.value = data
-    esmSuccessMsg.value = data.message || 'Wysłano zaproszenie!'
+    esmSuccessMsg.value = data.message || t('profile.okInviteSent')
     await searchDirectory()
   } catch (e: any) {
-    esmErrorMsg.value = e.message || 'Nie udało się wysłać zaproszenia.'
+    esmErrorMsg.value = e.message || t('profile.errInviteSent')
   } finally {
     friendActionUserId.value = null
   }
@@ -263,10 +263,10 @@ const acceptFriendRequest = async (requesterUserId: string) => {
   try {
     const data = await api.post<any>(`/esm/friends/accept/${encodeURIComponent(requesterUserId)}`, {})
     esmStatus.value = data
-    esmSuccessMsg.value = data.message || 'Zaakceptowano zaproszenie!'
+    esmSuccessMsg.value = data.message || t('profile.okInviteAccepted')
     await searchDirectory()
   } catch (e: any) {
-    esmErrorMsg.value = e.message || 'Nie udało się zaakceptować zaproszenia.'
+    esmErrorMsg.value = e.message || t('profile.errInviteAccepted')
   } finally {
     friendActionUserId.value = null
   }
@@ -280,7 +280,7 @@ const rejectFriendRequest = async (requesterUserId: string) => {
     esmStatus.value = data
     await searchDirectory()
   } catch (e: any) {
-    esmErrorMsg.value = e.message || 'Nie udało się odrzucić zaproszenia.'
+    esmErrorMsg.value = e.message || t('profile.errInviteRejected')
   } finally {
     friendActionUserId.value = null
   }
@@ -294,23 +294,23 @@ const cancelFriendRequest = async (targetUserId: string) => {
     esmStatus.value = data
     await searchDirectory()
   } catch (e: any) {
-    esmErrorMsg.value = e.message || 'Nie udało się anulować zaproszenia.'
+    esmErrorMsg.value = e.message || t('profile.errInviteCanceled')
   } finally {
     friendActionUserId.value = null
   }
 }
 
 const removeFantaskiFriend = async (friendUserId: string) => {
-  if (!confirm('Czy na pewno usunąć tego gracza ze znajomych?')) return
+  if (!confirm(t('profile.confirmRemoveFriend'))) return
   esmErrorMsg.value = ''
   friendActionUserId.value = friendUserId
   try {
     const data = await api.delete<any>(`/esm/friends/${encodeURIComponent(friendUserId)}`)
     esmStatus.value = data
-    esmSuccessMsg.value = data.message || 'Usunięto ze znajomych.'
+    esmSuccessMsg.value = data.message || t('profile.okFriendRemoved')
     await searchDirectory()
   } catch (e: any) {
-    esmErrorMsg.value = e.message || 'Nie udało się usunąć znajomego.'
+    esmErrorMsg.value = e.message || t('profile.errFriendRemoved')
   } finally {
     friendActionUserId.value = null
   }
@@ -330,7 +330,7 @@ const handleSave = async () => {
 
   const trimmedName = nameInput.value.trim()
   if (trimmedName.length < 2 || trimmedName.length > 60) {
-    errorMsg.value = 'Nazwa użytkownika musi zawierać od 2 do 60 znaków.'
+    errorMsg.value = t('profile.errNameLen')
     return
   }
 
@@ -340,19 +340,19 @@ const handleSave = async () => {
       name: trimmedName,
       picture: avatarInput.value.trim()
     })
-    successMsg.value = 'Pomyślnie zaktualizowano Twój profil!'
+    successMsg.value = t('profile.okSaved')
     setTimeout(() => {
       successMsg.value = ''
     }, 4000)
   } catch (err: any) {
-    errorMsg.value = err.message || 'Wystąpił błąd podczas zapisywania zmian.'
+    errorMsg.value = err.message || t('profile.errSave')
   } finally {
     isSaving.value = false
   }
 }
 
 const getRoleBadgeLabel = (role?: string) => {
-  if (role === 'ADMIN') return 'ADMINISTRATOR'
+  if (role === 'ADMIN') return t('profile.roleAdmin')
   if (role === 'USER_PRO') return 'PRO'
   return 'FREE'
 }
@@ -364,10 +364,10 @@ const getRoleClass = (role?: string) => {
 }
 
 const formatDate = (isoString?: string) => {
-  if (!isoString) return 'Brak informacji'
+  if (!isoString) return t('common.noData')
   try {
     const d = new Date(isoString)
-    return d.toLocaleDateString('pl-PL', {
+    return d.toLocaleDateString(bcp47Locale.value, {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
@@ -405,9 +405,9 @@ const formatDate = (isoString?: string) => {
             </div>
             <p class="user-email">✉️ {{ auth.user.value?.email }}</p>
             <div class="hero-meta-row">
-              <span>Konto aktywne od: <strong>{{ formatDate(auth.user.value?.created_at) }}</strong></span>
+              <span>{{ t('profile.memberSince') }} <strong>{{ formatDate(auth.user.value?.created_at) }}</strong></span>
               <span class="meta-dot">&bull;</span>
-              <span>Ostatnie logowanie: <strong>{{ formatDate(auth.user.value?.last_login) }}</strong></span>
+              <span>{{ t('profile.lastLoginLabel') }} <strong>{{ formatDate(auth.user.value?.last_login) }}</strong></span>
             </div>
           </div>
         </div>
@@ -422,7 +422,7 @@ const formatDate = (isoString?: string) => {
       </div>
 
       <!-- ZAKŁADKI PROFILU -->
-      <div class="profile-tabs-bar" role="tablist" aria-label="Sekcje profilu">
+      <div class="profile-tabs-bar" role="tablist" :aria-label="t('profile.tabsAria')">
         <button
           type="button"
           role="tab"
@@ -484,28 +484,28 @@ const formatDate = (isoString?: string) => {
       <div v-if="activeProfileTab === 'edit'" class="profile-tab-panel">
         <div class="card edit-card">
           <div class="card-header">
-            <h3>✏️ Edycja Profilu</h3>
-            <p class="subtitle">Dostosuj swoją wyświetlaną nazwę oraz awatar widoczny w całym serwisie.</p>
+            <h3>{{ t('profile.editHeaderTitle') }}</h3>
+            <p class="subtitle">{{ t('profile.editSub') }}</p>
           </div>
 
           <div class="card-body">
             <!-- 1. IMIĘ / PSEUDONIM -->
             <div class="form-group">
-              <label for="displayName" class="field-label">Wyświetlana nazwa / Imię i Nazwisko:</label>
+              <label for="displayName" class="field-label">{{ t('profile.displayNameLabel') }}</label>
               <input
                 id="displayName"
                 v-model="nameInput"
                 type="text"
                 class="form-input"
-                placeholder="Wpisz swoje imię lub pseudonim..."
+                :placeholder="t('profile.displayNamePh')"
                 maxlength="60"
               />
-              <span class="field-hint">Nazwa ta będzie prezentowana w nagłówku strony i panelu analiz.</span>
+              <span class="field-hint">{{ t('profile.displayNameHint') }}</span>
             </div>
 
             <!-- WYBÓR JĘZYKA INTERFEJSU -->
             <div class="form-group">
-              <label class="field-label">🌍 {{ t('nav.language') }} interfejsu:</label>
+              <label class="field-label">{{ t('profile.langLabel') }}</label>
               <div class="profile-lang-grid">
                 <button
                   v-for="loc in locales"
@@ -523,7 +523,7 @@ const formatDate = (isoString?: string) => {
 
             <!-- 2. ZARZĄDZANIE AWATAREM -->
             <div class="avatar-section">
-              <label class="field-label">Wybór awatara profilowego:</label>
+              <label class="field-label">{{ t('profile.avatarSection') }}</label>
               
               <!-- Zakładki wyboru avatara -->
               <div class="avatar-tabs">
@@ -533,7 +533,7 @@ const formatDate = (isoString?: string) => {
                   :class="{ active: activeAvatarTab === 'presets' }"
                   @click="activeAvatarTab = 'presets'"
                 >
-                  🎨 Generator
+                  {{ t('profile.avatarGen') }}
                 </button>
                 <button
                   type="button"
@@ -541,7 +541,7 @@ const formatDate = (isoString?: string) => {
                   :class="{ active: activeAvatarTab === 'upload' }"
                   @click="activeAvatarTab = 'upload'"
                 >
-                  📁 Plik z dysku
+                  {{ t('profile.avatarUpload') }}
                 </button>
                 <button
                   type="button"
@@ -549,7 +549,7 @@ const formatDate = (isoString?: string) => {
                   :class="{ active: activeAvatarTab === 'url' }"
                   @click="activeAvatarTab = 'url'"
                 >
-                  🔗 Adres URL
+                  {{ t('profile.avatarUrl') }}
                 </button>
               </div>
 
@@ -560,37 +560,20 @@ const formatDate = (isoString?: string) => {
                     v-if="avatarInput || auth.user.value?.picture"
                     :src="avatarInput || auth.user.value?.picture"
                     class="avatar-preview-crisp"
-                    alt="Podgląd awatara"
+                    :alt="t('profile.avatarPreviewAlt')"
                   />
                   <div v-else class="avatar-preview-fallback">👤</div>
                   <div class="avatar-preview-actions">
                     <button type="button" class="btn-secondary" @click="rollRandomSeed">
-                      🎲 Losuj inny
+                      {{ t('profile.avatarRandom') }}
                     </button>
                     <button type="button" class="btn-secondary" @click="resetToDefault">
-                      🔄 Domyślny
-                    </button>
-                  </div>
-                </div>
-
-                <div class="styles-selector">
-                  <span class="sub-label">Styl:</span>
-                  <div class="style-chips">
-                    <button
-                      v-for="st in avatarStyles"
-                      :key="st.id"
-                      type="button"
-                      class="style-chip"
-                      :class="{ active: selectedStyle === st.id }"
-                      @click="selectStyle(st.id)"
-                    >
-                      {{ st.name }}
+                      {{ t('profile.avatarDefault') }}
                     </button>
                   </div>
                 </div>
 
                 <div class="themes-selector">
-                  <span class="sub-label">Wybierz wariant:</span>
                   <div class="avatar-thumbs-grid">
                     <button
                       v-for="seed in avatarPreviewSeeds"
@@ -600,7 +583,7 @@ const formatDate = (isoString?: string) => {
                       :class="{ active: avatarInput === getAvatarUrl(selectedStyle, seed) }"
                       @click="selectAvatarSeed(seed)"
                     >
-                      <img :src="getAvatarUrl(selectedStyle, seed)" alt="Wariant awatara" class="avatar-thumb-img" />
+                      <img :src="getAvatarUrl(selectedStyle, seed)" :alt="t('profile.avatarPreviewAlt')" class="avatar-thumb-img" />
                     </button>
                   </div>
                 </div>
@@ -611,8 +594,8 @@ const formatDate = (isoString?: string) => {
                 <div class="upload-dropzone">
                   <label for="avatarUploadInput" class="upload-label">
                     <span class="upload-icon">📤</span>
-                    <strong>Kliknij tutaj, aby wybrać zdjęcie z komputera</strong>
-                    <small>Formaty JPG, PNG lub WebP (maks. 1 MB)</small>
+                    <strong>{{ t('profile.uploadClick') }}</strong>
+                    <small>{{ t('profile.uploadTypes') }}</small>
                   </label>
                   <input
                     id="avatarUploadInput"
@@ -630,9 +613,9 @@ const formatDate = (isoString?: string) => {
                   v-model="avatarInput"
                   type="url"
                   class="form-input"
-                  placeholder="https://twojadomena.pl/moj-awatar.png"
+                  :placeholder="t('profile.urlPh')"
                 />
-                <span class="field-hint">Wklej bezpośredni link do obrazka ze strony zewnętrznej.</span>
+                <span class="field-hint">{{ t('profile.urlHint') }}</span>
               </div>
             </div>
 
@@ -644,8 +627,8 @@ const formatDate = (isoString?: string) => {
                 :disabled="isSaving || !hasChanges"
                 @click="handleSave"
               >
-                <span v-if="isSaving">Zapisywanie...</span>
-                <span v-else>💾 Zapisz zmiany w profilu</span>
+                <span v-if="isSaving">{{ t('profile.savingBtn') }}</span>
+                <span v-else>{{ t('profile.saveBtn') }}</span>
               </button>
               <button
                 type="button"
@@ -653,7 +636,7 @@ const formatDate = (isoString?: string) => {
                 :disabled="isSaving || !hasChanges"
                 @click="initProfileData"
               >
-                ✕ Przywróć poprzednie
+                {{ t('profile.resetChanges') }}
               </button>
             </div>
           </div>
@@ -665,36 +648,36 @@ const formatDate = (isoString?: string) => {
       <div v-if="activeProfileTab === 'plan'" class="profile-tab-panel">
         <div class="card info-card">
           <div class="card-header">
-            <h3>💎 Twój Pakiet i Możliwości</h3>
-            <p class="subtitle">Szczegóły aktywnego konta w FantaSKI.</p>
+            <h3>{{ t('profile.planTitle') }}</h3>
+            <p class="subtitle">{{ t('profile.planSub') }}</p>
           </div>
 
           <div class="card-body">
             <div class="plan-summary-box" :class="getRoleClass(auth.user.value?.role)">
               <div class="plan-badge-large">{{ getRoleBadgeLabel(auth.user.value?.role) }}</div>
-              <h4>{{ auth.user.value?.role === 'ADMIN' ? 'Pakiet Administratorski' : auth.user.value?.role === 'USER_PRO' ? 'FantaSKI PRO' : 'Konto Darmowe' }}</h4>
+              <h4>{{ auth.user.value?.role === 'ADMIN' ? 'Admin' : auth.user.value?.role === 'USER_PRO' ? 'FantaSKI PRO' : 'FREE' }}</h4>
               <p class="plan-desc">
-                {{ auth.user.value?.role === 'ADMIN' ? 'Pełny dostęp techniczny: scrapowanie danych FIS, kwarantanna wyników, zarządzanie rolami użytkowników i trenowanie modeli AI.' : auth.user.value?.role === 'USER_PRO' ? 'Pełny pakiet analityczny: nielimitowana porównywarka, wszystkie składy ESM znajomych, nielimitowane ligi Drafta oraz prognozy AI.' : 'Darmowy dostęp po zalogowaniu: bazy i klasyfikacje FIS, 1 liga Drafta, porównywarka (max 2 skoczków i 10 skoków).' }}
+                {{ auth.user.value?.role === 'ADMIN' ? t('profile.roleAdminDesc') : auth.user.value?.role === 'USER_PRO' ? t('profile.roleProDesc') : t('profile.roleFreeDesc') }}
               </p>
             </div>
 
             <div class="features-checklist">
-              <h5>Dostępne moduły:</h5>
+              <h5>{{ t('profile.modulesTitle') }}</h5>
               <ul>
-                <li class="feature-active">✓ Baza skoczków, sesji, skoczni i klasyfikacje FIS</li>
+                <li class="feature-active">{{ t('profile.modDb') }}</li>
                 <li :class="auth.isAuthenticated.value ? 'feature-active' : 'feature-inactive'">
-                  {{ auth.isAuthenticated.value ? '✓' : '🔒' }} Ligi Drafta Fantasy
-                  <span v-if="!auth.isPro.value" class="tag-sm">(max 1 liga)</span>
+                  {{ auth.isAuthenticated.value ? '✓' : '🔒' }} {{ t('nav.draft') }}
+                  <span v-if="!auth.isPro.value" class="tag-sm">(max 1)</span>
                 </li>
                 <li :class="auth.isAuthenticated.value ? 'feature-active' : 'feature-inactive'">
-                  {{ auth.isAuthenticated.value ? '✓' : '🔒' }} Porównywarka zawodników (Panel Statystyczny)
-                  <span v-if="!auth.isPro.value" class="tag-sm">(do 2 skoczków / 10 skoków)</span>
+                  {{ auth.isAuthenticated.value ? '✓' : '🔒' }} {{ t('profile.modStats') }}
+                  <span v-if="!auth.isPro.value" class="tag-sm">{{ t('profile.modFreeLimit') }}</span>
                 </li>
                 <li :class="auth.isPro.value ? 'feature-active' : 'feature-inactive'">
-                  {{ auth.isPro.value ? '✓' : '🔒' }} Prognozy sieci neuronowej &amp; aero-profile wiatru
+                  {{ auth.isPro.value ? '✓' : '🔒' }} {{ t('profile.modPred') }}
                 </li>
                 <li v-if="auth.isAdmin.value" class="feature-active">
-                  ✓ Panel Zarządzania Bazy & Scrapowanie wyników FIS
+                  {{ t('profile.modAdmin') }}
                 </li>
               </ul>
             </div>
@@ -706,14 +689,14 @@ const formatDate = (isoString?: string) => {
       <div v-if="activeProfileTab === 'esm'" class="card esm-card">
         <div class="card-header esm-header-row">
           <div>
-            <h3>🏆 Integracja z esmManager (Fantasy Skoki)</h3>
+            <h3>{{ t('profile.esmTitle') }}</h3>
             <p class="subtitle">
-              Twój skład z bieżącego sezonu oraz zaakceptowani znajomi z FantaSKI automatycznie zasilają Porównywarkę Pakietów w wynikach konkursów.
+              {{ t('profile.esmSub') }}
             </p>
           </div>
           <div class="esm-header-actions">
-            <span v-if="esmStatus?.connected" class="esm-connected-pill">✅ Zsynchronizowano z esmManager</span>
-            <span v-else class="esm-pending-pill">⏳ Oczekuje na przypisanie przez Admina</span>
+            <span v-if="esmStatus?.connected" class="esm-connected-pill">✅ esmManager</span>
+            <span v-else class="esm-pending-pill">⏳ Admin</span>
             <button
               v-if="esmStatus?.connected || esmStatus?.friends?.length"
               type="button"
@@ -721,7 +704,7 @@ const formatDate = (isoString?: string) => {
               :disabled="isSyncingEsm"
               @click="syncEsmNow"
             >
-              {{ isSyncingEsm ? 'Synchronizacja...' : '🔄 Odśwież składy' }}
+              {{ isSyncingEsm ? t('profile.esmSyncing') : t('profile.esmSyncBtn') }}
             </button>
           </div>
         </div>
@@ -733,14 +716,14 @@ const formatDate = (isoString?: string) => {
           <!-- Informacja gdy admin jeszcze nie przypisał ESM Team ID -->
           <div v-if="!esmStatus?.connected" class="esm-unlinked-box">
             <div class="esm-unlinked-text">
-              <strong>Konto nie jest jeszcze przypisane do drużyny esmManager.</strong>
+              <strong>{{ t('profile.esmNotLinked') }}</strong>
               <p>
-                Ze względów bezpieczeństwa powiązanie Twojego konta FantaSKI z ID drużyny w esmManager wykonuje wyłącznie Administrator w Panelu Admina.
-                Gdy Administrator doda Twoje ID drużyny, w tym miejscu automatycznie pojawi się status synchronizacji oraz Twój skład.
+                {{ t('profile.esmNotLinkedP1') }}
+                {{ t('profile.esmNotLinkedP2') }}
               </p>
             </div>
             <RouterLink v-if="auth.isAdmin.value" to="/admin" class="btn-esm-sync">
-              🛠️ Przypisz w Panelu Admina →
+              🛠️ {{ t('nav.admin') }} →
             </RouterLink>
           </div>
 
@@ -748,20 +731,20 @@ const formatDate = (isoString?: string) => {
           <div v-if="esmStatus?.my_team" class="esm-team-preview">
             <div class="esm-team-meta">
               <div>
-                <h4>⛷️ Mój Skład: {{ esmStatus.my_team.team_name }}</h4>
+                <h4>{{ t('profile.esmMyTeam') }}: {{ esmStatus.my_team.team_name }}</h4>
                 <small class="field-hint">
-                  ID Drużyny: <code>{{ esmStatus.team_id }}</code> • Ostatnia synchronizacja: {{ formatDate(esmStatus.last_synced_at) }}
+                  {{ t('profile.esmTeamId') }}: <code>{{ esmStatus.team_id }}</code> • {{ t('profile.esmLastSync') }}: {{ formatDate(esmStatus.last_synced_at) }}
                 </small>
               </div>
               <div class="esm-team-pills">
-                <span v-if="esmStatus.my_team.value != null" class="esm-stat-chip">Wartość: {{ esmStatus.my_team.value }}</span>
-                <span class="esm-stat-chip">Pkt ESM: {{ esmStatus.my_team.total_points }}</span>
+                <span v-if="esmStatus.my_team.value != null" class="esm-stat-chip">{{ t('profile.esmValueChip') }}: {{ esmStatus.my_team.value }}</span>
+                <span class="esm-stat-chip">ESM: {{ esmStatus.my_team.total_points }} {{ t('common.pts') }}</span>
               </div>
             </div>
 
             <div class="esm-squad-columns">
               <div class="esm-squad-group">
-                <h5>⭐ Podstawowy skład ({{ esmStatus.my_team.starters?.length || 0 }})</h5>
+                <h5>{{ t('profile.esmStartersHeading', { count: esmStatus.my_team.starters?.length || 0 }) }}</h5>
                 <div class="esm-player-list">
                   <div v-for="p in esmStatus.my_team.starters" :key="p.esm_id || p.esm_fullname" class="esm-player-chip">
                     <CountryFlag :code="p.country" size="xs" />
@@ -771,7 +754,7 @@ const formatDate = (isoString?: string) => {
                 </div>
               </div>
               <div class="esm-squad-group">
-                <h5>🪑 Ławka rezerwowych ({{ esmStatus.my_team.bench?.length || 0 }})</h5>
+                <h5>{{ t('profile.esmBenchHeading', { count: esmStatus.my_team.bench?.length || 0 }) }}</h5>
                 <div class="esm-player-list">
                   <div v-for="p in esmStatus.my_team.bench" :key="p.esm_id || p.esm_fullname" class="esm-player-chip bench">
                     <CountryFlag :code="p.country" size="xs" />
@@ -783,25 +766,25 @@ const formatDate = (isoString?: string) => {
             </div>
           </div>
 
-          <!-- SEKCJA ZNAJOMYCH WEWNĄTRZ FANTASKI (ZAPROSZENIA + PRYWATNOŚĆ) -->
+          <!-- SEKCJA ZNAJOMYCH WEWNĄTRZ FANTASKI -->
           <div class="esm-friends-section">
             <div class="esm-friends-header">
-              <h5>👥 Znajomi w FantaSKI ({{ esmStatus?.friends?.length || 0 }})</h5>
+              <h5>{{ t('profile.esmFriendsTitle') }} ({{ esmStatus?.friends?.length || 0 }})</h5>
               <small class="field-hint">
-                Zaproś innych graczy FantaSKI z podpiętą drużyną ESM. Po akceptacji zaproszenia ich aktualne składy pojawią się automatycznie w Porównywarce Pakietów.
+                {{ t('profile.esmFriendsSub') }}
               </small>
             </div>
 
             <!-- Otrzymane zaproszenia -->
             <div v-if="esmStatus?.incoming_requests?.length" class="esm-req-block">
-              <h6 class="esm-sub-heading">📩 Oczekujące zaproszenia ({{ esmStatus.incoming_requests.length }})</h6>
+              <h6 class="esm-sub-heading">{{ t('profile.esmIncoming', { count: esmStatus.incoming_requests.length }) }}</h6>
               <div class="esm-req-list">
                 <div v-for="req in esmStatus.incoming_requests" :key="req.user_id" class="esm-req-card incoming">
                   <div class="esm-user-ident">
                     <img v-if="req.picture" :src="req.picture" class="esm-mini-avatar" alt="Avatar" />
                     <div>
                       <strong>{{ req.name }}</strong>
-                      <small class="field-hint">Drużyna: {{ req.team_name }}</small>
+                      <small class="field-hint">{{ t('profile.esmTeamLabel') }}: {{ req.team_name }}</small>
                     </div>
                   </div>
                   <div class="esm-req-actions">
@@ -811,7 +794,7 @@ const formatDate = (isoString?: string) => {
                       :disabled="friendActionUserId === req.user_id"
                       @click="acceptFriendRequest(req.user_id)"
                     >
-                      ✓ Akceptuj
+                      {{ t('profile.esmAccept') }}
                     </button>
                     <button
                       type="button"
@@ -819,7 +802,7 @@ const formatDate = (isoString?: string) => {
                       :disabled="friendActionUserId === req.user_id"
                       @click="rejectFriendRequest(req.user_id)"
                     >
-                      ✕ Odrzuć
+                      {{ t('profile.esmReject') }}
                     </button>
                   </div>
                 </div>
@@ -828,14 +811,14 @@ const formatDate = (isoString?: string) => {
 
             <!-- Wysłane zaproszenia -->
             <div v-if="esmStatus?.outgoing_requests?.length" class="esm-req-block">
-              <h6 class="esm-sub-heading">📤 Wysłane zaproszenia ({{ esmStatus.outgoing_requests.length }})</h6>
+              <h6 class="esm-sub-heading">{{ t('profile.esmOutgoing', { count: esmStatus.outgoing_requests.length }) }}</h6>
               <div class="esm-req-list">
                 <div v-for="req in esmStatus.outgoing_requests" :key="req.user_id" class="esm-req-card">
                   <div class="esm-user-ident">
                     <img v-if="req.picture" :src="req.picture" class="esm-mini-avatar" alt="Avatar" />
                     <div>
                       <strong>{{ req.name }}</strong>
-                      <small class="field-hint">Drużyna: {{ req.team_name }}</small>
+                      <small class="field-hint">{{ t('profile.esmTeamLabel') }}: {{ req.team_name }}</small>
                     </div>
                   </div>
                   <button
@@ -844,7 +827,7 @@ const formatDate = (isoString?: string) => {
                     :disabled="friendActionUserId === req.user_id"
                     @click="cancelFriendRequest(req.user_id)"
                   >
-                    Anuluj
+                    {{ t('profile.esmCancelInv') }}
                   </button>
                 </div>
               </div>
@@ -866,7 +849,7 @@ const formatDate = (isoString?: string) => {
                     class="btn-text"
                     :disabled="friendActionUserId === (fr.user_id || fr.id)"
                     @click="removeFantaskiFriend(fr.user_id || fr.id)"
-                    title="Usuń ze znajomych"
+                    :title="t('profile.esmRemoveFriendTitle')"
                   >
                     ✕
                   </button>
@@ -876,23 +859,23 @@ const formatDate = (isoString?: string) => {
                     ⭐ {{ p.fis_name || p.esm_fullname }}
                   </span>
                 </div>
-                <small v-else class="field-hint">Ten znajomy nie ma jeszcze zsynchronizowanego składu.</small>
+                <small v-else class="field-hint">{{ t('profile.esmNoSyncFriend') }}</small>
               </div>
             </div>
 
-            <!-- Wyszukiwarka graczy FantaSKI (bez adresów e-mail) -->
+            <!-- Wyszukiwarka graczy FantaSKI -->
             <div class="esm-directory-box">
-              <h6 class="esm-sub-heading">🔍 Znajdź znajomych w FantaSKI</h6>
+              <h6 class="esm-sub-heading">{{ t('profile.esmFindTitle') }}</h6>
               <div class="esm-directory-search">
                 <input
                   v-model="directoryQuery"
                   type="text"
                   class="form-input"
-                  placeholder="Szukaj po nazwie gracza lub nazwie drużyny ESM..."
+                  :placeholder="t('profile.esmFindPh')"
                   @keyup.enter="searchDirectory"
                 />
                 <button type="button" class="btn-esm-sync" :disabled="isLoadingDirectory" @click="searchDirectory">
-                  {{ isLoadingDirectory ? 'Szukanie...' : 'Szukaj' }}
+                  {{ isLoadingDirectory ? t('common.loading') : t('profile.esmFindBtn') }}
                 </button>
               </div>
 
@@ -903,13 +886,13 @@ const formatDate = (isoString?: string) => {
                     <div>
                       <strong>{{ player.name }}</strong>
                       <small class="field-hint">
-                        Drużyna: {{ player.team_name }}
-                        <template v-if="player.value != null"> • {{ player.value }} mln</template>
+                        {{ t('profile.esmTeamLabel') }}: {{ player.team_name }}
+                        <template v-if="player.value != null"> • {{ player.value }} {{ t('common.mln') }}</template>
                       </small>
                     </div>
                   </div>
                   <div>
-                    <span v-if="player.relation === 'friend'" class="esm-rel-pill friend">✓ Znajomy</span>
+                    <span v-if="player.relation === 'friend'" class="esm-rel-pill friend">{{ t('profile.esmFriendPill') }}</span>
                     <button
                       v-else-if="player.relation === 'incoming'"
                       type="button"
@@ -917,7 +900,7 @@ const formatDate = (isoString?: string) => {
                       :disabled="friendActionUserId === player.user_id"
                       @click="acceptFriendRequest(player.user_id)"
                     >
-                      ✓ Akceptuj
+                      {{ t('profile.esmAccept') }}
                     </button>
                     <button
                       v-else-if="player.relation === 'outgoing'"
@@ -926,7 +909,7 @@ const formatDate = (isoString?: string) => {
                       :disabled="friendActionUserId === player.user_id"
                       @click="cancelFriendRequest(player.user_id)"
                     >
-                      ⏳ Wysłano (Anuluj)
+                      {{ t('profile.esmSentPill') }}
                     </button>
                     <button
                       v-else
@@ -935,13 +918,13 @@ const formatDate = (isoString?: string) => {
                       :disabled="friendActionUserId === player.user_id"
                       @click="sendFriendRequest(player.user_id)"
                     >
-                      + Wyślij zaproszenie
+                      {{ t('profile.esmSendInvite') }}
                     </button>
                   </div>
                 </div>
               </div>
               <small v-else class="field-hint">
-                Brak innych graczy FantaSKI z przypisaną drużyną ESM dla tego wyszukiwania.
+                {{ t('profile.esmSearchEmpty') }}
               </small>
             </div>
           </div>
@@ -952,9 +935,9 @@ const formatDate = (isoString?: string) => {
       <div v-if="activeProfileTab === 'notifications'" class="card notif-history-card">
         <div class="card-header esm-header-row">
           <div>
-            <h3>🔔 Historia powiadomień ({{ notifHistory.length }})</h3>
+            <h3>{{ t('profile.notifTitle', { count: notifHistory.length }) }}</h3>
             <p class="subtitle">
-              Pełne archiwum powiadomień o Drafcie i ligach. Po kliknięciu powiadomienie znika z dzwoneczka na górze, ale pozostaje tutaj na stałe.
+              {{ t('profile.notifSub') }}
             </p>
           </div>
           <div class="esm-header-actions">
@@ -964,16 +947,16 @@ const formatDate = (isoString?: string) => {
               class="btn-esm-sync"
               @click="markAllAsRead"
             >
-              ✓ Oznacz wszystkie jako przeczytane
+              ✓ {{ t('nav.markAllRead') }}
             </button>
             <button type="button" class="btn-secondary" :disabled="isLoadingNotifs" @click="fetchNotifications(100)">
-              🔄 Odśwież
+              🔄 {{ t('common.refresh') }}
             </button>
           </div>
         </div>
         <div class="card-body">
           <div v-if="notifHistory.length === 0" class="field-hint">
-            Brak zapisanych powiadomień.
+            {{ t('profile.notifEmpty') }}
           </div>
           <div v-else class="notif-history-list">
             <div
@@ -985,15 +968,15 @@ const formatDate = (isoString?: string) => {
               <div class="notif-hist-main">
                 <div class="notif-hist-top">
                   <span class="notif-hist-badge" :class="n.is_read ? 'read' : 'new'">
-                    {{ n.is_read ? 'Przeczytane' : 'Nowe' }}
+                    {{ n.is_read ? '✓' : '●' }}
                   </span>
                   <strong>{{ n.title }}</strong>
-                  <small class="field-hint">{{ n.created_at ? new Date(n.created_at).toLocaleString() : '' }}</small>
+                  <small class="field-hint">{{ n.created_at ? new Date(n.created_at).toLocaleString(bcp47Locale) : '' }}</small>
                 </div>
                 <p class="notif-hist-msg">{{ n.message }}</p>
               </div>
               <button type="button" class="btn-esm-sync" @click="openHistoryNotification(n)">
-                Otwórz →
+                {{ t('profile.notifOpen') }}
               </button>
             </div>
           </div>
@@ -1004,20 +987,20 @@ const formatDate = (isoString?: string) => {
       <div v-if="activeProfileTab === 'messages'" class="card support-chat-card">
         <div class="card-header esm-header-row">
           <div>
-            <h3>💬 Komunikator z Administratorem</h3>
-            <p class="subtitle">Zadaj pytanie o pakiet PRO, integrację ESM lub zgłoś problem — odpowiedź pojawi się tutaj i w dzwoneczku.</p>
+            <h3>{{ t('profile.msgTitle') }}</h3>
+            <p class="subtitle">{{ t('profile.msgSub') }}</p>
           </div>
           <button type="button" class="btn-secondary" :disabled="isLoadingSupport" @click="loadSupportThread(true)">
-            🔄 Odśwież
+            🔄 {{ t('common.refresh') }}
           </button>
         </div>
 
         <div class="card-body">
           <div v-if="isLoadingSupport && supportMessages.length === 0" class="field-hint">
-            Ładowanie rozmowy...
+            {{ t('profile.msgLoading') }}
           </div>
           <div v-else-if="supportMessages.length === 0" class="field-hint">
-            Nie wysłałeś jeszcze żadnej wiadomości. Napisz poniżej, aby rozpocząć rozmowę z administratorem.
+            {{ t('profile.msgEmpty') }}
           </div>
           <div v-else class="support-messages-list">
             <div
@@ -1027,8 +1010,8 @@ const formatDate = (isoString?: string) => {
               :class="m.sender_role === 'ADMIN' ? 'bubble-admin' : 'bubble-user'"
             >
               <div class="sb-meta">
-                <strong>{{ m.sender_role === 'ADMIN' ? '🛡️ Administrator' : 'Ty' }}</strong>
-                <span>{{ m.created_at ? new Date(m.created_at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' }) : '' }}</span>
+                <strong>{{ m.sender_role === 'ADMIN' ? t('profile.msgSenderAdmin') : t('profile.msgSenderYou') }}</strong>
+                <span>{{ m.created_at ? new Date(m.created_at).toLocaleString(bcp47Locale, { dateStyle: 'short', timeStyle: 'short' }) : '' }}</span>
               </div>
               <div v-if="m.context" class="sb-ctx">{{ m.context }}</div>
               <p class="sb-text">{{ m.text }}</p>
@@ -1041,11 +1024,11 @@ const formatDate = (isoString?: string) => {
               rows="3"
               maxlength="1500"
               class="form-input"
-              placeholder="Napisz wiadomość do administratora..."
+              :placeholder="t('profile.msgPh')"
             ></textarea>
             <div v-if="supportReplyError" class="alert-box error">{{ supportReplyError }}</div>
             <button type="submit" class="btn-primary" :disabled="isSendingSupportMsg || !supportReplyText.trim()">
-              {{ isSendingSupportMsg ? 'Wysyłanie...' : '📩 Wyślij wiadomość' }}
+              {{ isSendingSupportMsg ? t('common.sending') : t('profile.msgSend') }}
             </button>
           </form>
         </div>

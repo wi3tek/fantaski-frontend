@@ -64,7 +64,7 @@ const initPageGoogleSignIn = () => {
             await auth.loginWithGoogle(response.credential)
             redirectAfterLogin()
           } catch (err: any) {
-            gsiError.value = err?.message || 'Błąd logowania przez Google.'
+            gsiError.value = err?.message || t('auth.googleError')
           }
         }
       },
@@ -92,7 +92,7 @@ const handleDevLogin = async () => {
     await auth.devLogin(devEmail.value, devName.value)
     redirectAfterLogin()
   } catch (e: any) {
-    devError.value = e?.message || 'Błąd logowania testowego'
+    devError.value = e?.message || t('auth.loginError')
   }
 }
 
@@ -116,29 +116,29 @@ onMounted(() => {
           <div class="feature-card">
             <div class="f-icon">⚡</div>
             <div>
-              <h3>Ligi Drafta Snake</h3>
-              <p>Załóż własną ligę lub dołącz 8-znakowym kodem od znajomych i zbieraj punkty w trakcie sezonu (1 liga za darmo, bez limitu w PRO).</p>
+              <h3>{{ t('login.featDraftTitle') }}</h3>
+              <p>{{ t('login.featDraftDesc') }}</p>
             </div>
           </div>
           <div class="feature-card">
             <div class="f-icon">⚖️</div>
             <div>
-              <h3>Porównywarka Skoczków &amp; ESM</h3>
-              <p>Zestawiaj formę i serie skoków (do 2 skoczków i 10 prób za darmo, bez limitu oraz ze składami znajomych ESM w PRO).</p>
+              <h3>{{ t('login.featStatsTitle') }}</h3>
+              <p>{{ t('login.featStatsDesc') }}</p>
             </div>
           </div>
           <div class="feature-card">
             <div class="f-icon">📅</div>
             <div>
-              <h3>Baza FIS &amp; Kalendarz PŚ</h3>
-              <p>Kompletne wyniki treningów, kwalifikacji, konkursów, profile skoczni oraz klasyfikacje generalne FIS.</p>
+              <h3>{{ t('login.featDbTitle') }}</h3>
+              <p>{{ t('login.featDbDesc') }}</p>
             </div>
           </div>
           <div class="feature-card pro-highlight">
             <div class="f-icon">🔮</div>
             <div>
-              <h3>Prognozy AI (PRO)</h3>
-              <p>Sieć neuronowa, 300 symulacji Monte Carlo, prognoza wiatru oraz wyceny Fantasy przed każdym konkursem.</p>
+              <h3>{{ t('login.featAiTitle') }}</h3>
+              <p>{{ t('login.featAiDesc') }}</p>
             </div>
           </div>
         </div>
@@ -165,33 +165,33 @@ onMounted(() => {
         <div v-if="isExpired" class="expired-banner">
           <span class="expired-icon">⏱️</span>
           <div>
-            <strong>Wylogowano automatycznie</strong>
-            <p>Twoja sesja wygasła po upływie czasu ważności tokenu. Zaloguj się ponownie, aby kontynuować.</p>
+            <strong>{{ t('login.expiredTitle') }}</strong>
+            <p>{{ t('login.expiredDesc') }}</p>
           </div>
         </div>
 
         <div class="google-section">
-          <label class="section-label">Szybkie logowanie kontem Google</label>
+          <label class="section-label">{{ t('auth.googleFastLabel') }}</label>
           <div id="login-page-google-btn" class="google-btn-wrap"></div>
           <p v-if="gsiError" class="login-error">{{ gsiError }}</p>
         </div>
 
         <template v-if="showDevLogin">
           <div class="login-separator">
-            <span>lub szybkie logowanie dev</span>
+            <span>{{ t('auth.devSep') }}</span>
           </div>
 
           <form class="dev-form" @submit.prevent="handleDevLogin">
             <div class="form-group">
-              <label>Adres e-mail</label>
-              <input v-model="devEmail" type="email" class="login-input" placeholder="twoj-email@domena.pl" required />
+              <label>{{ t('auth.emailLabel') }}</label>
+              <input v-model="devEmail" type="email" class="login-input" :placeholder="t('auth.emailPh')" required />
             </div>
             <div class="form-group">
-              <label>Imię i nazwisko (opcjonalnie)</label>
-              <input v-model="devName" type="text" class="login-input" placeholder="Twoje imię" />
+              <label>{{ t('auth.nameLabel') }}</label>
+              <input v-model="devName" type="text" class="login-input" :placeholder="t('auth.namePh')" />
             </div>
             <button type="submit" class="login-submit-btn" :disabled="auth.isLoading.value">
-              {{ auth.isLoading.value ? 'Logowanie...' : 'Zaloguj się' }}
+              {{ auth.isLoading.value ? t('auth.loggingIn') : t('login.devBtn') }}
             </button>
             <p v-if="devError" class="login-error">{{ devError }}</p>
           </form>
@@ -199,12 +199,12 @@ onMounted(() => {
 
         <div class="tiers-box">
           <div class="tier-row">
-            <span class="tier-pill free">DARMOWE (po zalogowaniu)</span>
-            <small>1 liga Drafta (tworzenie lub dołączenie), Porównywarka (max 2 skoczków / 10 skoków), Bazy i Klasyfikacje FIS.</small>
+            <span class="tier-pill free">{{ t('auth.freeBadge') }}</span>
+            <small>{{ t('login.freeSmall') }}</small>
           </div>
           <div class="tier-row">
             <span class="tier-pill pro">PRO</span>
-            <small>Nielimitowane ligi Drafta, pełna Porównywarka + składy ESM, wyceny oraz Prognozy AI.</small>
+            <small>{{ t('login.proSmall') }}</small>
           </div>
         </div>
       </section>

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useAuth } from '@/stores/auth'
+import { useI18n } from '@/i18n'
 
 const auth = useAuth()
+const { t } = useI18n()
 
 const props = defineProps<{
   groupedRows: any[]
@@ -18,18 +20,18 @@ const mobileStatTab = ref<'basics' | 'rates' | 'hills'>('basics')
 
 const mobileSortOptions = computed(() => {
   const opts = [
-    ...(auth.isPro.value ? [{ key: 'pointsPerPrice', label: 'Efektywność (Pkt / Cena)' }] : []),
-    { key: 'avgRank', label: 'Średnie miejsce' },
-    { key: 'totalPoints', label: 'Suma punktów FIS' },
-    { key: 'avgPoints', label: 'Średnia punktów' },
-    { key: 'hitRate30', label: 'Skuteczność Top 30 (%)' },
-    { key: 'hitRate10', label: 'Skuteczność Top 10 (%)' },
-    { key: 'hitRate3', label: 'Podium (%)' },
-    { key: 'trendDiff', label: 'Trend formy' },
-    { key: 'stdDev', label: 'Stabilność (σ)' },
-    { key: 'jumpCount', label: 'Liczba skoków' },
-    ...(auth.isPro.value ? [{ key: 'price', label: 'Cena Fantasy' }] : []),
-    { key: 'name', label: 'Nazwisko (A-Z)' },
+    ...(auth.isPro.value ? [{ key: 'pointsPerPrice', label: t('analytics.optEff') }] : []),
+    { key: 'avgRank', label: t('analytics.optAvgRank') },
+    { key: 'totalPoints', label: t('analytics.optTotalPts') },
+    { key: 'avgPoints', label: t('analytics.optAvgPts') },
+    { key: 'hitRate30', label: t('analytics.optTop30') },
+    { key: 'hitRate10', label: t('analytics.optTop10') },
+    { key: 'hitRate3', label: t('analytics.optPodium') },
+    { key: 'trendDiff', label: t('analytics.optTrend') },
+    { key: 'stdDev', label: t('analytics.optStd') },
+    { key: 'jumpCount', label: t('analytics.optJumps') },
+    ...(auth.isPro.value ? [{ key: 'price', label: t('analytics.optPrice') }] : []),
+    { key: 'name', label: t('analytics.optName') },
   ]
   return opts
 })
@@ -165,6 +167,7 @@ interface AthleteStat {
     normalCount: number
     normalAvg: number | null
     preferenceText: string
+    preferenceCode?: string
   }
 }
 
@@ -205,7 +208,7 @@ const rawAthleteAnalytics = computed<AthleteStat[]>(() => {
         stdDev: null,
         trendIcon: '➡️',
         trendClass: 'trend-neutral',
-        trendText: 'Brak prób',
+        trendText: t('analytics.prefNoJumps'),
         trendDiff: null,
         hillBreakdown: {
           flyingCount: 0,
@@ -214,7 +217,8 @@ const rawAthleteAnalytics = computed<AthleteStat[]>(() => {
           largeAvg: null,
           normalCount: 0,
           normalAvg: null,
-          preferenceText: 'Brak prób'
+          preferenceText: t('analytics.prefNoJumps'),
+          preferenceCode: 'none'
         }
       }
     }
@@ -254,7 +258,7 @@ const rawAthleteAnalytics = computed<AthleteStat[]>(() => {
     // Trend formy (porównanie średniej 3 ostatnich skoków do 3 poprzednich)
     let trendIcon = '➡️'
     let trendClass = 'trend-neutral'
-    let trendText = 'Brak danych'
+    let trendText = t('analytics.trendNoData')
     let trendDiff: number | null = null
     if (count >= 2) {
       const last3 = ranksArr.slice(0, 3)
@@ -267,18 +271,18 @@ const rawAthleteAnalytics = computed<AthleteStat[]>(() => {
         if (trendDiff > 2) {
           trendIcon = '⬆️'
           trendClass = 'trend-up'
-          trendText = `+${trendDiff.toFixed(1)} poz`
+          trendText = `+${trendDiff.toFixed(1)} ${t('analytics.trendPosUnit')}`
         } else if (trendDiff < -2) {
           trendIcon = '⬇️'
           trendClass = 'trend-down'
-          trendText = `${trendDiff.toFixed(1)} poz`
+          trendText = `${trendDiff.toFixed(1)} ${t('analytics.trendPosUnit')}`
         } else {
           trendIcon = '➡️'
           trendClass = 'trend-neutral'
-          trendText = `${trendDiff > 0 ? '+' : ''}${trendDiff.toFixed(1)} poz`
+          trendText = `${trendDiff > 0 ? '+' : ''}${trendDiff.toFixed(1)} ${t('analytics.trendPosUnit')}`
         }
       } else {
-        trendText = 'Zbyt mało prób'
+        trendText = t('analytics.trendTooFew')
       }
     }
 
@@ -297,15 +301,20 @@ const rawAthleteAnalytics = computed<AthleteStat[]>(() => {
       ? normalJumps.reduce((s, j) => s + j.jump_rank, 0) / normalJumps.length
       : null
 
-    let preferenceText = 'Zrównoważony'
+    let preferenceText = t('analytics.prefBalanced')
+    let preferenceCode = 'even'
     if (flyingAvg !== null && largeAvg !== null && flyingJumps.length >= 2 && flyingAvg < largeAvg - 2.5) {
-      preferenceText = `Wyższe lokaty na mamutach (+${(largeAvg - flyingAvg).toFixed(1)} poz.)`
+      preferenceText = t('analytics.prefFlying', { diff: (largeAvg - flyingAvg).toFixed(1) })
+      preferenceCode = 'flying'
     } else if (largeAvg !== null && flyingAvg !== null && largeJumps.length >= 2 && largeAvg < flyingAvg - 2.5) {
-      preferenceText = `Wyższe lokaty na dużych (+${(flyingAvg - largeAvg).toFixed(1)} poz.)`
+      preferenceText = t('analytics.prefLarge', { diff: (flyingAvg - largeAvg).toFixed(1) })
+      preferenceCode = 'large'
     } else if (flyingJumps.length >= 2 && !largeJumps.length) {
-      preferenceText = 'Tylko skoki mamucie'
+      preferenceText = t('analytics.prefOnlyFlying')
+      preferenceCode = 'flying'
     } else if (largeJumps.length >= 2 && !flyingJumps.length) {
-      preferenceText = 'Tylko skocznie duże'
+      preferenceText = t('analytics.prefOnlyLarge')
+      preferenceCode = 'large'
     }
 
     return {
@@ -336,7 +345,8 @@ const rawAthleteAnalytics = computed<AthleteStat[]>(() => {
         largeAvg,
         normalCount: normalJumps.length,
         normalAvg,
-        preferenceText
+        preferenceText,
+        preferenceCode
       }
     }
   })
@@ -532,14 +542,14 @@ const getTrendPath = (athleteName: string) => {
     <div class="card analytics-card" v-if="rawAthleteAnalytics.length > 0">
       <div class="card-header">
         <div class="header-badge-row">
-          <span class="math-badge">📐 ANALIZA STATYSTYCZNO-MATEMATYCZNA</span>
+          <span class="math-badge">{{ t('analytics.mathBadge') }}</span>
           <span v-if="currentHillType" class="hill-filter-badge">
-            Skocznia: <strong>{{ currentHillType }}</strong>
+            {{ t('common.hill') }}: <strong>{{ currentHillType }}</strong>
           </span>
         </div>
-        <h3>📊 Panel Analityczno-Statystyczny Zawodników</h3>
+        <h3>{{ t('analytics.title') }}</h3>
         <p class="subtitle">
-          Obiektywne zestawienie matematyczne dla wybranego zakresu zawodów: średnie, mediany, skuteczność punktowa, stabilność odległości i profile obiektów.
+          {{ t('analytics.sub') }}
         </p>
       </div>
 
@@ -548,66 +558,66 @@ const getTrendPath = (athleteName: string) => {
         <!-- 1. NAJWYŻSZA EFEKTYWNOŚĆ (PRO) -->
         <div v-if="auth.isPro.value && statisticalLeaders.mostEfficient" class="insight-card card-steal">
           <div class="insight-header">
-            <span class="insight-badge">💎 NAJWYŻSZA EFEKTYWNOŚĆ</span>
-            <span class="insight-val">{{ statisticalLeaders.mostEfficient.pointsPerPrice?.toFixed(2) }} pkt/cena</span>
+            <span class="insight-badge">{{ t('analytics.leadEff') }}</span>
+            <span class="insight-val">{{ statisticalLeaders.mostEfficient.pointsPerPrice?.toFixed(2) }} {{ t('analytics.effUnit') }}</span>
           </div>
           <div class="insight-body">
             <h4 class="insight-name">{{ statisticalLeaders.mostEfficient.name }}</h4>
             <div class="insight-meta">
-              <span class="insight-tag">Cena: {{ Number(statisticalLeaders.mostEfficient.price).toFixed(1) }}</span>
-              <span class="insight-tag">Śr. Pkt: {{ statisticalLeaders.mostEfficient.avgPoints.toFixed(1) }}</span>
-              <span class="insight-tag">Śr. msc: {{ statisticalLeaders.mostEfficient.avgRank?.toFixed(1) }}</span>
+              <span class="insight-tag">{{ t('common.price') }}: {{ Number(statisticalLeaders.mostEfficient.price).toFixed(1) }}</span>
+              <span class="insight-tag">{{ t('analytics.avgPtsShort') }}: {{ statisticalLeaders.mostEfficient.avgPoints.toFixed(1) }}</span>
+              <span class="insight-tag">{{ t('analytics.avgPosShort') }}: {{ statisticalLeaders.mostEfficient.avgRank?.toFixed(1) }}</span>
             </div>
-            <p class="insight-hint">Najwyższy stosunek zdobywanych punktów do ceny (wymóg: min. 1 pkt i 2 skoki).</p>
+            <p class="insight-hint">{{ t('analytics.leadEffHint') }}</p>
           </div>
         </div>
 
         <!-- 2. NAJWYŻSZA REGULARNOŚĆ TOP 30 -->
         <div v-if="statisticalLeaders.mostConsistent30" class="insight-card card-anchor">
           <div class="insight-header">
-            <span class="insight-badge">🎯 REGULARNOŚĆ TOP 30</span>
-            <span class="insight-val">{{ statisticalLeaders.mostConsistent30.hitRate30.toFixed(0) }}% awansów</span>
+            <span class="insight-badge">{{ t('analytics.leadReg') }}</span>
+            <span class="insight-val">{{ statisticalLeaders.mostConsistent30.hitRate30.toFixed(0) }}{{ t('analytics.leadRegVal') }}</span>
           </div>
           <div class="insight-body">
             <h4 class="insight-name">{{ statisticalLeaders.mostConsistent30.name }}</h4>
             <div class="insight-meta">
-              <span class="insight-tag">Skoki: {{ statisticalLeaders.mostConsistent30.jumpCount }}</span>
-              <span class="insight-tag">Śr. msc: {{ statisticalLeaders.mostConsistent30.avgRank?.toFixed(1) }}</span>
-              <span class="insight-tag">Mediana: {{ statisticalLeaders.mostConsistent30.medianRank?.toFixed(1) }}</span>
+              <span class="insight-tag">{{ t('analytics.jumpsPrefix') }}: {{ statisticalLeaders.mostConsistent30.jumpCount }}</span>
+              <span class="insight-tag">{{ t('analytics.avgPosShort') }}: {{ statisticalLeaders.mostConsistent30.avgRank?.toFixed(1) }}</span>
+              <span class="insight-tag">{{ t('analytics.medianShort') }}: {{ statisticalLeaders.mostConsistent30.medianRank?.toFixed(1) }}</span>
             </div>
-            <p class="insight-hint">Najwyższy odsetek awansów do serii finałowej (Top 30) w analizowanym okresie.</p>
+            <p class="insight-hint">{{ t('analytics.leadRegHint') }}</p>
           </div>
         </div>
 
         <!-- 3. NAJWIĘCEJ PODIUM / TOP 10 -->
         <div v-if="statisticalLeaders.topPodium" class="insight-card card-joker">
           <div class="insight-header">
-            <span class="insight-badge">🏆 CZOŁÓWKA &amp; PODIUM</span>
-            <span class="insight-val">Podium: {{ statisticalLeaders.topPodium.hitRate3.toFixed(0) }}%</span>
+            <span class="insight-badge">{{ t('analytics.leadPodium') }}</span>
+            <span class="insight-val">{{ t('analytics.optPodium').replace(' (%)', '') }}: {{ statisticalLeaders.topPodium.hitRate3.toFixed(0) }}%</span>
           </div>
           <div class="insight-body">
             <h4 class="insight-name">{{ statisticalLeaders.topPodium.name }}</h4>
             <div class="insight-meta">
               <span class="insight-tag">Top 10: {{ statisticalLeaders.topPodium.hitRate10.toFixed(0) }}%</span>
-              <span class="insight-tag">Najlepsze: {{ statisticalLeaders.topPodium.bestRank }}. msc</span>
+              <span class="insight-tag">{{ t('analytics.bestPos', { rank: statisticalLeaders.topPodium.bestRank ?? '-' }) }}</span>
             </div>
-            <p class="insight-hint">Największa częstotliwość finiszów na podium lub w pierwszej dziesiątce.</p>
+            <p class="insight-hint">{{ t('analytics.leadPodiumHint') }}</p>
           </div>
         </div>
 
         <!-- 4. NAJWYŻSZA POWTARZALNOŚĆ (MIN. ODCHYLENIE SIGMA) -->
         <div v-if="statisticalLeaders.lowestVariance" class="insight-card card-trap">
           <div class="insight-header">
-            <span class="insight-badge">📐 NAJWYŻSZA POWTARZALNOŚĆ</span>
+            <span class="insight-badge">{{ t('analytics.leadVar') }}</span>
             <span class="insight-val">σ = ±{{ statisticalLeaders.lowestVariance.stdDev?.toFixed(1) }}</span>
           </div>
           <div class="insight-body">
             <h4 class="insight-name">{{ statisticalLeaders.lowestVariance.name }}</h4>
             <div class="insight-meta">
-              <span class="insight-tag">Śr. msc: {{ statisticalLeaders.lowestVariance.avgRank?.toFixed(1) }}</span>
-              <span class="insight-tag">Próby: {{ statisticalLeaders.lowestVariance.jumpCount }} skoków</span>
+              <span class="insight-tag">{{ t('analytics.avgPosShort') }}: {{ statisticalLeaders.lowestVariance.avgRank?.toFixed(1) }}</span>
+              <span class="insight-tag">{{ t('analytics.triesPrefix') }}: {{ t('analytics.jumpsCount', { count: statisticalLeaders.lowestVariance.jumpCount }) }}</span>
             </div>
-            <p class="insight-hint">Minimalne odchylenie standardowe miejsc – najbardziej powtarzalne skoki bez wahań.</p>
+            <p class="insight-hint">{{ t('analytics.leadVarHint') }}</p>
           </div>
         </div>
       </div>
@@ -619,7 +629,7 @@ const getTrendPath = (athleteName: string) => {
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Filtruj po nazwisku skoczka..."
+            :placeholder="t('analytics.searchPh')"
             class="filter-search-input"
           />
           <button v-if="searchQuery" class="clear-search-btn" @click="searchQuery = ''">✕</button>
@@ -628,43 +638,43 @@ const getTrendPath = (athleteName: string) => {
         <div class="filter-toggles-row">
           <label v-if="auth.isPro.value" class="filter-checkbox-label">
             <input type="checkbox" v-model="filterOnlyPriced" />
-            <span>💰 Tylko z wyceną</span>
+            <span>{{ t('analytics.onlyPriced') }}</span>
           </label>
 
           <label class="filter-checkbox-label">
             <input type="checkbox" v-model="filterOnlyScoring" />
-            <span>🎯 Tylko punktujący (Top 30)</span>
+            <span>{{ t('analytics.onlyScoring') }}</span>
           </label>
 
           <div class="filter-select-wrapper">
-            <label class="select-prefix">Min. skoków:</label>
+            <label class="select-prefix">{{ t('analytics.minJumps') }}</label>
             <select v-model.number="filterMinJumps" class="filter-inline-select">
-              <option :value="1">Wszystkie (1+)</option>
-              <option :value="2">Min. 2 skoki</option>
-              <option :value="3">Min. 3 skoki</option>
-              <option :value="5">Min. 5 skoków</option>
+              <option :value="1">{{ t('analytics.minJumpsAll') }}</option>
+              <option :value="2">{{ t('analytics.minJumpsN', { n: 2 }) }}</option>
+              <option :value="3">{{ t('analytics.minJumpsN', { n: 3 }) }}</option>
+              <option :value="5">{{ t('analytics.minJumpsN', { n: 5 }) }}</option>
             </select>
           </div>
 
           <div class="filter-select-wrapper">
-            <label class="select-prefix">Osiągnięcia:</label>
+            <label class="select-prefix">{{ t('analytics.achievements') }}</label>
             <select v-model="filterAchievement" class="filter-inline-select">
-              <option value="all">Wszyscy</option>
-              <option value="podium">Przynajmniej 1x Podium</option>
-              <option value="top10">Przynajmniej 1x Top 10</option>
+              <option value="all">{{ t('analytics.achAll') }}</option>
+              <option value="podium">{{ t('analytics.achPodium') }}</option>
+              <option value="top10">{{ t('analytics.achTop10') }}</option>
             </select>
           </div>
         </div>
 
         <div class="filter-stats-badge">
-          <span>Pokazano: <strong>{{ filteredAnalytics.length }}</strong> z {{ rawAthleteAnalytics.length }}</span>
+          <span>{{ t('analytics.shownOf', { shown: filteredAnalytics.length, total: rawAthleteAnalytics.length }) }}</span>
           <button
             v-if="hasActiveFilters"
             class="btn-reset-filters"
             @click="resetFilters"
-            title="Zresetuj wszystkie filtry tabeli"
+            :title="t('analytics.resetTitle')"
           >
-            ✕ Reset
+            ✕ {{ t('common.reset') }}
           </button>
         </div>
       </div>
@@ -672,7 +682,7 @@ const getTrendPath = (athleteName: string) => {
       <!-- PASEK SORTOWANIA I TRYBU WIDOKU NA MOBILCE -->
       <div class="mobile-analytics-controls mobile-only">
         <div class="mac-sort-row">
-          <label for="analyticsMobileSort">Sortuj:</label>
+          <label for="analyticsMobileSort">{{ t('analytics.sortLabel') }}</label>
           <select
             id="analyticsMobileSort"
             :value="sortKey"
@@ -684,12 +694,12 @@ const getTrendPath = (athleteName: string) => {
             </option>
           </select>
           <button type="button" class="mac-order-btn" @click="toggleSortOrder">
-            {{ sortOrder === 'asc' ? '▲ Rosn.' : '▼ Mal.' }}
+            {{ sortOrder === 'asc' ? t('analytics.orderAsc') : t('analytics.orderDesc') }}
           </button>
         </div>
 
         <div class="mobile-desktop-hint">
-          💻 Pełną tabelę ze wszystkimi wskaźnikami zobaczysz na większym ekranie (komputerze).
+          {{ t('common.desktopHint') }}
         </div>
 
         <!-- 3 ZAKŁADKI TEMATYCZNE DLA KART NA MOBILCE -->
@@ -700,7 +710,7 @@ const getTrendPath = (athleteName: string) => {
             :class="{ active: mobileStatTab === 'basics' }"
             @click="mobileStatTab = 'basics'"
           >
-            📊 Forma i punkty
+            {{ t('analytics.tabBasics') }}
           </button>
           <button
             type="button"
@@ -708,7 +718,7 @@ const getTrendPath = (athleteName: string) => {
             :class="{ active: mobileStatTab === 'rates' }"
             @click="mobileStatTab = 'rates'"
           >
-            🎯 Skuteczność
+            {{ t('analytics.tabRates') }}
           </button>
           <button
             type="button"
@@ -716,7 +726,7 @@ const getTrendPath = (athleteName: string) => {
             :class="{ active: mobileStatTab === 'hills' }"
             @click="mobileStatTab = 'hills'"
           >
-            🏔️ Skocznie
+            {{ t('analytics.tabHills') }}
           </button>
         </div>
       </div>
@@ -724,7 +734,7 @@ const getTrendPath = (athleteName: string) => {
       <!-- KARTY ANALITYCZNE NA MOBILCE (<= 768px / landscape) -->
       <div class="analytics-mobile-list mobile-only">
         <div v-if="filteredAnalytics.length === 0" class="no-data-msg">
-          Brak zawodników spełniających nałożone kryteria filtrów.
+          {{ t('analytics.noMatching') }}
         </div>
 
         <div
@@ -753,16 +763,16 @@ const getTrendPath = (athleteName: string) => {
             <!-- ZAKŁADKA 1: FORMA & PUNKTY -->
             <div v-if="mobileStatTab === 'basics'" class="amc-kpi-grid" :class="{ 'cols-3': !auth.isPro.value }">
               <div class="amc-kpi-box">
-                <span class="amc-kpi-label">Śr. msc</span>
+                <span class="amc-kpi-label">{{ t('analytics.colAvgRank') }}</span>
                 <strong class="amc-kpi-val">{{ stat.avgRank?.toFixed(1) || '-' }}</strong>
               </div>
               <div class="amc-kpi-box">
-                <span class="amc-kpi-label">Suma Pkt</span>
+                <span class="amc-kpi-label">{{ t('analytics.colTotalPts') }}</span>
                 <strong class="amc-kpi-val points-val">{{ stat.totalPoints }}</strong>
-                <small class="amc-kpi-sub">śr. {{ stat.avgPoints.toFixed(1) }}</small>
+                <small class="amc-kpi-sub">{{ t('analytics.avgPtsShort') }} {{ stat.avgPoints.toFixed(1) }}</small>
               </div>
               <div v-if="auth.isPro.value" class="amc-kpi-box">
-                <span class="amc-kpi-label">Pkt / Cena</span>
+                <span class="amc-kpi-label">{{ t('analytics.colVal') }}</span>
                 <strong
                   v-if="stat.pointsPerPrice !== null"
                   class="amc-kpi-val"
@@ -773,7 +783,7 @@ const getTrendPath = (athleteName: string) => {
                 <span v-else class="text-null">-</span>
               </div>
               <div class="amc-kpi-box">
-                <span class="amc-kpi-label">Skoki</span>
+                <span class="amc-kpi-label">{{ t('analytics.colJumps') }}</span>
                 <strong class="amc-kpi-val">{{ stat.jumpCount }}</strong>
               </div>
             </div>
@@ -799,7 +809,7 @@ const getTrendPath = (athleteName: string) => {
                 </div>
               </div>
               <div class="amc-rate-item">
-                <span class="amc-rate-lbl">Podium</span>
+                <span class="amc-rate-lbl">{{ t('analytics.optPodium').replace(' (%)', '') }}</span>
                 <div class="rate-cell">
                   <div class="rate-bar-track">
                     <div class="rate-bar-fill fill-podium" :style="{ width: Math.min(100, stat.hitRate3) + '%' }"></div>
@@ -812,9 +822,9 @@ const getTrendPath = (athleteName: string) => {
             <!-- ZAKŁADKA 3: ZAKRES & SKOCZNIE -->
             <div v-else class="amc-hills-tab">
               <div class="amc-chips-row" style="border-top: none; padding-top: 0;">
-                <span class="amc-chip">Mediana: <strong>{{ stat.medianRank?.toFixed(1) || '-' }}</strong></span>
+                <span class="amc-chip">{{ t('analytics.colMedRank') }}: <strong>{{ stat.medianRank?.toFixed(1) || '-' }}</strong></span>
                 <span v-if="stat.bestRank !== null" class="amc-chip">
-                  Zakres: <strong>{{ stat.bestRank }}. – {{ stat.worstRank }}.</strong>
+                  {{ t('analytics.colRange') }}: <strong>{{ stat.bestRank }}. – {{ stat.worstRank }}.</strong>
                 </span>
                 <span
                   class="stat-badge"
@@ -831,13 +841,13 @@ const getTrendPath = (athleteName: string) => {
               </div>
               <div class="amc-hill-detail-row">
                 <span v-if="stat.hillBreakdown.flyingAvg !== null" class="amc-chip">
-                  🦅 Mamuty: <strong>{{ stat.hillBreakdown.flyingAvg.toFixed(1) }}</strong> ({{ stat.hillBreakdown.flyingCount }})
+                  {{ t('hills.filterFlying') }}: <strong>{{ stat.hillBreakdown.flyingAvg.toFixed(1) }}</strong> ({{ stat.hillBreakdown.flyingCount }})
                 </span>
                 <span v-if="stat.hillBreakdown.largeAvg !== null" class="amc-chip">
-                  ⛷️ Duże: <strong>{{ stat.hillBreakdown.largeAvg.toFixed(1) }}</strong> ({{ stat.hillBreakdown.largeCount }})
+                  {{ t('hills.filterLarge') }}: <strong>{{ stat.hillBreakdown.largeAvg.toFixed(1) }}</strong> ({{ stat.hillBreakdown.largeCount }})
                 </span>
                 <span v-if="stat.hillBreakdown.normalAvg !== null" class="amc-chip">
-                  🏔️ Norm.: <strong>{{ stat.hillBreakdown.normalAvg.toFixed(1) }}</strong> ({{ stat.hillBreakdown.normalCount }})
+                  {{ t('hills.filterNormal') }}: <strong>{{ stat.hillBreakdown.normalAvg.toFixed(1) }}</strong> ({{ stat.hillBreakdown.normalCount }})
                 </span>
               </div>
             </div>
@@ -845,8 +855,8 @@ const getTrendPath = (athleteName: string) => {
             <!-- Wykres trendu po kliknięciu karty -->
             <div v-if="expandedAthlete === stat.name" class="trend-chart-container amc-chart" @click.stop>
               <div class="chart-info">
-                <strong>Kolejne miejsca (Góra = 1., Dół = 50.):</strong>
-                <button type="button" class="btn-close-chart" @click="expandedAthlete = null">Zwiń ▲</button>
+                <strong>{{ t('analytics.chartShortTitle') }}</strong>
+                <button type="button" class="btn-close-chart" @click="expandedAthlete = null">{{ t('common.collapse') }} ▲</button>
               </div>
               <svg viewBox="-60 0 1060 180" class="trend-svg">
                 <line x1="0" y1="15" x2="1000" y2="15" class="guide-line top1" />
@@ -862,7 +872,7 @@ const getTrendPath = (athleteName: string) => {
             </div>
           </template>
           <div v-else class="no-data-msg" style="padding: 8px !important;">
-            Brak danych dla wybranego zakresu
+            {{ t('analytics.noDataRange') }}
           </div>
         </div>
       </div>
@@ -876,81 +886,81 @@ const getTrendPath = (athleteName: string) => {
                 class="th-sticky th-athlete sortable-th"
                 :class="{ 'sorted-th': sortKey === 'name' }"
                 @click="sortBy('name')"
-                title="Sortuj alfabetycznie po nazwisku"
+                :title="t('analytics.sortNameTitle')"
               >
-                Zawodnik {{ sortKey === 'name' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                {{ t('analytics.colAthlete') }} {{ sortKey === 'name' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
                 v-if="auth.isPro.value"
                 class="sortable-th th-price"
                 :class="{ 'sorted-th': sortKey === 'price' }"
                 @click="sortBy('price')"
-                title="Cena w Fantasy Ski Jumping"
+                :title="t('analytics.sortPriceTitle')"
               >
-                Cena {{ sortKey === 'price' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                {{ t('analytics.colPrice') }} {{ sortKey === 'price' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
                 class="sortable-th th-jumps"
                 :class="{ 'sorted-th': sortKey === 'jumpCount' }"
                 @click="sortBy('jumpCount')"
-                title="Liczba oddanych i zanalizowanych skoków w wybranym zakresie"
+                :title="t('analytics.sortJumpsTitle')"
               >
-                Skoki {{ sortKey === 'jumpCount' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                {{ t('analytics.colJumps') }} {{ sortKey === 'jumpCount' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
                 class="sortable-th th-points"
                 :class="{ 'sorted-th': sortKey === 'totalPoints' }"
                 @click="sortBy('totalPoints')"
-                title="Suma punktów według oficjalnego klucza Pucharu Świata (miejsca 1-30)"
+                :title="t('analytics.sortTotalPtsTitle')"
               >
-                Suma Pkt {{ sortKey === 'totalPoints' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                {{ t('analytics.colTotalPts') }} {{ sortKey === 'totalPoints' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
                 class="sortable-th th-points"
                 :class="{ 'sorted-th': sortKey === 'avgPoints' }"
                 @click="sortBy('avgPoints')"
-                title="Średnia liczba punktów FIS zdobywana na jeden skok"
+                :title="t('analytics.sortAvgPtsTitle')"
               >
-                Śr. Pkt {{ sortKey === 'avgPoints' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                {{ t('analytics.colAvgPts') }} {{ sortKey === 'avgPoints' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
                 v-if="auth.isPro.value"
                 class="sortable-th th-value"
                 :class="{ 'sorted-th': sortKey === 'pointsPerPrice' }"
                 @click="sortBy('pointsPerPrice')"
-                title="Wskaźnik efektywności: średnie punkty FIS dzielone przez cenę (Pkt/Cena)"
+                :title="t('analytics.sortValTitle')"
               >
-                Pkt / Cena {{ sortKey === 'pointsPerPrice' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                {{ t('analytics.colVal') }} {{ sortKey === 'pointsPerPrice' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
                 class="sortable-th th-rank"
                 :class="{ 'sorted-th': sortKey === 'avgRank' }"
                 @click="sortBy('avgRank')"
-                title="Średnie zajmowane miejsce (niższe = lepsze)"
+                :title="t('analytics.sortAvgRankTitle')"
               >
-                Śr. Msc {{ sortKey === 'avgRank' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                {{ t('analytics.colAvgRank') }} {{ sortKey === 'avgRank' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
                 class="sortable-th th-rank"
                 :class="{ 'sorted-th': sortKey === 'medianRank' }"
                 @click="sortBy('medianRank')"
-                title="Mediana miejsc (odporna na pojedyncze anomalie i upadki)"
+                :title="t('analytics.sortMedRankTitle')"
               >
-                Mediana {{ sortKey === 'medianRank' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                {{ t('analytics.colMedRank') }} {{ sortKey === 'medianRank' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
                 class="sortable-th th-rank"
                 :class="{ 'sorted-th': sortKey === 'bestRank' }"
                 @click="sortBy('bestRank')"
-                title="Zakres zajmowanych miejsc (Najlepsze - Najgorsze)"
+                :title="t('analytics.sortRangeTitle')"
               >
-                Min–Max {{ sortKey === 'bestRank' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                {{ t('analytics.thMinMax') }} {{ sortKey === 'bestRank' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
                 class="sortable-th th-rate"
                 :class="{ 'sorted-th': sortKey === 'hitRate30' }"
                 @click="sortBy('hitRate30')"
-                title="Procent skoków w czołowej 30-tce (punkty / awans do II serii)"
+                :title="t('analytics.sortTop30Title')"
               >
                 Top 30 {{ sortKey === 'hitRate30' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
@@ -958,7 +968,7 @@ const getTrendPath = (athleteName: string) => {
                 class="sortable-th th-rate"
                 :class="{ 'sorted-th': sortKey === 'hitRate10' }"
                 @click="sortBy('hitRate10')"
-                title="Procent skoków w pierwszej dziesiątce"
+                :title="t('analytics.sortTop10Title')"
               >
                 Top 10 {{ sortKey === 'hitRate10' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
@@ -966,28 +976,28 @@ const getTrendPath = (athleteName: string) => {
                 class="sortable-th th-rate"
                 :class="{ 'sorted-th': sortKey === 'hitRate3' }"
                 @click="sortBy('hitRate3')"
-                title="Procent skoków zakończonych na podium"
+                :title="t('analytics.sortPodiumTitle')"
               >
-                Podium {{ sortKey === 'hitRate3' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                {{ t('analytics.optPodium').replace(' (%)', '') }} {{ sortKey === 'hitRate3' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
                 class="sortable-th th-trend"
                 :class="{ 'sorted-th': sortKey === 'trendDiff' }"
                 @click="sortBy('trendDiff')"
-                title="Trend: porównanie średniej 3 ostatnich skoków do 3 poprzednich"
+                :title="t('analytics.sortTrendTitle')"
               >
-                Trend {{ sortKey === 'trendDiff' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
+                {{ t('analytics.colTrend') }} {{ sortKey === 'trendDiff' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
               <th
                 class="sortable-th th-std"
                 :class="{ 'sorted-th': sortKey === 'stdDev' }"
                 @click="sortBy('stdDev')"
-                title="Odchylenie standardowe miejsc (im mniejsza liczba, tym większa powtarzalność)"
+                :title="t('analytics.sortStdTitle')"
               >
                 σ {{ sortKey === 'stdDev' ? (sortOrder === 'asc' ? '▲' : '▼') : '' }}
               </th>
-              <th class="th-profile" title="Rozkład pozycji w zależności od rozmiaru skoczni (najedź po szczegóły)">
-                Obiekty
+              <th class="th-profile" :title="t('analytics.sortHillsTitle')">
+                {{ t('analytics.colHills') }}
               </th>
             </tr>
           </thead>
@@ -995,7 +1005,7 @@ const getTrendPath = (athleteName: string) => {
             <template v-if="filteredAnalytics.length === 0">
               <tr>
                 <td :colspan="auth.isPro.value ? 15 : 13" class="no-data-msg">
-                  Brak zawodników spełniających nałożone kryteria filtrów.
+                  {{ t('analytics.noMatching') }}
                 </td>
               </tr>
             </template>
@@ -1043,10 +1053,10 @@ const getTrendPath = (athleteName: string) => {
                       v-if="stat.pointsPerPrice !== null"
                       class="value-score-box"
                       :class="getValueScoreClass(stat.pointsPerPrice)"
-                      :title="`Średnio ${stat.avgPoints.toFixed(1)} pkt FIS na ${stat.price !== null ? Number(stat.price).toFixed(1) : '-'} ceny`"
+                      :title="t('analytics.valTitle', { avg: stat.avgPoints.toFixed(1), price: stat.price !== null ? Number(stat.price).toFixed(1) : '-' })"
                     >
                       <span class="val-num">{{ stat.pointsPerPrice.toFixed(2) }}</span>
-                      <span class="val-unit">pkt/c</span>
+                      <span class="val-unit">{{ t('analytics.effUnitShort') }}</span>
                     </div>
                     <span v-else class="text-null">-</span>
                   </td>
@@ -1126,7 +1136,7 @@ const getTrendPath = (athleteName: string) => {
                             ? 'bad'
                             : 'neutral'
                       "
-                      :title="'Odchylenie standardowe miejsc: ' + (stat.stdDev?.toFixed(2) || 'brak')"
+                      :title="t('analytics.stdTitle', { val: stat.stdDev?.toFixed(2) || '-' })"
                     >
                       {{ stat.stdDev != null ? '±' + stat.stdDev.toFixed(1) : '-' }}
                     </span>
@@ -1136,19 +1146,19 @@ const getTrendPath = (athleteName: string) => {
                   <td class="td-profile">
                     <span class="hill-note-tag" :title="stat.hillBreakdown.preferenceText">
                       {{
-                        stat.hillBreakdown.preferenceText.includes('mamut')
-                          ? '🦅 Mamuty'
-                          : stat.hillBreakdown.preferenceText.includes('dużych')
-                            ? '⛷️ Duże'
-                            : stat.hillBreakdown.preferenceText.includes('Brak')
+                        stat.hillBreakdown.preferenceCode === 'flying'
+                          ? t('hills.filterFlying')
+                          : stat.hillBreakdown.preferenceCode === 'large'
+                            ? t('hills.filterLarge')
+                            : stat.hillBreakdown.preferenceCode === 'none'
                               ? '—'
-                              : '⚖️ Równy'
+                              : t('analytics.prefEvenTag')
                       }}
                     </span>
                   </td>
                 </template>
 
-                <td v-else :colspan="auth.isPro.value ? 14 : 12" class="no-data-msg">Brak danych dla wybranego zakresu</td>
+                <td v-else :colspan="auth.isPro.value ? 14 : 12" class="no-data-msg">{{ t('analytics.noDataRange') }}</td>
               </tr>
 
               <!-- PANEL ROZWINIĘCIA Z WYKRESEM SPARKLINE -->
@@ -1156,8 +1166,8 @@ const getTrendPath = (athleteName: string) => {
                 <td :colspan="auth.isPro.value ? 15 : 13">
                   <div class="trend-chart-container">
                     <div class="chart-info">
-                      <strong>Wykres Kolejnych Miejsc w Serii (Góra = 1. miejsce, Dół = 50. miejsce):</strong>
-                      <span>Kliknij wiersz ponownie, aby zwinąć</span>
+                      <strong>{{ t('analytics.trendTitle') }}</strong>
+                      <span>{{ t('analytics.collapseChartHint') }}</span>
                     </div>
                     <svg viewBox="-60 0 1060 190" class="trend-svg">
                       <line x1="0" y1="15" x2="1000" y2="15" class="guide-line top1" />
@@ -1209,8 +1219,8 @@ const getTrendPath = (athleteName: string) => {
       style="margin-top: 25px"
     >
       <div class="card-header">
-        <h2>📊 Korelacja: Cena vs Średnia Pozycja (Rozkład Kwadrantowy)</h2>
-        <p class="subtitle">Wizualizacja zależności pomiędzy wyceną a średnią pozycją w stawce</p>
+        <h2>{{ t('analytics.scatterTitle') }}</h2>
+        <p class="subtitle">{{ t('analytics.scatterSub') }}</p>
       </div>
 
       <div class="scatter-container">
@@ -1219,16 +1229,16 @@ const getTrendPath = (athleteName: string) => {
           style="position: relative; width: 100%; max-width: 800px; margin: 0 auto"
         >
           <div class="quadrant quad-top-left">
-            <span class="quad-title">Cena ≤ 2.0 • Wysoka pozycja (≤ 20)</span>
+            <span class="quad-title">{{ t('analytics.quadTopLeft') }}</span>
           </div>
           <div class="quadrant quad-top-right">
-            <span class="quad-title">Cena > 2.0 • Wysoka pozycja (≤ 20)</span>
+            <span class="quad-title">{{ t('analytics.quadTopRight') }}</span>
           </div>
           <div class="quadrant quad-bottom-left">
-            <span class="quad-title">Cena ≤ 2.0 • Dalsza pozycja (> 20)</span>
+            <span class="quad-title">{{ t('analytics.quadBottomLeft') }}</span>
           </div>
           <div class="quadrant quad-bottom-right">
-            <span class="quad-title">Cena > 2.0 • Dalsza pozycja (> 20)</span>
+            <span class="quad-title">{{ t('analytics.quadBottomRight') }}</span>
           </div>
 
           <svg
@@ -1290,18 +1300,18 @@ const getTrendPath = (athleteName: string) => {
               </foreignObject>
             </g>
 
-            <text x="5" y="15" fill="#94a3b8" font-size="11" font-weight="bold">↑ Miejsce 1</text>
+            <text x="5" y="15" fill="#94a3b8" font-size="11" font-weight="bold">{{ t('analytics.axisPlace1') }}</text>
             <text x="5" y="395" fill="#94a3b8" font-size="11" font-weight="bold">
-              ↓ Miejsce 40+
+              {{ t('analytics.axisPlace40') }}
             </text>
-            <text x="5" y="215" fill="#94a3b8" font-size="10" font-weight="bold">Średnia 20</text>
-            <text x="535" y="390" fill="#94a3b8" font-size="11" font-weight="bold">Cena 3.0→</text>
-            <text x="265" y="390" fill="#94a3b8" font-size="10">Cena 1.5</text>
+            <text x="5" y="215" fill="#94a3b8" font-size="10" font-weight="bold">{{ t('analytics.axisAvg20') }}</text>
+            <text x="535" y="390" fill="#94a3b8" font-size="11" font-weight="bold">{{ t('analytics.axisPrice3') }}</text>
+            <text x="265" y="390" fill="#94a3b8" font-size="10">{{ t('analytics.axisPrice15') }}</text>
           </svg>
         </div>
         <div v-if="hoveredAthlete" class="scatter-selected-banner mobile-only">
           <strong>{{ hoveredAthlete.name }}</strong>
-          <span>Cena: {{ Number(hoveredAthlete.price).toFixed(1) }} • Śr. msc: {{ hoveredAthlete.avgRank?.toFixed(1) }}</span>
+          <span>{{ t('common.price') }}: {{ Number(hoveredAthlete.price).toFixed(1) }} • {{ t('analytics.avgPosShort') }}: {{ hoveredAthlete.avgRank?.toFixed(1) }}</span>
         </div>
       </div>
     </div>

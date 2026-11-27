@@ -1,4 +1,5 @@
 // Centralized API Client with JWT Bearer Token Injection & In-Memory TTL Caching
+import { translate } from '@/i18n'
 
 export const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
 
@@ -88,7 +89,7 @@ export async function apiFetch<T = any>(endpoint: string, options: ApiFetchOptio
   }
 
   if (!response.ok) {
-    let errorDetail = `Błąd serwera (${response.status})`
+    let errorDetail = `${translate('common.serverError')} (${response.status})`
     try {
       const errJson = await response.json()
       errorDetail = errJson.detail || errJson.message || JSON.stringify(errJson)

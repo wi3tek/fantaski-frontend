@@ -123,7 +123,7 @@ interface EsmStatusPayload {
 }
 
 const auth = useAuth()
-const { t, locale } = useI18n()
+const { t, bcp47Locale, formatSessionType, formatHillType, formatStarts } = useI18n()
 
 const isLoading = ref(true)
 const dashboardData = ref<DashboardStatsPayload | null>(null)
@@ -140,7 +140,7 @@ const firstName = computed(() => {
 
 const todayLabel = computed(() => {
   try {
-    return new Intl.DateTimeFormat('pl-PL', {
+    return new Intl.DateTimeFormat(bcp47Locale.value, {
       weekday: 'long',
       day: 'numeric',
       month: 'long',
@@ -157,36 +157,9 @@ const standingsSeason = computed(() => dashboardData.value?.standings?.season ||
 const standingsTotalEvents = computed(() => dashboardData.value?.standings?.total_events || 0)
 const latestCompId = computed(() => dashboardData.value?.latest_competition_id || null)
 
-const sessionTypeLabel = (type?: string) => {
-  switch (type) {
-    case 'COMPETITION':
-      return 'Konkurs'
-    case 'QUALIFICATION':
-    case 'QUA':
-      return 'Kwalifikacje'
-    case 'TRIAL':
-      return 'Seria próbna'
-    case 'TRAINING':
-      return 'Trening'
-    default:
-      return type || 'Sesja'
-  }
-}
+const sessionTypeLabel = (type?: string) => formatSessionType(type)
 
-const hillTypeLabel = (type?: string) => {
-  switch ((type || '').toUpperCase()) {
-    case 'FLYING':
-      return 'Mamucia'
-    case 'LARGE':
-      return 'Duża'
-    case 'NORMAL':
-      return 'Normalna'
-    case 'MEDIUM':
-      return 'Średnia'
-    default:
-      return ''
-  }
-}
+const hillTypeLabel = (type?: string) => (type ? formatHillType(type) : '')
 
 const formatSeasonLabel = (season?: string) => {
   const yr = Number(season)
@@ -209,20 +182,13 @@ const formatPoints = (val?: number | null) => {
 
 const formatMln = (val?: number | null) => {
   if (val === null || val === undefined || Number.isNaN(Number(val))) return '—'
-  return `${Number(val).toFixed(2).replace(/\.?0+$/, '')} mln`
+  return `${Number(val).toFixed(2).replace(/\.?0+$/, '')} ${t('common.mln')}`
 }
 
 const getStarterName = (p: EsmStarter) =>
-  p.fis_name || p.esm_fullname || p.name || (p.fis_code ? `#${p.fis_code}` : 'Skoczek')
+  p.fis_name || p.esm_fullname || p.name || (p.fis_code ? `#${p.fis_code}` : '')
 
-const formatStartsLabel = (count?: number | null) => {
-  const n = Number(count || 0)
-  if (n === 1) return '1 start'
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} starty`
-  return `${n} startów`
-}
+const formatStartsLabel = (count?: number | null) => formatStarts(Number(count || 0))
 
 const getParticipantStatus = (lg: DraftLeagueSummary) => {
   const p = (lg.participants || []).find((item) => item.user_id === myUserId.value)
@@ -247,27 +213,27 @@ const draftActionAlerts = computed(() => {
         leagueId: lg.id,
         leagueName: lg.name,
         kind: 'turn',
-        badge: '🔥 Twoja kolej!',
-        message: `Wybierz skoczka w lidze „${lg.name}” (${lg.current_pick_index ?? 0}/${lg.total_picks ?? '?'}).`,
-        ctaLabel: 'Wybierz teraz',
+        badge: '🔥',
+        message: t('dash.alertTurnMsg', { name: lg.name, round: lg.current_round || 1 }),
+        ctaLabel: t('dash.alertTurnCta'),
       })
     } else if (pStatus === 'INVITED' && lg.status === 'LOBBY') {
       alerts.push({
         leagueId: lg.id,
         leagueName: lg.name,
         kind: 'invite',
-        badge: '📩 Zaproszenie',
-        message: `Masz zaproszenie do ligi drafta „${lg.name}”.`,
-        ctaLabel: 'Dołącz do lobby',
+        badge: '📩',
+        message: t('dash.alertInviteMsg', { name: lg.name, cat: lg.category_code || 'WC' }),
+        ctaLabel: t('dash.alertInviteCta'),
       })
     } else if (lg.status === 'DRAFT_FINISHED' && lg.creator_id === uid) {
       alerts.push({
         leagueId: lg.id,
         leagueName: lg.name,
         kind: 'launch',
-        badge: '🚀 Gotowa do startu',
-        message: `Draft w „${lg.name}” ukończony — uruchom punktację ligi.`,
-        ctaLabel: 'Uruchom ligę',
+        badge: '🚀',
+        message: t('dash.alertStartMsg', { name: lg.name }),
+        ctaLabel: t('dash.alertStartCta'),
       })
     }
   }
@@ -277,13 +243,15 @@ const draftActionAlerts = computed(() => {
 const draftStatusInfo = (status: string) => {
   switch (status) {
     case 'ACTIVE_DRAFT':
-      return { label: 'Trwa Draft', cls: 'pill-amber' }
+      return { label: t('dash.statusActiveDraft'), cls: 'pill-amber' }
     case 'LEAGUE_ACTIVE':
-      return { label: 'Aktywna', cls: 'pill-green' }
+      return { label: t('dash.statusLeagueActive'), cls: 'pill-green' }
     case 'DRAFT_FINISHED':
-      return { label: 'Draft zakończony', cls: 'pill-blue' }
+      return { label: t('dash.statusDraftDone'), cls: 'pill-blue' }
     case 'LOBBY':
-      return { label: 'Lobby', cls: 'pill-slate' }
+      return { label: t('dash.statusLobby'), cls: 'pill-slate' }
+    case 'COMPLETED':
+      return { label: t('dash.statusCompleted'), cls: 'pill-slate' }
     default:
       return { label: status, cls: 'pill-slate' }
   }
@@ -349,7 +317,7 @@ const loadDashboard = async () => {
   if (statsRes.status === 'fulfilled') {
     dashboardData.value = statsRes.value
   } else {
-    statsError.value = statsRes.reason?.message || 'Nie udało się pobrać danych startowych.'
+    statsError.value = statsRes.reason?.message || t('dash.errLoadStartData')
   }
 
   if (draftRes.status === 'fulfilled') {
@@ -369,7 +337,7 @@ onMounted(loadDashboard)
 
 <template>
   <div class="dashboard-page">
-    <SkiLoader v-if="isLoading">Przygotowujemy Twój pulpit FantaSKI...</SkiLoader>
+    <SkiLoader v-if="isLoading">{{ t('dash.loading') }}</SkiLoader>
 
     <template v-else>
       <!-- POWITANIE -->
@@ -381,7 +349,7 @@ onMounted(loadDashboard)
         </div>
         <div class="dash-quick-links">
           <RouterLink to="/athletes" class="quick-chip">{{ t('nav.athletes') }}</RouterLink>
-          <RouterLink to="/stats" class="quick-chip">📊 {{ locale === 'pl' ? 'Statystyki' : t('nav.stats') }}</RouterLink>
+          <RouterLink to="/stats" class="quick-chip">📊 {{ t('dash.statsChip') }}</RouterLink>
           <RouterLink v-if="auth.isPro.value" to="/predictions" class="quick-chip quick-chip-pro">
             {{ t('nav.predictions') }}
           </RouterLink>
@@ -390,11 +358,11 @@ onMounted(loadDashboard)
 
       <div v-if="statsError" class="card dash-error-banner">
         <span>⚠️ {{ statsError }}</span>
-        <button type="button" class="btn-retry-sm" @click="loadDashboard">Odśwież</button>
+        <button type="button" class="btn-retry-sm" @click="loadDashboard">{{ t('common.refresh') }}</button>
       </div>
 
       <!-- 1. NAJBLIŻSZE ZAWODY -->
-      <section class="dash-panel next-comp-panel" aria-label="Najbliższe zawody">
+      <section class="dash-panel next-comp-panel" :aria-label="t('dash.ariaNextComp')">
         <div class="panel-top-row">
           <span class="eyebrow-pill">{{ t('dash.nextCompEyebrow') }}</span>
           <span v-if="nextComp.found && nextComp.hill_size" class="hs-pill">
@@ -454,7 +422,7 @@ onMounted(loadDashboard)
       </section>
 
       <!-- 2. TWOJE LIGI DRAFTA & AKCJA -->
-      <section class="card dash-panel" aria-label="Twoje ligi drafta">
+      <section class="card dash-panel" :aria-label="t('dash.ariaDraftLeagues')">
         <div class="panel-header">
           <div>
             <h2>{{ t('dash.draftTitle') }}</h2>
@@ -474,7 +442,7 @@ onMounted(loadDashboard)
               <span class="alert-badge">{{ alert.badge }}</span>
               <span class="alert-msg">{{ alert.message }}</span>
             </div>
-            <RouterLink to="/draft" class="btn-alert-cta">{{ alert.ctaLabel }} →</RouterLink>
+            <RouterLink :to="`/draft/league/${alert.leagueId}`" class="btn-alert-cta">{{ alert.ctaLabel }} →</RouterLink>
           </div>
         </div>
 
@@ -482,7 +450,7 @@ onMounted(loadDashboard)
           <RouterLink
             v-for="lg in displayedDraftLeagues"
             :key="lg.id"
-            to="/draft"
+            :to="`/draft/league/${lg.id}`"
             class="draft-league-tile"
           >
             <div class="tile-top">
@@ -494,44 +462,44 @@ onMounted(loadDashboard)
 
             <div class="tile-meta">
               <span>{{ lg.category_code || 'WC' }} · {{ formatSeasonLabel(lg.season) }}</span>
-              <span>{{ (lg.participants || []).filter((p) => p.status === 'ACCEPTED').length }} graczy</span>
+              <span>{{ (lg.participants || []).filter((p) => p.status === 'ACCEPTED').length }} {{ t('common.player5') }}</span>
             </div>
 
             <div class="tile-bottom">
               <template v-if="lg.status === 'ACTIVE_DRAFT'">
                 <span v-if="lg.current_turn_user_id === myUserId" class="turn-highlight">
-                  ⚡ Twój ruch (runda {{ lg.current_round || 1 }})
+                  {{ t('dash.yourTurnRound', { round: lg.current_round || 1 }) }}
                 </span>
                 <span v-else class="tile-muted">
-                  Postęp drafta: {{ lg.current_pick_index ?? 0 }}/{{ lg.total_picks ?? '?' }}
+                  {{ t('dash.draftProgress', { current: lg.current_pick_index ?? 0, total: lg.total_picks ?? '?' }) }}
                 </span>
               </template>
               <template v-else-if="getMyDraftStanding(lg)">
                 <span class="standing-chip">
-                  Miejsce <strong>#{{ getMyDraftStanding(lg)?.rank }}</strong>
+                  {{ t('dash.standingPos') }} <strong>#{{ getMyDraftStanding(lg)?.rank }}</strong>
                 </span>
                 <span class="points-chip">
-                  <strong>{{ formatPoints(getMyDraftStanding(lg)?.total_points) }}</strong> pkt
+                  <strong>{{ formatPoints(getMyDraftStanding(lg)?.total_points) }}</strong> {{ t('common.pts') }}
                 </span>
               </template>
               <template v-else-if="getParticipantStatus(lg) === 'INVITED'">
-                <span class="invite-highlight">📩 Oczekuje na akceptację</span>
+                <span class="invite-highlight">{{ t('dash.awaitingAccept') }}</span>
               </template>
               <template v-else>
-                <span class="tile-muted">Kliknij, aby otworzyć ligę</span>
+                <span class="tile-muted">{{ t('dash.clickToOpen') }}</span>
               </template>
             </div>
           </RouterLink>
         </div>
 
         <div v-else class="dash-empty-box">
-          <p>Nie uczestniczysz jeszcze w żadnej lidze Draft.</p>
-          <RouterLink to="/draft" class="btn-dash-primary-sm">➕ Utwórz lub dołącz do Drafta</RouterLink>
+          <p>{{ t('dash.emptyDraft') }}</p>
+          <RouterLink to="/draft" class="btn-dash-primary-sm">{{ t('dash.newDraft') }}</RouterLink>
         </div>
       </section>
 
       <!-- 3. NAJNOWSZE WYNIKI + TOP 5 KLASYFIKACJI GENERALNEJ -->
-      <section class="dash-two-col" aria-label="Najnowsze wyniki i klasyfikacja">
+      <section class="dash-two-col" :aria-label="t('dash.ariaRecentAndStandings')">
         <!-- LEWA: NAJNOWSZE WYNIKI -->
         <div class="card dash-panel">
           <div class="panel-header">
@@ -575,13 +543,13 @@ onMounted(loadDashboard)
                   </span>
                   <CountryFlag :code="p.country" size="xs" />
                   <span class="podium-name">{{ p.name }}</span>
-                  <span class="podium-pts">{{ formatPoints(p.total_points) }} pkt</span>
+                  <span class="podium-pts">{{ formatPoints(p.total_points) }} {{ t('common.pts') }}</span>
                 </div>
               </div>
             </RouterLink>
           </div>
           <div v-else class="dash-empty-box">
-            <p>Brak rozegranych sesji w bazie wyników.</p>
+            <p>{{ t('dash.noSessions') }}</p>
           </div>
         </div>
 
@@ -592,7 +560,7 @@ onMounted(loadDashboard)
               <h2>{{ t('dash.top5Title') }}</h2>
               <p class="panel-desc">
                 {{ t('common.season') }} {{ formatSeasonLabel(standingsSeason) }}
-                <template v-if="standingsTotalEvents > 0"> · po {{ standingsTotalEvents }} konkursach</template>
+                <template v-if="standingsTotalEvents > 0"> · {{ t('dash.afterComps', { count: standingsTotalEvents }) }}</template>
               </p>
             </div>
             <RouterLink to="/standings" class="panel-link">{{ t('dash.fullStandings') }}</RouterLink>
@@ -619,21 +587,21 @@ onMounted(loadDashboard)
               </div>
               <div class="top5-points">
                 <strong>{{ formatPoints(a.total_points) }}</strong>
-                <span>pkt</span>
+                <span>{{ t('common.pts') }}</span>
               </div>
             </div>
           </div>
           <div v-else class="dash-empty-box">
-            <p>Klasyfikacja generalna na ten sezon nie jest jeszcze dostępna.</p>
+            <p>{{ t('dash.noStandings') }}</p>
           </div>
         </div>
       </section>
 
       <!-- 4. MÓJ SKŁAD ESM (JEŚLI PODŁĄCZONY) -->
-      <section v-if="hasEsmTeam && esmTeam" class="card dash-panel esm-panel" aria-label="Mój skład ESM">
+      <section v-if="hasEsmTeam && esmTeam" class="card dash-panel esm-panel" :aria-label="t('dash.ariaEsmLineup')">
         <div class="panel-header">
           <div>
-            <h2>🛡️ Mój skład ESM — {{ esmTeam.team_name || 'Drużyna ESM' }}</h2>
+            <h2>{{ t('dash.esmPanelTitle') }} {{ esmTeam.team_name || t('dash.esmTeamFallback') }}</h2>
             <p class="panel-desc">{{ t('dash.esmDesc') }}</p>
           </div>
           <div class="esm-header-actions">

@@ -5,8 +5,6 @@ import CountryFlag from '@/components/CountryFlag.vue'
 import { api } from '@/api/client'
 import { useI18n } from '@/i18n'
 
-const { t } = useI18n()
-
 interface StandingAthlete {
   rank: number
   fis_code: number
@@ -27,18 +25,17 @@ const searchSearchQuery = ref('') // Filtr tekstowy do szybkiego szukania w tabe
 const selectedSeason = ref((new Date().getFullYear() + 1).toString())
 const selectedCategory = ref('WC')
 
-// Słownik kategorii (spójny z main.py)
-const categoriesMap: Record<string, string> = {
-  WC: 'Puchar Świata (WC)',
-  COC: 'Puchar Kontynentalny (COC)',
-  FC: 'FIS Cup (FC)',
-  GP: 'Letnie Grand Prix (GP)',
-  OWG: 'Igrzyska Olimpijskie (OWG)',
-  WSC: 'Mistrzostwa Świata (WSC)',
-  SFWC: 'MŚ w Lotach (SFWC)',
-  WJC: 'MŚ Juniorów (WJC)',
-  FESA: 'Puchar FESA Alpencup (FESA)',
-}
+const { t, formatCategory, formatStarts } = useI18n()
+
+const CATEGORY_CODES = ['WC', 'COC', 'FC', 'GP', 'OWG', 'WSC', 'SFWC', 'WJC', 'FESA']
+
+const categoriesMap = computed<Record<string, string>>(() => {
+  const out: Record<string, string> = {}
+  for (const code of CATEGORY_CODES) {
+    out[code] = formatCategory(code)
+  }
+  return out
+})
 
 // Generowanie lat (20 lat wstecz)
 const availableSeasons = computed(() => {
@@ -56,16 +53,7 @@ const formatSeasonLabel = (yearStr: string) => {
   return `${t('common.season')} ${y - 1}/${y}`
 }
 
-const formatStartsLabel = (count: number) => {
-  const n = Number(count || 0)
-  if (n === 1) return '1 start'
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    return `${n} starty`
-  }
-  return `${n} startów`
-}
+const formatStartsLabel = (count: number) => formatStarts(count)
 
 // --- Pobieranie Danych z MongoDB ---
 const loadStandings = async () => {
@@ -113,13 +101,13 @@ onMounted(() => {
     <div class="standings-header">
       <h2>{{ t('nav.standings') }}</h2>
       <p v-if="!isLoading && totalEvents > 0" class="events-count">
-        Przetworzono konkursów: <strong>{{ totalEvents }}</strong>
+        {{ t('standings.processed') }} <strong>{{ totalEvents }}</strong>
       </p>
     </div>
 
     <div class="filters-container">
       <div class="filter-box">
-        <label>Sezon:</label>
+        <label>{{ t('common.season') }}:</label>
         <select v-model="selectedSeason" class="filter-input">
           <option v-for="year in availableSeasons" :key="year" :value="year">
             {{ formatSeasonLabel(year) }}
@@ -128,7 +116,7 @@ onMounted(() => {
       </div>
 
       <div class="filter-box">
-        <label>Kategoria:</label>
+        <label>{{ t('common.category') }}:</label>
         <select v-model="selectedCategory" class="filter-input">
           <option v-for="(name, code) in categoriesMap" :key="code" :value="code">
             {{ name }}
@@ -137,11 +125,11 @@ onMounted(() => {
       </div>
 
       <div class="filter-box flex-grow filter-search-span">
-        <label>Filtruj skoczka na liście:</label>
+        <label>{{ t('standings.filterLabel') }}</label>
         <input
           v-model="searchSearchQuery"
           type="text"
-          placeholder="Wpisz nazwisko lub kraj..."
+          :placeholder="t('standings.filterPh')"
           class="filter-input"
         />
       </div>
@@ -153,11 +141,11 @@ onMounted(() => {
           <table class="results-table">
             <thead>
               <tr>
-                <th style="width: 70px; text-align: center">Miejsce</th>
-                <th>Imię i Nazwisko</th>
-                <th style="width: 90px; text-align: center">Kraj</th>
-                <th style="width: 90px; text-align: center">Starty</th>
-                <th style="width: 120px; text-align: right; padding-right: 15px">Punkty</th>
+                <th style="width: 70px; text-align: center">{{ t('common.rank') }}</th>
+                <th>{{ t('athletes.thFullName') }}</th>
+                <th style="width: 90px; text-align: center">{{ t('common.country') }}</th>
+                <th style="width: 90px; text-align: center">{{ t('standings.thStarts') }}</th>
+                <th style="width: 120px; text-align: right; padding-right: 15px">{{ t('common.points') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -186,7 +174,7 @@ onMounted(() => {
                 </td>
                 <td style="text-align: center" class="starts-col">{{ athlete.starts }}</td>
                 <td style="text-align: right; padding-right: 15px" class="points-col">
-                  <strong>{{ athlete.total_points }}</strong> pkt
+                  <strong>{{ athlete.total_points }}</strong> {{ t('common.pts') }}
                 </td>
               </tr>
             </tbody>
@@ -223,7 +211,7 @@ onMounted(() => {
 
             <div class="st-m-points">
               <strong>{{ athlete.total_points }}</strong>
-              <small>pkt</small>
+              <small>{{ t('common.pts') }}</small>
             </div>
           </div>
         </div>
@@ -231,12 +219,8 @@ onMounted(() => {
 
       <div v-else class="no-results">
         <span class="icon">🎿</span>
-        <p>Brak danych o klasyfikacji dla wybranego roku oraz kategorii.</p>
-        <small
-          >Upewnij się, że sesje dla kategorii
-          <strong> {{ categoriesMap[selectedCategory] }}</strong> w sezonie
-          <strong>{{ selectedSeason }}</strong> zostały pobrane.</small
-        >
+        <p>{{ t('standings.emptyTitle') }}</p>
+        <small>{{ t('standings.emptyHint', { cat: categoriesMap[selectedCategory] || selectedCategory, season: formatSeasonLabel(selectedSeason) }) }}</small>
       </div>
     </div>
   </div>

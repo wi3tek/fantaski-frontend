@@ -6,7 +6,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { api } from '@/api/client'
 import { useI18n } from '@/i18n'
 
-const { t } = useI18n()
+const { t, formatCategory, formatSessionsCount } = useI18n()
 
 interface SessionLight {
   _id: string
@@ -62,7 +62,7 @@ const fetchCalendar = async () => {
     )
     calendarEvents.value = data.events || []
   } catch (e: any) {
-    calendarError.value = e.message || 'Nie udało się pobrać kalendarza FIS.'
+    calendarError.value = e.message || t('sessions.errCalendar')
   } finally {
     loadingCalendar.value = false
   }
@@ -76,9 +76,9 @@ const openCalendarTab = () => {
 }
 
 const tournamentBadgeLabel = (tag?: string | null) => {
-  if (tag === 'TCS') return '🦅 Turniej Czterech Skoczni'
-  if (tag === 'RAW_AIR') return '🇳🇴 Raw Air'
-  if (tag === 'PLANICA_7') return '🇸🇮 Planica 7'
+  if (tag === 'TCS') return t('sessions.tournamentTcs')
+  if (tag === 'RAW_AIR') return t('sessions.tournamentRawAir')
+  if (tag === 'PLANICA_7') return t('sessions.tournamentPlanica7')
   return ''
 }
 
@@ -105,7 +105,7 @@ const formatSessionType = (raw?: string | null) => {
   const key = `session.${code}`
   const translated = t(key)
   if (translated !== key) return translated
-  return sessionTypeMap[code] || raw || 'Nieznany'
+  return sessionTypeMap[code] || raw || t('sessions.unknown')
 }
 
 const fetchCountries = async () => {
@@ -141,7 +141,7 @@ const fetchSessions = async (append = false) => {
     }
   } catch (e: any) {
     console.error('Błąd pobierania sesji:', e)
-    errorMessage.value = e.message || 'Błąd połączenia z serwerem. Upewnij się, że backend jest uruchomiony.'
+    errorMessage.value = e.message || t('common.networkError')
   } finally {
     loading.value = false
     loadingMore.value = false
@@ -179,10 +179,10 @@ onMounted(() => {
       <div class="title-cluster">
         <h2>{{ t('nav.sessions') }}</h2>
         <span class="sub-counter" v-if="activeViewTab === 'sessions' && sessions.length > 0">
-          Wyświetlono {{ sessions.length }} sesji
+          {{ t('sessions.shownCount', { count: sessions.length }) }}
         </span>
         <span class="sub-counter" v-else-if="activeViewTab === 'calendar' && calendarEvents.length > 0">
-          Przystanki w kalendarzu: {{ calendarEvents.length }}
+          {{ t('sessions.calCount', { count: calendarEvents.length }) }}
         </span>
       </div>
       <div class="view-mode-tabs">
@@ -192,7 +192,7 @@ onMounted(() => {
           :class="{ active: activeViewTab === 'sessions' }"
           @click="activeViewTab = 'sessions'"
         >
-          📋 Baza sesji i wyników
+          {{ t('sessions.tabSessions') }}
         </button>
         <button
           type="button"
@@ -200,7 +200,7 @@ onMounted(() => {
           :class="{ active: activeViewTab === 'calendar' }"
           @click="openCalendarTab"
         >
-          📅 Kalendarz Pucharu Świata / FIS
+          {{ t('sessions.tabCalendar') }}
         </button>
       </div>
     </div>
@@ -209,46 +209,46 @@ onMounted(() => {
     <div v-if="activeViewTab === 'calendar'" class="calendar-section">
       <div class="filters-toolbar">
         <div class="filter-item">
-          <label>Sezon:</label>
+          <label>{{ t('common.season') }}:</label>
           <select v-model="calendarSeason" class="filter-input-sm" @change="fetchCalendar">
-            <option value="2027">2026/2027 (Sezon 2027)</option>
-            <option value="2026">2025/2026 (Sezon 2026)</option>
-            <option value="2025">2024/2025 (Sezon 2025)</option>
+            <option value="2027">{{ t('sessions.seasonOpt', { range: '2026/2027', season: '2027' }) }}</option>
+            <option value="2026">{{ t('sessions.seasonOpt', { range: '2025/2026', season: '2026' }) }}</option>
+            <option value="2025">{{ t('sessions.seasonOpt', { range: '2024/2025', season: '2025' }) }}</option>
           </select>
         </div>
         <div class="filter-item">
-          <label>Cykl / Ranga:</label>
+          <label>{{ t('sessions.cycleLabel') }}</label>
           <select v-model="calendarCategory" class="filter-input-sm" @change="fetchCalendar">
-            <option value="WC">Puchar Świata (WC)</option>
-            <option value="GP">Letnie Grand Prix (GP)</option>
-            <option value="COC">Puchar Kontynentalny (COC)</option>
-            <option value="FC">FIS Cup (FC)</option>
-            <option value="WSC">Mistrzostwa Świata (WSC)</option>
-            <option value="OWG">Igrzyska Olimpijskie (OWG)</option>
-            <option value="SFWC">MŚ w Lotach (SFWC)</option>
+            <option value="WC">{{ formatCategory('WC') }} (WC)</option>
+            <option value="GP">{{ formatCategory('GP') }} (GP)</option>
+            <option value="COC">{{ formatCategory('COC') }} (COC)</option>
+            <option value="FC">{{ formatCategory('FC') }} (FC)</option>
+            <option value="WSC">{{ formatCategory('WSC') }} (WSC)</option>
+            <option value="OWG">{{ formatCategory('OWG') }} (OWG)</option>
+            <option value="SFWC">{{ formatCategory('SFWC') }} (SFWC)</option>
           </select>
         </div>
         <div class="filter-item filter-actions">
           <button type="button" class="btn-clear-sm" @click="fetchCalendar" :disabled="loadingCalendar">
-            🔄 Odśwież kalendarz
+            {{ t('sessions.refreshCalendar') }}
           </button>
         </div>
       </div>
 
-      <SkiLoader v-if="loadingCalendar">Pobieranie oficjalnego kalendarza FIS...</SkiLoader>
+      <SkiLoader v-if="loadingCalendar">{{ t('sessions.loadingCalendar') }}</SkiLoader>
       <div v-else-if="calendarError" class="error-container">
         <p class="error-text">⚠️ {{ calendarError }}</p>
-        <button @click="fetchCalendar" class="btn-retry">Spróbuj ponownie 🔄</button>
+        <button @click="fetchCalendar" class="btn-retry">{{ t('common.retry') }}</button>
       </div>
       <div v-else-if="calendarEvents.length > 0">
         <div class="table-responsive desktop-only">
           <table class="sessions-table">
             <thead>
               <tr>
-                <th style="width: 170px">Termin</th>
-                <th>Miejscowość / Turniej</th>
-                <th style="width: 160px">Status</th>
-                <th style="width: 190px; text-align: right">Sesje / Szczegóły</th>
+                <th style="width: 170px">{{ t('sessions.calThDate') }}</th>
+                <th>{{ t('sessions.calThPlace') }}</th>
+                <th style="width: 160px">{{ t('sessions.calThStatus') }}</th>
+                <th style="width: 190px; text-align: right">{{ t('sessions.calThActions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -279,19 +279,19 @@ onMounted(() => {
                   </td>
                   <td>
                     <span v-if="ev.status === 'COMPLETED'" class="cal-status-pill done">
-                      ✅ Rozegrane ({{ ev.sessions_count }})
+                      {{ t('sessions.calStatusDone', { count: ev.sessions_count }) }}
                     </span>
                     <span v-else-if="ev.status === 'IN_PROGRESS'" class="cal-status-pill progress">
-                      🟢 W trakcie ({{ ev.sessions_count }})
+                      {{ t('sessions.calStatusProgress', { count: ev.sessions_count }) }}
                     </span>
                     <span v-else-if="ev.status === 'CANCELLED'" class="cal-status-pill cancelled">
-                      🚫 Odwołane
+                      {{ t('sessions.calStatusCancelled') }}
                     </span>
                     <span v-else-if="ev.status === 'AWAITING_RESULTS' || ev.status === 'PAST'" class="cal-status-pill awaiting">
-                      ⏳ Oczekiwanie na wyniki
+                      {{ t('sessions.calStatusAwaiting') }}
                     </span>
                     <span v-else class="cal-status-pill upcoming">
-                      ⏳ Nadchodzące
+                      {{ t('sessions.calStatusUpcoming') }}
                     </span>
                   </td>
                   <td style="text-align: right">
@@ -302,10 +302,10 @@ onMounted(() => {
                         class="btn-cal-expand"
                         :class="{ active: isCalendarEventExpanded(ev) }"
                         :aria-expanded="isCalendarEventExpanded(ev)"
-                        :title="isCalendarEventExpanded(ev) ? 'Zwiń listę sesji' : 'Rozwiń wszystkie rozegrane sesje'"
+                        :title="isCalendarEventExpanded(ev) ? t('sessions.collapseCalTitle') : t('sessions.expandCalTitle')"
                         @click.stop="toggleCalendarEvent(ev)"
                       >
-                        <span>Sesje ({{ ev.sessions.length }})</span>
+                        <span>{{ t('sessions.calDrawerListBtn', { count: ev.sessions.length }) }}</span>
                         <span class="cal-arrow">{{ isCalendarEventExpanded(ev) ? '▲' : '▼' }}</span>
                       </button>
                       <a
@@ -330,8 +330,8 @@ onMounted(() => {
                   <td colspan="4">
                     <div class="cal-sessions-panel">
                       <div class="cal-sessions-panel-head">
-                        <span>📋 Rozegrane sesje: <strong>{{ ev.place }}</strong> ({{ ev.date_label }})</span>
-                        <small>{{ ev.sessions.length }} {{ ev.sessions.length === 1 ? 'sesja' : ev.sessions.length < 5 ? 'sesje' : 'sesji' }}</small>
+                        <span>{{ t('sessions.calSessionsHead') }} <strong>{{ ev.place }}</strong> ({{ ev.date_label }})</span>
+                        <small>{{ formatSessionsCount(ev.sessions.length) }}</small>
                       </div>
                       <div class="cal-sessions-list">
                         <div
@@ -347,7 +347,7 @@ onMounted(() => {
                               class="cal-session-type-pill"
                               :class="(s.session_type || '').toLowerCase()"
                             >
-                              {{ sessionTypeMap[s.session_type] || s.session_type || 'Sesja' }}
+                              {{ formatSessionType(s.session_type) }}
                             </span>
                             <span class="cal-session-title">
                               {{ s.title || ev.place }}
@@ -356,14 +356,14 @@ onMounted(() => {
                               HS {{ s.hillSize }}
                             </span>
                             <span v-if="s.is_cancelled" class="cal-session-cancelled">
-                              🚫 Odwołana
+                              {{ t('sessions.cancelledSingle') }}
                             </span>
                           </div>
                           <RouterLink
                             :to="`/sessions/${s.id}`"
                             class="btn-details-sm"
                           >
-                            Wyniki ↗
+                            {{ t('common.results') }} ↗
                           </RouterLink>
                         </div>
                       </div>
@@ -387,19 +387,19 @@ onMounted(() => {
             <div class="smc-top">
               <strong class="smc-date">{{ ev.date_label }}</strong>
               <span v-if="ev.status === 'COMPLETED'" class="cal-status-pill done">
-                ✅ Rozegrane ({{ ev.sessions_count }})
+                {{ t('sessions.calStatusDone', { count: ev.sessions_count }) }}
               </span>
               <span v-else-if="ev.status === 'IN_PROGRESS'" class="cal-status-pill progress">
-                🟢 W trakcie ({{ ev.sessions_count }})
+                {{ t('sessions.calStatusProgress', { count: ev.sessions_count }) }}
               </span>
               <span v-else-if="ev.status === 'CANCELLED'" class="cal-status-pill cancelled">
-                🚫 Odwołane
+                {{ t('sessions.calStatusCancelled') }}
               </span>
               <span v-else-if="ev.status === 'AWAITING_RESULTS' || ev.status === 'PAST'" class="cal-status-pill awaiting">
-                ⏳ Oczekiwanie na wyniki
+                {{ t('sessions.calStatusAwaiting') }}
               </span>
               <span v-else class="cal-status-pill upcoming">
-                ⏳ Nadchodzące
+                {{ t('sessions.calStatusUpcoming') }}
               </span>
             </div>
 
@@ -424,7 +424,7 @@ onMounted(() => {
                 :class="{ active: isCalendarEventExpanded(ev) }"
                 @click.stop="toggleCalendarEvent(ev)"
               >
-                <span>📋 Sesje ({{ ev.sessions.length }})</span>
+                <span>📋 {{ t('sessions.calSessionsLabel', { count: ev.sessions.length }) }}</span>
                 <span class="cal-arrow">{{ isCalendarEventExpanded(ev) ? '▲' : '▼' }}</span>
               </button>
               <a
@@ -458,14 +458,14 @@ onMounted(() => {
                       class="cal-session-type-pill"
                       :class="(s.session_type || '').toLowerCase()"
                     >
-                      {{ sessionTypeMap[s.session_type] || s.session_type || 'Sesja' }}
+                      {{ formatSessionType(s.session_type) }}
                     </span>
                     <span class="cal-session-title">{{ s.title || ev.place }}</span>
                     <span v-if="s.hillSize" class="cal-session-hill">HS {{ s.hillSize }}</span>
-                    <span v-if="s.is_cancelled" class="cal-session-cancelled">🚫 Odwołana</span>
+                    <span v-if="s.is_cancelled" class="cal-session-cancelled">{{ t('sessions.cancelledSingle') }}</span>
                   </div>
                   <RouterLink :to="`/sessions/${s.id}`" class="btn-details-sm smc-session-link">
-                    Wyniki ↗
+                    {{ t('common.results') }} ↗
                   </RouterLink>
                 </div>
               </div>
@@ -474,7 +474,7 @@ onMounted(() => {
         </div>
       </div>
       <div v-else class="no-results">
-        📅 Brak pozycji w kalendarzu FIS dla wybranego sezonu i rangi.
+        {{ t('sessions.calEmpty') }}
       </div>
     </div>
 
@@ -482,7 +482,7 @@ onMounted(() => {
     <!-- KOMPAKTOWY PASEK FILTRÓW -->
     <div class="filters-toolbar">
       <div class="filter-item">
-        <label>Od daty:</label>
+        <label>{{ t('sessions.dateFrom') }}</label>
         <input
           type="date"
           v-model="filters.date_from"
@@ -492,7 +492,7 @@ onMounted(() => {
       </div>
 
       <div class="filter-item">
-        <label>Do daty:</label>
+        <label>{{ t('sessions.dateTo') }}</label>
         <input
           type="date"
           v-model="filters.date_to"
@@ -502,43 +502,43 @@ onMounted(() => {
       </div>
 
       <div class="filter-item">
-        <label>Typ sesji:</label>
+        <label>{{ t('sessions.sessionType') }}</label>
         <select v-model="filters.session_type" class="filter-input-sm" @change="applyFilters">
-          <option value="">-- Wszystkie typy --</option>
-          <option value="COMPETITION">🏆 Konkurs Główny</option>
-          <option value="QUA">🎯 Kwalifikacje</option>
-          <option value="TRAINING">⏱️ Trening</option>
-          <option value="TRIAL">🔄 Seria próbna</option>
+          <option value="">{{ t('sessions.allTypes') }}</option>
+          <option value="COMPETITION">🏆 {{ formatSessionType('COMPETITION') }}</option>
+          <option value="QUA">🎯 {{ formatSessionType('QUA') }}</option>
+          <option value="TRAINING">⏱️ {{ formatSessionType('TRAINING') }}</option>
+          <option value="TRIAL">🔄 {{ formatSessionType('TRIAL') }}</option>
         </select>
       </div>
 
       <div class="filter-item">
-        <label>Ranga:</label>
+        <label>{{ t('sessions.rankLabel') }}</label>
         <select v-model="filters.category" class="filter-input-sm" @change="applyFilters">
-          <option value="">-- Wszystkie rangi --</option>
-          <option value="WC">Puchar Świata (WC)</option>
-          <option value="GP">Letnie Grand Prix (GP)</option>
-          <option value="COC">Puchar Kontynentalny (COC)</option>
-          <option value="FC">FIS Cup (FC)</option>
-          <option value="OWG">Igrzyska Olimpijskie (OWG)</option>
-          <option value="WSC">Mistrzostwa Świata (WSC)</option>
-          <option value="SFWC">MŚ w Lotach (SFWC)</option>
+          <option value="">{{ t('sessions.allRanks') }}</option>
+          <option value="WC">{{ formatCategory('WC') }} (WC)</option>
+          <option value="GP">{{ formatCategory('GP') }} (GP)</option>
+          <option value="COC">{{ formatCategory('COC') }} (COC)</option>
+          <option value="FC">{{ formatCategory('FC') }} (FC)</option>
+          <option value="OWG">{{ formatCategory('OWG') }} (OWG)</option>
+          <option value="WSC">{{ formatCategory('WSC') }} (WSC)</option>
+          <option value="SFWC">{{ formatCategory('SFWC') }} (SFWC)</option>
         </select>
       </div>
 
       <div class="filter-item filter-actions">
-        <button @click="clearFilters" class="btn-clear-sm" title="Zresetuj wszystkie filtry">
-          ✕ Wyczyść
+        <button @click="clearFilters" class="btn-clear-sm" :title="t('sessions.resetFiltersTitle')">
+          ✕ {{ t('common.clear') }}
         </button>
       </div>
     </div>
 
-    <SkiLoader v-if="loading">Ładowanie bazy sesji...</SkiLoader>
+    <SkiLoader v-if="loading">{{ t('sessions.loadingSessions') }}</SkiLoader>
 
     <div v-else>
       <div v-if="errorMessage" class="error-container">
         <p class="error-text">⚠️ {{ errorMessage }}</p>
-        <button @click="fetchSessions(false)" class="btn-retry">Spróbuj ponownie 🔄</button>
+        <button @click="fetchSessions(false)" class="btn-retry">{{ t('common.retry') }}</button>
       </div>
 
       <div v-else-if="sessions.length > 0">
@@ -546,18 +546,18 @@ onMounted(() => {
           <table class="sessions-table">
             <thead>
               <tr>
-                <th style="width: 140px">Termin</th>
-                <th style="width: 80px; text-align: center">Ranga</th>
-                <th>Miejscowość / Wydarzenie</th>
-                <th style="width: 160px">Typ Sesji</th>
-                <th style="width: 110px; text-align: right">Akcja</th>
+                <th style="width: 140px">{{ t('common.term') }}</th>
+                <th style="width: 80px; text-align: center">{{ t('sessions.thRank') }}</th>
+                <th>{{ t('sessions.thPlaceEvent') }}</th>
+                <th style="width: 160px">{{ t('sessions.thType') }}</th>
+                <th style="width: 110px; text-align: right">{{ t('common.action') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="s in sessions" :key="s._id">
                 <td>
                   <div class="date-block">
-                    <span class="date-main">{{ s.date || 'Brak daty' }}</span>
+                    <span class="date-main">{{ s.date || t('common.noDate') }}</span>
                     <span v-if="s.time" class="time-tag">{{ s.time }}</span>
                   </div>
                 </td>
@@ -572,7 +572,7 @@ onMounted(() => {
                       size="sm"
                       :title="countries[s.event_country] || s.event_country"
                     />
-                    <span class="place-name">{{ s.event_place || 'Brak miejsca' }}</span>
+                    <span class="place-name">{{ s.event_place || t('common.noPlace') }}</span>
                   </div>
                   <small v-if="s.title" class="session-sub-title">{{ s.title }}</small>
                 </td>
@@ -588,7 +588,7 @@ onMounted(() => {
                 </td>
                 <td style="text-align: right">
                   <RouterLink :to="`/sessions/${s._id}`" class="btn-details-sm">
-                    Szczegóły ↗
+                    {{ t('common.details') }} ↗
                   </RouterLink>
                 </td>
               </tr>
@@ -601,7 +601,7 @@ onMounted(() => {
           <div v-for="s in sessions" :key="'m_' + s._id" class="session-m-card">
             <div class="smc-top">
               <div class="smc-date-wrap">
-                <strong class="smc-date">{{ s.date || 'Brak daty' }}</strong>
+                <strong class="smc-date">{{ s.date || t('common.noDate') }}</strong>
                 <span v-if="s.time" class="time-tag">{{ s.time }}</span>
               </div>
               <div class="smc-badges">
@@ -624,13 +624,13 @@ onMounted(() => {
                 size="sm"
                 :title="countries[s.event_country] || s.event_country"
               />
-              <span class="place-name">{{ s.event_place || 'Brak miejsca' }}</span>
+              <span class="place-name">{{ s.event_place || t('common.noPlace') }}</span>
             </div>
             <small v-if="s.title" class="session-sub-title smc-subtitle">{{ s.title }}</small>
 
             <div class="smc-actions">
               <RouterLink :to="`/sessions/${s._id}`" class="btn-details-sm smc-full-btn">
-                Zobacz wyniki i szczegóły ↗
+                {{ t('sessions.viewMobileResults') }}
               </RouterLink>
             </div>
           </div>
@@ -639,12 +639,12 @@ onMounted(() => {
 
       <div v-if="!errorMessage && sessions.length >= filters.limit" class="load-more-container">
         <button @click="loadMore" :disabled="loadingMore" class="btn-load-more">
-          {{ loadingMore ? 'Ładowanie...' : 'Pokaż starsze sesje ↓' }}
+          {{ loadingMore ? t('common.loading') : t('sessions.loadOlder') }}
         </button>
       </div>
 
       <div v-if="!errorMessage && sessions.length === 0" class="no-results">
-        🎿 Brak sesji spełniających kryteria wyszukiwania.
+        {{ t('sessions.empty') }}
       </div>
     </div>
     </template>

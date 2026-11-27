@@ -7,7 +7,7 @@ import { useAuth } from '@/stores/auth'
 import { useI18n } from '@/i18n'
 
 const auth = useAuth()
-const { t } = useI18n()
+const { t, formatSessionsCount } = useI18n()
 
 interface HillVersion {
   hill_id: string
@@ -91,7 +91,7 @@ const mergeCompatibilityError = computed(() => {
   const types = new Set(list.map((h) => (h.type || 'LARGE').toUpperCase()))
   const sizes = new Set(list.map((h) => Number(h.size || 0)))
   if (types.size > 1 || sizes.size > 1) {
-    return 'Możesz łączyć wyłącznie skocznie o tym samym profilu (np. Duża/Mamucia) oraz takim samym rozmiarze HS!'
+    return t('hills.mergeCompatibilityErr')
   }
   return null
 })
@@ -118,11 +118,11 @@ const clearMergeSelection = () => {
 
 const handleMergeHills = () => {
   if (selectedMergeIds.value.length < 2 || mergeCompatibilityError.value) return
-  const targetId = targetMergeId.value || selectedMergeIds.value[0]
+  const targetId = targetMergeId.value || selectedMergeIds.value[0] || ''
   const others = selectedMergeIds.value.filter((id) => id !== targetId).join(', ')
   confirmAction.value = {
-    title: `Połączenie ${selectedMergeIds.value.length} skoczni`,
-    text: `Czy na pewno chcesz połączyć skocznie (${others}) w jedną kanoniczną skocznię "${targetId}"? Wszystkie powiązane sesje, wyniki i kwarantanna w bazie zostaną automatycznie zsynchronizowane.`,
+    title: t('hills.mergeConfirmTitle', { count: selectedMergeIds.value.length }),
+    text: t('hills.mergeConfirmText', { others, targetId }),
     action: async () => {
       try {
         const res = await api.post<any>('/hills/merge', {
@@ -131,10 +131,10 @@ const handleMergeHills = () => {
         })
         clearApiCache('/hills')
         clearMergeSelection()
-        showMessage('success', res.message || 'Pomyślnie połączono wybrane skocznie.')
+        showMessage('success', res.message || t('hills.mergeSuccess'))
         await fetchHierarchy()
       } catch (err: any) {
-        showMessage('error', err.message || 'Błąd podczas łączenia skoczni.')
+        showMessage('error', err.message || t('hills.mergeError'))
       }
     },
   }
@@ -168,31 +168,7 @@ const formatHillTypeName = (type: string) => {
   const key = `hill.${code}`
   const translated = t(key)
   if (translated !== key) return translated
-  switch (code) {
-    case 'FLYING':
-      return 'Skocznia mamucia'
-    case 'LARGE':
-      return 'Duża skocznia'
-    case 'NORMAL':
-      return 'Normalna skocznia'
-    case 'MEDIUM':
-      return 'Średnia skocznia'
-    case 'SMALL':
-      return 'Mała skocznia'
-    default:
-      return 'Skocznia'
-  }
-}
-
-const formatSessionsCount = (count: number) => {
-  const n = Number(count || 0)
-  if (n === 1) return '1 sesja'
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    return `${n} sesje`
-  }
-  return `${n} sesji`
+  return t('common.hill')
 }
 
 // Pobieranie hierarchii z backendu
@@ -203,7 +179,7 @@ const fetchHierarchy = async () => {
     complexes.value = data
   } catch (e: any) {
     console.error('Błąd pobierania hierarchii skoczni:', e)
-    showMessage('error', 'Nie udało się pobrać hierarchii skoczni z serwera.')
+    showMessage('error', t('hills.errFetchHierarchy'))
   } finally {
     loading.value = false
   }
@@ -282,16 +258,22 @@ const showMessage = (type: 'success' | 'error', text: string) => {
 // 1. Oznaczanie wersji jako aktualnej
 const handleSetCurrent = (version: HillVersion) => {
   confirmAction.value = {
-    title: 'Oznaczenie wersji jako aktualnej',
-    text: `Czy chcesz ustawić ${version.hill_id} (${version.unit} ${version.size}, K-${version.k_point || '?'}) jako aktualną wersję dla obiektu w ${version.place}? Poprzednia wersja zostanie oznaczona jako archiwalna.`,
+    title: t('hills.setCurrentTitleConfirm'),
+    text: t('hills.setCurrentTextConfirm', {
+      hillId: version.hill_id,
+      unit: version.unit || 'HS',
+      size: version.size ?? '',
+      kPoint: version.k_point || '?',
+      place: version.place ?? '',
+    }),
     action: async () => {
       try {
         await api.post(`/hills/${encodeURIComponent(version.hill_id)}/set-current`)
         clearApiCache('/hills')
-        showMessage('success', `Wersja ${version.hill_id} została pomyślnie oznaczona jako aktualna.`)
+        showMessage('success', t('hills.setCurrentSuccess', { hillId: version.hill_id }))
         await fetchHierarchy()
       } catch (err: any) {
-        showMessage('error', err.message || 'Błąd podczas zmiany aktualnej wersji.')
+        showMessage('error', err.message || t('hills.setCurrentError'))
       }
     },
   }
@@ -321,7 +303,7 @@ const openAddModal = (targetComplex?: HillComplex, targetType?: string) => {
 const saveNewVersion = async () => {
   if (!auth.isAdmin.value) return
   if (!hillForm.value.place || !hillForm.value.size) {
-    showMessage('error', 'Wypełnij wymagane pola: miejscowość oraz rozmiar skoczni.')
+    showMessage('error', t('hills.errRequiredFields'))
     return
   }
 
@@ -344,10 +326,10 @@ const saveNewVersion = async () => {
     await api.post('/hills/version', payload)
     clearApiCache('/hills')
     showAddModal.value = false
-    showMessage('success', `Pomyślnie dodano wersję skoczni dla ${payload.place}.`)
+    showMessage('success', t('hills.addVersionSuccess', { place: payload.place }))
     await fetchHierarchy()
   } catch (err: any) {
-    showMessage('error', err.message || 'Błąd podczas tworzenia wersji skoczni.')
+    showMessage('error', err.message || t('hills.addVersionError'))
   } finally {
     isSaving.value = false
   }
@@ -396,10 +378,10 @@ const saveEditVersion = async () => {
     await api.put(`/hills/${encodeURIComponent(editingVersionId.value)}`, payload)
     clearApiCache('/hills')
     showEditModal.value = false
-    showMessage('success', `Zaktualizowano parametry wersji ${editingVersionId.value}.`)
+    showMessage('success', t('hills.editVersionSuccess', { hillId: editingVersionId.value }))
     await fetchHierarchy()
   } catch (err: any) {
-    showMessage('error', err.message || 'Błąd podczas aktualizacji wersji skoczni.')
+    showMessage('error', err.message || t('hills.editVersionError'))
   } finally {
     isSaving.value = false
   }
@@ -408,16 +390,16 @@ const saveEditVersion = async () => {
 // 6. Usuwanie wersji
 const handleDeleteVersion = (version: HillVersion) => {
   confirmAction.value = {
-    title: 'Potwierdzenie usunięcia wersji skoczni',
-    text: `Czy na pewno chcesz bezpowrotnie usunąć wersję skoczni: ${version.hill_id}? Jeśli jest aktualna, system automatycznie wyznaczy najnowszą wersję archiwalną jako bieżącą.`,
+    title: t('hills.delConfirmTitle'),
+    text: t('hills.delConfirmText', { hillId: version.hill_id }),
     action: async () => {
       try {
         await api.delete(`/hills/${encodeURIComponent(version.hill_id)}`)
         clearApiCache('/hills')
-        showMessage('success', `Pomyślnie usunięto wersję ${version.hill_id}.`)
+        showMessage('success', t('hills.delSuccess', { hillId: version.hill_id }))
         await fetchHierarchy()
       } catch (err: any) {
-        showMessage('error', err.message || 'Błąd podczas usuwania wersji skoczni.')
+        showMessage('error', err.message || t('hills.delError'))
       }
     },
   }
@@ -448,16 +430,15 @@ onMounted(() => {
       <div>
         <div class="title-with-badge">
           <h2>{{ t('nav.hills') }}</h2>
-          <span class="hierarchy-pill">Hierarchia 3-poziomowa</span>
+          <span class="hierarchy-pill">{{ t('hills.hierarchyBadge') }}</span>
         </div>
         <p class="subtitle">
-          Podział wg <strong>Miejscowości</strong>, <strong>Rodzajów skoczni</strong> oraz
-          <strong>Historii wersji</strong> (modernizacje punktów K i HS, oficjalne rekordy).
+          {{ t('hills.desc') }}
         </p>
       </div>
 
       <button v-if="auth.isAdmin.value" @click="openAddModal()" class="btn-primary">
-        + Dodaj nową skocznię / wersję
+        {{ t('hills.addBtn') }}
       </button>
     </div>
 
@@ -465,15 +446,15 @@ onMounted(() => {
     <div class="stats-overview">
       <div class="stat-box">
         <span class="stat-number">{{ stats.complexesCount }}</span>
-        <span class="stat-label">Miejscowości / Kompleksy</span>
+        <span class="stat-label">{{ t('hills.statComplexes') }}</span>
       </div>
       <div class="stat-box">
         <span class="stat-number">{{ stats.totalTypes }}</span>
-        <span class="stat-label">Aktywne obiekty</span>
+        <span class="stat-label">{{ t('hills.statTypes') }}</span>
       </div>
       <div class="stat-box">
         <span class="stat-number">{{ stats.totalVersions }}</span>
-        <span class="stat-label">Wszystkie wersje historyczne</span>
+        <span class="stat-label">{{ t('hills.statVersions') }}</span>
       </div>
     </div>
 
@@ -492,7 +473,7 @@ onMounted(() => {
         <input
           type="text"
           v-model="searchQuery"
-          placeholder="Szukaj po miejscowości, kodzie kraju lub rekordziście (np. Zakopane, POL, Planica)..."
+          :placeholder="t('hills.searchPh')"
           class="search-input"
         />
         <button v-if="searchQuery" @click="searchQuery = ''" class="clear-search">✕</button>
@@ -504,37 +485,37 @@ onMounted(() => {
           :class="['filter-btn', { active: selectedTypeFilter === 'ALL' }]"
           @click="selectedTypeFilter = 'ALL'"
         >
-          Wszystkie
+          {{ t('hills.filterAll') }}
         </button>
         <button
           :class="['filter-btn flying', { active: selectedTypeFilter === 'FLYING' }]"
           @click="selectedTypeFilter = 'FLYING'"
         >
-          🦅 Mamucie
+          {{ t('hills.filterFlying') }}
         </button>
         <button
           :class="['filter-btn large', { active: selectedTypeFilter === 'LARGE' }]"
           @click="selectedTypeFilter = 'LARGE'"
         >
-          🏔️ Duże
+          {{ t('hills.filterLarge') }}
         </button>
         <button
           :class="['filter-btn normal', { active: selectedTypeFilter === 'NORMAL' }]"
           @click="selectedTypeFilter = 'NORMAL'"
         >
-          ⛷️ Normalne
+          {{ t('hills.filterNormal') }}
         </button>
       </div>
 
-      <span class="count-badge">Widoczne kompleksy: {{ filteredComplexes.length }}</span>
+      <span class="count-badge">{{ t('hills.visibleCount', { count: filteredComplexes.length }) }}</span>
     </div>
 
     <!-- Pasek łączenia skoczni (tylko ADMIN) -->
     <div v-if="auth.isAdmin.value && selectedMergeHills.length > 0" class="admin-merge-sticky-bar">
       <div class="merge-bar-top">
         <div class="merge-title-row">
-          <strong>🔗 Łączenie skoczni ({{ selectedMergeHills.length }})</strong>
-          <button type="button" @click="clearMergeSelection" class="btn-clear-merge">Wyczyść</button>
+          <strong>{{ t('hills.mergeTitle', { count: selectedMergeHills.length }) }}</strong>
+          <button type="button" @click="clearMergeSelection" class="btn-clear-merge">{{ t('common.clear') }}</button>
         </div>
         <div class="merge-chips">
           <span v-for="mh in selectedMergeHills" :key="mh.hill_id" class="merge-chip">
@@ -550,10 +531,10 @@ onMounted(() => {
 
       <div class="merge-bar-actions">
         <div v-if="selectedMergeHills.length >= 2 && !mergeCompatibilityError" class="merge-target-picker">
-          <label>Skocznia docelowa (kanoniczna):</label>
+          <label>{{ t('hills.targetCanonical') }}</label>
           <select v-model="targetMergeId" class="form-input merge-select">
             <option v-for="mh in selectedMergeHills" :key="mh.hill_id" :value="mh.hill_id">
-              {{ mh.place }} ({{ mh.hill_id }}) — {{ mh.total_sessions || 0 }} sesji
+              {{ mh.place }} ({{ mh.hill_id }}) — {{ formatSessionsCount(mh.total_sessions || 0) }}
             </option>
           </select>
         </div>
@@ -563,13 +544,13 @@ onMounted(() => {
           :disabled="selectedMergeHills.length < 2 || !!mergeCompatibilityError || isSaving"
           @click="handleMergeHills"
         >
-          🔗 Połącz w jedną ({{ selectedMergeHills.length }})
+          {{ t('hills.mergeBtn', { count: selectedMergeHills.length }) }}
         </button>
       </div>
     </div>
 
     <!-- Stan ładowania -->
-    <SkiLoader v-if="loading">Ładowanie hierarchii skoczni narciarskich...</SkiLoader>
+    <SkiLoader v-if="loading">{{ t('hills.loading') }}</SkiLoader>
 
     <!-- Lista Kompleksów (Poziom 1) -->
     <div v-else-if="filteredComplexes.length > 0" class="complexes-grid">
@@ -591,15 +572,15 @@ onMounted(() => {
           <div class="complex-meta">
             <span class="types-count-tag">
               {{ complex.types.length }}
-              {{ complex.types.length === 1 ? 'obiekt' : 'obiekty' }}
+              {{ complex.types.length === 1 ? t('hills.objects1') : t('hills.objectsMany') }}
             </span>
             <button
               v-if="auth.isAdmin.value"
               @click="openAddModal(complex)"
               class="btn-subtle-add"
-              title="Dodaj nową wersję lub obiekt do tego kompleksu"
+              :title="t('hills.addVersionTitle')"
             >
-              + Wersja
+              {{ t('hills.addVersionBtn') }}
             </button>
           </div>
         </div>
@@ -624,7 +605,7 @@ onMounted(() => {
               <!-- Flaga aktualnej wersji -->
               <div class="current-badge-pill">
                 <span class="pulse-dot"></span>
-                <span>AKTUALNA: {{ typeGroup.current_version.unit || 'HS' }} {{ typeGroup.current_version.size }}</span>
+                <span>{{ t('hills.currentBadge') }} {{ typeGroup.current_version.unit || 'HS' }} {{ typeGroup.current_version.size }}</span>
               </div>
             </div>
 
@@ -632,19 +613,19 @@ onMounted(() => {
             <div class="current-version-panel">
               <div class="specs-grid">
                 <div class="spec-cell highlight">
-                  <span class="spec-title">Rozmiar skoczni</span>
+                  <span class="spec-title">{{ t('hills.hillSizeSpec') }}</span>
                   <span class="spec-value">{{ typeGroup.current_version.unit || 'HS' }} {{ typeGroup.current_version.size }}</span>
                 </div>
 
                 <div class="spec-cell">
-                  <span class="spec-title">Punkt K</span>
+                  <span class="spec-title">{{ t('hills.kPointSpec') }}</span>
                   <span class="spec-value">
                     {{ typeGroup.current_version.k_point ? `K-${typeGroup.current_version.k_point}` : '-' }}
                   </span>
                 </div>
 
                 <div class="spec-cell">
-                  <span class="spec-title">Oficjalny Rekord</span>
+                  <span class="spec-title">{{ t('hills.recordSpec') }}</span>
                   <span class="spec-value record-val" v-if="typeGroup.current_version.record">
                     {{ typeGroup.current_version.record }} m
                     <small v-if="typeGroup.current_version.record_holder" class="holder-name">
@@ -655,33 +636,33 @@ onMounted(() => {
                 </div>
 
                 <div class="spec-cell">
-                  <span class="spec-title">Aktywność w bazie</span>
+                  <span class="spec-title">{{ t('hills.activitySpec') }}</span>
                   <span class="spec-value" v-if="typeGroup.current_version.total_sessions">
                     {{ formatSessionsCount(typeGroup.current_version.total_sessions) }}
                     <small v-if="typeGroup.current_version.last_session_date" class="date-dim">
-                      (ost. {{ typeGroup.current_version.last_session_date }})
+                      ({{ t('hills.lastDate') }} {{ typeGroup.current_version.last_session_date }})
                     </small>
                   </span>
-                  <span v-else class="spec-value text-dim">Brak rozegranych sesji</span>
+                  <span v-else class="spec-value text-dim">{{ t('hills.noSessionsPlayed') }}</span>
                 </div>
               </div>
 
               <!-- Narzędzia edycji i łączenia aktualnej dla Admina -->
               <div v-if="auth.isAdmin.value" class="admin-quick-actions">
-                <label class="merge-checkbox-label" title="Zaznacz tę skocznię do scalenia z duplikatem">
+                <label class="merge-checkbox-label" :title="t('hills.mergeCheckboxTitle')">
                   <input
                     type="checkbox"
                     :checked="selectedMergeIds.includes(typeGroup.current_version.hill_id)"
                     @change="toggleMergeSelection(typeGroup.current_version)"
                   />
-                  <span>Połącz</span>
+                  <span>{{ t('hills.mergeCheckbox') }}</span>
                 </label>
                 <button
                   @click="openEditModal(typeGroup.current_version)"
                   class="btn-icon edit"
-                  title="Edytuj parametry aktualnej wersji"
+                  :title="t('hills.editCurrentTitle')"
                 >
-                  ✏️ Edytuj
+                  ✏️ {{ t('hills.editVerTitle') }}
                 </button>
               </div>
             </div>
@@ -693,11 +674,10 @@ onMounted(() => {
                 @click="toggleHistory(complex.place, typeGroup.type)"
               >
                 <span>
-                  📜 Historia parametrów i modernizacji ({{ typeGroup.versions.length }}
-                  {{ typeGroup.versions.length === 1 ? 'wersja' : 'wersje' }})
+                  {{ t('hills.historyLabel', { count: typeGroup.versions.length }) }}
                 </span>
                 <span class="toggle-arrow">
-                  {{ isHistoryExpanded(complex.place, typeGroup.type) ? '▲ Zwiń' : '▼ Rozwiń' }}
+                  {{ isHistoryExpanded(complex.place, typeGroup.type) ? `▲ ${t('common.collapse')}` : `▼ ${t('common.expand')}` }}
                 </span>
               </button>
 
@@ -708,12 +688,12 @@ onMounted(() => {
                 <table class="history-table">
                   <thead>
                     <tr>
-                      <th>Status</th>
-                      <th>ID Wersji</th>
-                      <th>Parametry (HS / K)</th>
-                      <th>Rekord</th>
-                      <th>Sesje / Ostatni sezon</th>
-                      <th v-if="auth.isAdmin.value" style="text-align: right">Zarządzanie</th>
+                      <th>{{ t('common.status') }}</th>
+                      <th>{{ t('hills.thVersionId') }}</th>
+                      <th>{{ t('hills.thParams') }}</th>
+                      <th>{{ t('hills.thRecord') }}</th>
+                      <th>{{ t('hills.thSessionsLast') }}</th>
+                      <th v-if="auth.isAdmin.value" style="text-align: right">{{ t('hills.thManage') }}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -724,10 +704,10 @@ onMounted(() => {
                     >
                       <td>
                         <span v-if="ver.is_current" class="status-badge current">
-                          🟢 AKTUALNA
+                          {{ t('hills.statusCurrent') }}
                         </span>
                         <span v-else class="status-badge historical">
-                          ⚪ Archiwalna
+                          {{ t('hills.statusHistorical') }}
                         </span>
                       </td>
                       <td>
@@ -750,14 +730,14 @@ onMounted(() => {
                         <span v-if="ver.total_sessions">
                           {{ formatSessionsCount(ver.total_sessions) }}
                           <small v-if="ver.last_season" class="season-dim">
-                            (sezon {{ ver.last_season }})
+                            ({{ t('hills.lastSeason', { season: ver.last_season }) }})
                           </small>
                         </span>
                         <span v-else class="text-dim">-</span>
                       </td>
                       <td v-if="auth.isAdmin.value" style="text-align: right">
                         <div class="actions-flex">
-                          <label class="merge-checkbox-label compact" title="Zaznacz wersję do scalenia">
+                          <label class="merge-checkbox-label compact" :title="t('hills.mergeCompactTitle')">
                             <input
                               type="checkbox"
                               :checked="selectedMergeIds.includes(ver.hill_id)"
@@ -768,21 +748,21 @@ onMounted(() => {
                             v-if="!ver.is_current"
                             @click="handleSetCurrent(ver)"
                             class="btn-set-current"
-                            title="Ustaw tę wersję jako obowiązującą aktualną"
+                            :title="t('hills.setCurrentTitle')"
                           >
-                            ★ Ustaw jako aktualną
+                            {{ t('hills.setCurrentBtn') }}
                           </button>
                           <button
                             @click="openEditModal(ver)"
                             class="btn-mini edit"
-                            title="Edytuj wersję"
+                            :title="t('hills.editVerTitle')"
                           >
                             ✏️
                           </button>
                           <button
                             @click="handleDeleteVersion(ver)"
                             class="btn-mini delete"
-                            title="Usuń tę wersję"
+                            :title="t('hills.delVerTitle')"
                           >
                             🗑️
                           </button>
@@ -801,10 +781,10 @@ onMounted(() => {
     <!-- Pusty wynik filtrowania -->
     <div v-else class="no-results-card">
       <span class="no-results-icon">🏔️</span>
-      <h3>Nie znaleziono skoczni</h3>
-      <p>Brak kompleksów narciarskich spełniających podane kryteria wyszukiwania.</p>
+      <h3>{{ t('hills.emptyTitle') }}</h3>
+      <p>{{ t('hills.emptyDesc') }}</p>
       <button @click="searchQuery = ''; selectedTypeFilter = 'ALL'" class="btn-primary">
-        Wyczyść filtry
+        {{ t('common.clearFilters') }}
       </button>
     </div>
 
@@ -812,99 +792,99 @@ onMounted(() => {
     <div v-if="showAddModal && auth.isAdmin.value" class="modal-overlay" @click.self="showAddModal = false">
       <div class="modal-card">
         <div class="modal-header">
-          <h3>Dodaj nową skocznię / wersję</h3>
+          <h3>{{ t('hills.modalAddTitle') }}</h3>
           <button class="modal-close-btn" @click="showAddModal = false">✕</button>
         </div>
         <p class="modal-subtitle">
-          Wprowadź parametry obiektu lub nowej wersji modernizacyjnej skoczni.
+          {{ t('hills.modalAddSub') }}
         </p>
 
         <div class="form-grid">
           <div class="form-group">
-            <label>Miejscowość / Kompleks *</label>
+            <label>{{ t('hills.labelPlaceReq') }}</label>
             <input
               v-model="hillForm.place"
-              placeholder="np. Zakopane"
+              :placeholder="t('hills.phPlace')"
               class="form-input"
             />
           </div>
 
           <div class="form-group">
-            <label>Kod kraju (IOC 3 litery) *</label>
+            <label>{{ t('hills.labelCountryReq') }}</label>
             <input
               v-model="hillForm.country_code"
-              placeholder="np. POL"
+              :placeholder="t('hills.phCountry')"
               maxlength="3"
               class="form-input uppercase"
             />
           </div>
 
           <div class="form-group">
-            <label>Rodzaj skoczni *</label>
+            <label>{{ t('hills.labelHillTypeReq') }}</label>
             <select v-model="hillForm.type" class="form-input">
-              <option value="LARGE">Duża skocznia (LARGE)</option>
-              <option value="NORMAL">Normalna skocznia (NORMAL)</option>
-              <option value="FLYING">Skocznia mamucia (FLYING)</option>
-              <option value="SMALL">Mała / średnia (SMALL)</option>
+              <option value="LARGE">{{ t('hills.optLarge') }}</option>
+              <option value="NORMAL">{{ t('hills.optNormal') }}</option>
+              <option value="FLYING">{{ t('hills.optFlying') }}</option>
+              <option value="SMALL">{{ t('hills.optSmall') }}</option>
             </select>
           </div>
 
           <div class="form-group">
-            <label>Jednostka rozmiaru</label>
+            <label>{{ t('hills.labelUnit') }}</label>
             <select v-model="hillForm.unit" class="form-input">
-              <option value="HS">HS (Hill Size)</option>
-              <option value="K">K (Punkt konstrukcyjny)</option>
+              <option value="HS">{{ t('hills.optHsFull') }}</option>
+              <option value="K">{{ t('hills.optKFull') }}</option>
             </select>
           </div>
 
           <div class="form-group">
-            <label>Rozmiar skoczni (HS lub K) *</label>
+            <label>{{ t('hills.labelSizeReq') }}</label>
             <input
               type="number"
               v-model="hillForm.size"
-              placeholder="np. 140"
+              placeholder="140"
               class="form-input"
             />
           </div>
 
           <div class="form-group">
-            <label>Punkt konstrukcyjny K (m)</label>
+            <label>{{ t('hills.labelKPoint') }}</label>
             <input
               type="number"
               step="0.5"
               v-model="hillForm.k_point"
-              placeholder="np. 125.0"
+              placeholder="125.0"
               class="form-input"
             />
           </div>
 
           <div class="form-group">
-            <label>Oficjalny rekord (m)</label>
+            <label>{{ t('hills.labelRecord') }}</label>
             <input
               type="number"
               step="0.5"
               v-model="hillForm.record"
-              placeholder="np. 147.0"
+              placeholder="147.0"
               class="form-input"
             />
           </div>
 
           <div class="form-group">
-            <label>Rekordzista</label>
+            <label>{{ t('hills.labelHolder') }}</label>
             <input
               v-model="hillForm.record_holder"
-              placeholder="np. Yukiya Sato"
+              placeholder="Yukiya Sato"
               class="form-input"
             />
           </div>
 
           <div class="form-group">
-            <label>Wartość metra (pts/m)</label>
+            <label>{{ t('hills.labelMeterVal') }}</label>
             <input
               type="number"
               step="0.1"
               v-model="hillForm.meter_value"
-              placeholder="np. 1.8"
+              placeholder="1.8"
               class="form-input"
             />
           </div>
@@ -912,17 +892,17 @@ onMounted(() => {
           <div class="form-group checkbox-group">
             <label class="checkbox-label">
               <input type="checkbox" v-model="hillForm.is_current" />
-              <span>Oznacz jako aktualną wersję tego obiektu (Current)</span>
+              <span>{{ t('hills.markCurrent') }}</span>
             </label>
           </div>
         </div>
 
         <div class="modal-actions">
           <button @click="showAddModal = false" class="btn-cancel" :disabled="isSaving">
-            Anuluj
+            {{ t('common.cancel') }}
           </button>
           <button @click="saveNewVersion" class="btn-primary" :disabled="isSaving">
-            {{ isSaving ? 'Zapisywanie...' : 'Zapisz wersję skoczni' }}
+            {{ isSaving ? t('hills.saving') : t('hills.saveNewBtn') }}
           </button>
         </div>
       </div>
@@ -932,36 +912,36 @@ onMounted(() => {
     <div v-if="showEditModal && auth.isAdmin.value" class="modal-overlay" @click.self="showEditModal = false">
       <div class="modal-card">
         <div class="modal-header">
-          <h3>Edycja wersji skoczni: {{ editingVersionId }}</h3>
+          <h3>{{ t('hills.modalEditTitleId', { id: editingVersionId || '' }) }}</h3>
           <button class="modal-close-btn" @click="showEditModal = false">✕</button>
         </div>
         <p class="modal-subtitle">
-          Modyfikacja parametrów technicznych i statusu aktualności skoczni w MongoDB.
+          {{ t('hills.modalEditSub') }}
         </p>
 
         <div class="form-grid">
           <div class="form-group">
-            <label>Miejscowość</label>
+            <label>{{ t('hills.labelPlaceShort') }}</label>
             <input v-model="hillForm.place" class="form-input" />
           </div>
 
           <div class="form-group">
-            <label>Kod kraju</label>
+            <label>{{ t('hills.labelCountryShort') }}</label>
             <input v-model="hillForm.country_code" maxlength="3" class="form-input uppercase" />
           </div>
 
           <div class="form-group">
-            <label>Rodzaj skoczni</label>
+            <label>{{ t('hills.labelHillTypeShort') }}</label>
             <select v-model="hillForm.type" class="form-input">
-              <option value="LARGE">Duża skocznia (LARGE)</option>
-              <option value="NORMAL">Normalna skocznia (NORMAL)</option>
-              <option value="FLYING">Skocznia mamucia (FLYING)</option>
-              <option value="SMALL">Mała / średnia (SMALL)</option>
+              <option value="LARGE">{{ t('hills.optLarge') }}</option>
+              <option value="NORMAL">{{ t('hills.optNormal') }}</option>
+              <option value="FLYING">{{ t('hills.optFlying') }}</option>
+              <option value="SMALL">{{ t('hills.optSmall') }}</option>
             </select>
           </div>
 
           <div class="form-group">
-            <label>Jednostka</label>
+            <label>{{ t('hills.labelUnitShort') }}</label>
             <select v-model="hillForm.unit" class="form-input">
               <option value="HS">HS</option>
               <option value="K">K</option>
@@ -969,44 +949,44 @@ onMounted(() => {
           </div>
 
           <div class="form-group">
-            <label>Rozmiar skoczni</label>
+            <label>{{ t('hills.labelSizeShort') }}</label>
             <input type="number" v-model="hillForm.size" class="form-input" />
           </div>
 
           <div class="form-group">
-            <label>Punkt K (m)</label>
+            <label>{{ t('hills.labelKShort') }}</label>
             <input type="number" step="0.5" v-model="hillForm.k_point" class="form-input" />
           </div>
 
           <div class="form-group">
-            <label>Rekord skoczni (m)</label>
+            <label>{{ t('hills.labelRecordShort') }}</label>
             <input type="number" step="0.5" v-model="hillForm.record" class="form-input" />
           </div>
 
           <div class="form-group">
-            <label>Rekordzista</label>
+            <label>{{ t('hills.labelHolder') }}</label>
             <input v-model="hillForm.record_holder" class="form-input" />
           </div>
 
           <div class="form-group">
-            <label>Wartość metra</label>
+            <label>{{ t('hills.labelMeterShort') }}</label>
             <input type="number" step="0.1" v-model="hillForm.meter_value" class="form-input" />
           </div>
 
           <div class="form-group checkbox-group">
             <label class="checkbox-label">
               <input type="checkbox" v-model="hillForm.is_current" />
-              <span>Ta wersja jest aktualna (Current)</span>
+              <span>{{ t('hills.markCurrentEdit') }}</span>
             </label>
           </div>
         </div>
 
         <div class="modal-actions">
           <button @click="showEditModal = false" class="btn-cancel" :disabled="isSaving">
-            Anuluj
+            {{ t('common.cancel') }}
           </button>
           <button @click="saveEditVersion" class="btn-primary" :disabled="isSaving">
-            {{ isSaving ? 'Zapisywanie...' : 'Zapisz zmiany' }}
+            {{ isSaving ? t('hills.saving') : t('hills.saveEditBtn') }}
           </button>
         </div>
       </div>
@@ -1021,10 +1001,10 @@ onMounted(() => {
 
         <div class="modal-actions">
           <button @click="showConfirmModal = false" class="btn-cancel" :disabled="isSaving">
-            Anuluj
+            {{ t('common.cancel') }}
           </button>
           <button @click="executeConfirmAction" class="btn-primary" :disabled="isSaving">
-            {{ isSaving ? 'Przetwarzanie...' : 'Potwierdź' }}
+            {{ isSaving ? t('common.processing') : t('common.confirm') }}
           </button>
         </div>
       </div>

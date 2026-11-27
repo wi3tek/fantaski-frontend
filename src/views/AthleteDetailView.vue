@@ -5,8 +5,10 @@ import SkiLoader from '@/components/SkiLoader.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import { API_BASE_URL } from '@/api/client'
 import { useAuth } from '@/stores/auth'
+import { useI18n } from '@/i18n'
 
 const auth = useAuth()
+const { t, formatLocaleDate } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const athlete = ref<any>(null)
@@ -40,18 +42,18 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <SkiLoader v-if="loading">Przygotowujemy profil zawodnika...</SkiLoader>
-    <div v-else-if="!athlete" class="no-results">Nie znaleziono zawodnika o podanym kodzie.</div>
+    <SkiLoader v-if="loading">{{ t('athleteDetail.loading') }}</SkiLoader>
+    <div v-else-if="!athlete" class="no-results">{{ t('athleteDetail.notFound') }}</div>
 
     <div v-else>
       <div class="profile-header">
-        <button type="button" class="btn-back" @click="goBack" style="cursor: pointer">← Wróć</button>
+        <button type="button" class="btn-back" @click="goBack" style="cursor: pointer">{{ t('common.back') }}</button>
 
         <RouterLink
           :to="{ path: '/stats', query: { fis_code: athlete.fis_code, name: athlete.full_name } }"
           class="btn-stats"
         >
-          📊 Zobacz historię skoków
+          {{ t('athleteDetail.historyBtn') }}
         </RouterLink>
       </div>
 
@@ -63,14 +65,14 @@ onMounted(async () => {
               athlete.competitor_id_from_url +
               '.html'
             "
-            alt="Zdjęcie zawodnika"
+            :alt="t('athleteDetail.photoAlt')"
             class="profile-pic"
-            onerror="this.src = 'https://via.placeholder.com/150?text=Brak+zdjęcia'"
+            onerror="this.src = 'https://via.placeholder.com/150?text=Photo'"
           />
 
           <div class="status-labels">
-            <span v-if="athlete.status === 'Active'" class="label-active">✅ AKTYWNY</span>
-            <span v-else class="label-inactive">🛑 KONIEC KARIERY</span>
+            <span v-if="athlete.status === 'Active'" class="label-active">{{ t('athleteDetail.statusActive') }}</span>
+            <span v-else class="label-inactive">{{ t('athleteDetail.statusRetired') }}</span>
           </div>
         </div>
 
@@ -82,27 +84,27 @@ onMounted(async () => {
 
           <div class="data-grid">
             <div class="data-item">
-              <span class="label">FIS Code</span>
+              <span class="label">{{ t('athleteDetail.fisCode') }}</span>
               <span class="value">{{ athlete.fis_code }}</span>
             </div>
             <div class="data-item">
-              <span class="label">Data urodzenia</span>
+              <span class="label">{{ t('athleteDetail.birthdate') }}</span>
               <span class="value">{{
-                athlete.birthdate ? new Date(athlete.birthdate).toLocaleDateString() : 'Brak danych'
+                athlete.birthdate ? formatLocaleDate(athlete.birthdate) : t('common.noData')
               }}</span>
             </div>
             <div class="data-item">
-              <span class="label">Kraj</span>
+              <span class="label">{{ t('common.country') }}</span>
               <span class="value">
                 <CountryFlag :code="athlete.country_code" :src="athlete.flag" size="sm" :show-code="true" />
               </span>
             </div>
             <div class="data-item">
-              <span class="label">Klub</span>
+              <span class="label">{{ t('athleteDetail.club') }}</span>
               <span class="value">{{ athlete.club || '-' }}</span>
             </div>
             <div class="data-item" v-if="auth.isPro.value && athlete.price != null">
-              <span class="label">Wycena Fantasy</span>
+              <span class="label">{{ t('athleteDetail.fantasyPrice') }}</span>
               <span class="value price-value">{{ Number(athlete.price).toFixed(1) }}</span>
             </div>
           </div>
@@ -114,7 +116,7 @@ onMounted(async () => {
               rel="noopener noreferrer"
               class="fis-btn"
             >
-              Otwórz oficjalny profil FIS ↗
+              {{ t('athleteDetail.openFis') }}
             </a>
           </div>
         </div>

@@ -10,6 +10,7 @@ import HillsView from '@/views/HillsView.vue'
 import PredictionsView from '@/views/PredictionsView.vue'
 import { useAuth } from '@/stores/auth'
 import { useNotice } from '@/stores/notice'
+import { translate } from '@/i18n'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -71,6 +72,12 @@ const router = createRouter({
       path: '/draft',
       name: 'draft',
       component: () => import('@/views/DraftView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/draft/league/:id',
+      name: 'draft-league',
+      component: () => import('@/views/DraftLeagueView.vue'),
       meta: { requiresAuth: true },
     },
     {
@@ -149,9 +156,9 @@ router.beforeEach(async (to, from, next) => {
     }
     if (!auth.isAdmin.value) {
       return handleBlockedRoute(
-        'Brak dostępu',
-        'Ta sekcja administracyjna jest zastrzeżona. Skontaktuj się z administratorem serwisu.',
-        'ZABLOKOWANE'
+        translate('router.noAccess'),
+        translate('router.noAccessMsg'),
+        translate('router.blockedBadge')
       )
     }
   }
@@ -160,9 +167,9 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.requiresAuth) {
     if (!auth.isAuthenticated.value) {
       return handleBlockedRoute(
-        'Wymagane darmowe logowanie',
-        'Zaloguj się bezpłatnie kontem Google, aby korzystać z porównywarki skoczków i lig Drafta.',
-        'ZALOGUJ SIĘ',
+        translate('router.loginReqTitle'),
+        translate('router.loginReqMsg'),
+        translate('router.loginReqBadge'),
         true
       )
     }
@@ -172,16 +179,16 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.requiresPro) {
     if (!auth.isAuthenticated.value) {
       return handleBlockedRoute(
-        'Wymagane logowanie',
-        'Dostęp do modułu przewidywań AI wymaga zalogowania i aktywnego pakietu PRO.',
+        translate('router.proLoginTitle'),
+        translate('router.proLoginMsg'),
         'PRO',
         true
       )
     }
     if (!auth.isPro.value) {
       return handleBlockedRoute(
-        'Wymagany pakiet FantaSKI PRO',
-        'Prognozy wyników i modele sztucznej inteligencji (AI) są dostępne wyłącznie w ramach pakietu FantaSKI PRO. Skontaktuj się z administratorem serwisu, aby aktywować pakiet.',
+        translate('router.proReqTitle'),
+        translate('router.proReqMsg'),
         'PRO'
       )
     }

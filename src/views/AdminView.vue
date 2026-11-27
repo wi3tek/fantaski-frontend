@@ -4,7 +4,9 @@ import { useRoute } from 'vue-router'
 import SkiLoader from '@/components/SkiLoader.vue'
 import { API_BASE_URL } from '@/api/client'
 import { useNotifications } from '@/stores/notifications'
+import { useI18n } from '@/i18n'
 
+const { t, bcp47Locale, formatCategory } = useI18n()
 const route = useRoute()
 const { lastDraftEvent } = useNotifications()
 const activeTab = ref('scraper')
@@ -163,15 +165,15 @@ const pdfCategories = ref<string[]>(['WC', 'OWG', 'WSC', 'SFWC'])
 const pdfForceReprocess = ref<boolean>(false)
 
 const allScraperCatOptions = [
-  { code: 'WC', label: 'PŚ (WC)' },
-  { code: 'OWG', label: 'IO (OWG)' },
-  { code: 'WSC', label: 'MŚ (WSC)' },
-  { code: 'SFWC', label: 'MŚ Loty (SFWC)' },
-  { code: 'GP', label: 'LGP (GP)' },
-  { code: 'COC', label: 'PK (COC)' },
-  { code: 'FC', label: 'FIS Cup (FC)' },
-  { code: 'WJC', label: 'MŚJ (WJC)' },
-  { code: 'FESA', label: 'FESA' },
+  { code: 'WC' },
+  { code: 'OWG' },
+  { code: 'WSC' },
+  { code: 'SFWC' },
+  { code: 'GP' },
+  { code: 'COC' },
+  { code: 'FC' },
+  { code: 'WJC' },
+  { code: 'FESA' },
 ]
 
 const togglePdfCategory = (code: string) => {
@@ -341,7 +343,7 @@ const getDiff = (oldObj: any, newObj: any) => {
   if (lines.length === 0) {
     lines.push({
       type: 'unchanged',
-      text: 'Brak zmian w danych merytorycznych. (Zmieniły się tylko klucze systemowe w tle).',
+      text: t('admin.diffNoSubstantiveChanges'),
     })
   }
 
@@ -418,7 +420,7 @@ const loadUsers = async () => {
   userErrorMessage.value = ''
   try {
     const res = await fetch(`${API_BASE_URL}/auth/users`, { headers: getHeaders() })
-    if (!res.ok) throw new Error(`Błąd pobierania (${res.status})`)
+    if (!res.ok) throw new Error(t('admin.errFetchUsersStatus', { status: res.status }))
     const data = await res.json()
     usersList.value = data
     const drafts: Record<string, string> = {}
@@ -427,7 +429,7 @@ const loadUsers = async () => {
     }
     esmTeamDrafts.value = drafts
   } catch (e: any) {
-    userErrorMessage.value = e.message || 'Nie udało się pobrać listy użytkowników'
+    userErrorMessage.value = e.message || t('admin.errFetchUsers')
   } finally {
     isLoadingUsers.value = false
   }
@@ -436,7 +438,7 @@ const loadUsers = async () => {
 const assignUserEsmTeam = async (targetUser: any) => {
   const rawTid = (esmTeamDrafts.value[targetUser.id] || '').trim()
   if (!rawTid) {
-    userErrorMessage.value = `Podaj ESM Team ID dla użytkownika ${targetUser.email}.`
+    userErrorMessage.value = t('admin.errEnterEsmTid', { email: targetUser.email })
     return
   }
   savingEsmUserId.value = targetUser.id
@@ -453,23 +455,23 @@ const assignUserEsmTeam = async (targetUser: any) => {
     })
     const data = await res.json()
     if (!res.ok) {
-      throw new Error(data.detail || 'Nie udało się przypisać drużyny ESM.')
+      throw new Error(data.detail || t('admin.errAssignEsm'))
     }
     targetUser.esm_summary = data.esm_summary
     esmTeamDrafts.value[targetUser.id] = data.esm_summary?.team_id || rawTid
-    userSuccessMessage.value = data.message || `Zsynchronizowano ESM dla ${targetUser.email}.`
+    userSuccessMessage.value = data.message || t('admin.okSyncEsm', { email: targetUser.email })
     setTimeout(() => {
       userSuccessMessage.value = ''
     }, 4500)
   } catch (e: any) {
-    userErrorMessage.value = e.message || 'Błąd przypisywania drużyny ESM.'
+    userErrorMessage.value = e.message || t('admin.errAssignEsmGeneric')
   } finally {
     savingEsmUserId.value = null
   }
 }
 
 const unlinkUserEsmTeam = async (targetUser: any) => {
-  if (!confirm(`Czy odpiąć drużynę ESM od konta ${targetUser.email}?`)) return
+  if (!confirm(t('admin.confirmUnlinkEsm', { email: targetUser.email }))) return
   savingEsmUserId.value = targetUser.id
   userErrorMessage.value = ''
   userSuccessMessage.value = ''
@@ -480,7 +482,7 @@ const unlinkUserEsmTeam = async (targetUser: any) => {
     })
     const data = await res.json()
     if (!res.ok) {
-      throw new Error(data.detail || 'Błąd odpinania drużyny ESM.')
+      throw new Error(data.detail || t('admin.errUnlinkEsm'))
     }
     targetUser.esm_summary = {
       connected: false,
@@ -489,12 +491,12 @@ const unlinkUserEsmTeam = async (targetUser: any) => {
       team_name: null,
     }
     esmTeamDrafts.value[targetUser.id] = ''
-    userSuccessMessage.value = data.message || `Odpięto ESM od ${targetUser.email}.`
+    userSuccessMessage.value = data.message || t('admin.okUnlinkEsm', { email: targetUser.email })
     setTimeout(() => {
       userSuccessMessage.value = ''
     }, 4000)
   } catch (e: any) {
-    userErrorMessage.value = e.message || 'Błąd odpinania ESM.'
+    userErrorMessage.value = e.message || t('admin.errUnlinkEsm')
   } finally {
     savingEsmUserId.value = null
   }
@@ -513,15 +515,15 @@ const changeUserRole = async (targetUser: any, newRole: string) => {
     })
     if (!res.ok) {
       const err = await res.json()
-      throw new Error(err.detail || 'Błąd aktualizacji roli')
+      throw new Error(err.detail || t('admin.errRoleUpdate'))
     }
     targetUser.role = newRole
-    userSuccessMessage.value = `Pomyślnie zmieniono rolę użytkownika ${targetUser.email} na ${newRole}.`
+    userSuccessMessage.value = t('admin.okRoleChanged', { email: targetUser.email, role: newRole })
     setTimeout(() => {
       userSuccessMessage.value = ''
     }, 4000)
   } catch (e: any) {
-    userErrorMessage.value = e.message || 'Błąd zmiany roli'
+    userErrorMessage.value = e.message || t('admin.errRoleChange')
   } finally {
     updatingUserId.value = null
   }
@@ -573,7 +575,7 @@ const startScrapePolling = () => {
         if (!isScraping.value) {
           stopScrapePolling()
           scrapeResult.value = data.stats || null
-          scrapeMessage.value = data.last_message || 'Scrapowanie wyników zakończone.'
+          scrapeMessage.value = data.last_message || t('admin.msgScrapeDone')
           await Promise.all([loadSeasonsSummary(), loadWeatherStatus(), fetchReviews()])
         }
       }
@@ -592,7 +594,7 @@ const stopScrapePolling = () => {
 
 const runScraper = async () => {
   if (selectedCategories.value.length === 0 || selectedSeasons.value.length === 0)
-    return alert('Wybierz sezon i kategorię.')
+    return alert(t('admin.alertSelectSeasonCat'))
   scrapeResult.value = null
   scrapeMessage.value = null
   try {
@@ -609,15 +611,15 @@ const runScraper = async () => {
     const data = await res.json()
     if (res.ok) {
       isScraping.value = true
-      scrapeMessage.value = data.message || 'Scrapowanie uruchomione w tle...'
+      scrapeMessage.value = data.message || t('admin.msgScrapeStarted')
       await loadScrapeStatus()
       startScrapePolling()
     } else {
-      alert('Błąd: ' + (data.detail || 'Nie udało się uruchomić scrapowania'))
+      alert(t('admin.errPrefix', { msg: data.detail || t('admin.errScrapeStart') }))
     }
   } catch (e: any) {
     console.error(e)
-    alert(`Błąd sieci: ${e.message}`)
+    alert(t('admin.errNetwork', { msg: e.message }))
   }
 }
 
@@ -636,15 +638,15 @@ const triggerRetryMissing = async (seasonStr: string | null = null, only429: boo
     const data = await res.json()
     if (res.ok) {
       isScraping.value = true
-      scrapeMessage.value = data.message || 'Dociąganie brakujących sesji uruchomione w tle...'
+      scrapeMessage.value = data.message || t('admin.msgRetryStarted')
       await loadScrapeStatus()
       startScrapePolling()
     } else {
-      alert('Błąd: ' + (data.detail || 'Nie udało się wznowić pobierania'))
+      alert(t('admin.errPrefix', { msg: data.detail || t('admin.errRetryStart') }))
     }
   } catch (e: any) {
     console.error(e)
-    alert(`Błąd sieci: ${e.message}`)
+    alert(t('admin.errNetwork', { msg: e.message }))
   }
 }
 
@@ -660,7 +662,7 @@ const triggerStopScraper = async () => {
       headers: getHeaders(),
     })
     if (res.ok) {
-      scrapeMessage.value = 'Wysłano sygnał bezpiecznego zatrzymania scrapera...'
+      scrapeMessage.value = t('admin.msgScrapeStopSent')
     }
   } catch (e) {
     console.error('Błąd zatrzymywania scrapera:', e)
@@ -707,7 +709,7 @@ const startWeatherPolling = () => {
         isEnrichingWeather.value = Boolean(data.status?.is_running)
         if (!isEnrichingWeather.value) {
           stopWeatherPolling()
-          weatherMessage.value = 'Wzbogacanie bazy danymi pogodowymi zostało zakończone pomyślnie!'
+          weatherMessage.value = t('admin.msgWeatherDone')
           setTimeout(() => (weatherMessage.value = null), 6000)
         }
       }
@@ -738,13 +740,13 @@ const triggerStartWeatherEnrichment = async () => {
     const data = await res.json()
     if (res.ok) {
       isEnrichingWeather.value = true
-      weatherMessage.value = data.message || 'Wzbogacanie zostało uruchomione w tle.'
+      weatherMessage.value = data.message || t('admin.msgWeatherStarted')
       startWeatherPolling()
     } else {
-      alert(`Błąd: ${data.detail || 'Nie udało się uruchomić enrichera'}`)
+      alert(t('admin.errPrefix', { msg: data.detail || t('admin.errWeatherStart') }))
     }
   } catch (e: any) {
-    alert(`Błąd sieci: ${e.message}`)
+    alert(t('admin.errNetwork', { msg: e.message }))
   }
 }
 
@@ -760,7 +762,7 @@ const triggerStopWeatherEnrichment = async () => {
       headers: getHeaders(),
     })
     if (res.ok) {
-      weatherMessage.value = 'Wysłano sygnał zatrzymania wzbogacania bazy...'
+      weatherMessage.value = t('admin.msgWeatherStopSent')
     }
   } catch (e: any) {
     console.error('Błąd zatrzymywania enrichera:', e)
@@ -809,7 +811,7 @@ const startNightlyPolling = () => {
           stopNightlyPolling()
           loadSeasonsSummary()
           loadWeatherStatus()
-          nightlyMessage.value = 'Nocne pobieranie bazy zostało zakończone pomyślnie!'
+          nightlyMessage.value = t('admin.msgNightlyDone')
           setTimeout(() => (nightlyMessage.value = null), 6000)
         }
       }
@@ -830,7 +832,7 @@ const triggerStartNightlyScrape = async () => {
   const lo = Math.min(nightlySeasonFrom.value, nightlySeasonTo.value)
   const hi = Math.max(nightlySeasonFrom.value, nightlySeasonTo.value)
   if (nightlyCategories.value.length === 0) {
-    return alert('Wybierz przynajmniej jedną kategorię zawodów do nocnego przetwarzania.')
+    return alert(t('admin.alertNightlyNoCat'))
   }
   const seasonsRange: string[] = []
   for (let y = hi; y >= lo; y--) {
@@ -839,7 +841,7 @@ const triggerStartNightlyScrape = async () => {
 
   if (
     !confirm(
-      `Czy na pewno chcesz uruchomić nocne przetwarzanie bazy dla sezonów ${lo}–${hi} (${seasonsRange.length} lat) i kategorii: ${nightlyCategories.value.join(', ')}?`
+      t('admin.confirmNightly', { lo, hi, years: seasonsRange.length, cats: nightlyCategories.value.join(', ') })
     )
   ) {
     return
@@ -859,13 +861,13 @@ const triggerStartNightlyScrape = async () => {
     const data = await res.json()
     if (res.ok) {
       isNightlyScraping.value = true
-      nightlyMessage.value = data.message || 'Nocne pobieranie zostało uruchomione w tle.'
+      nightlyMessage.value = data.message || t('admin.msgNightlyStarted')
       startNightlyPolling()
     } else {
-      alert(`Błąd: ${data.detail || 'Nie udało się uruchomić nocnego przetwarzania'}`)
+      alert(t('admin.errPrefix', { msg: data.detail || t('admin.errNightlyStart') }))
     }
   } catch (e: any) {
-    alert(`Błąd sieci: ${e.message}`)
+    alert(t('admin.errNetwork', { msg: e.message }))
   }
 }
 
@@ -881,7 +883,7 @@ const triggerStopNightlyScrape = async () => {
       headers: getHeaders(),
     })
     if (res.ok) {
-      nightlyMessage.value = 'Wysłano sygnał bezpiecznego zatrzymania nocnego przetwarzania...'
+      nightlyMessage.value = t('admin.msgNightlyStopSent')
     }
   } catch (e: any) {
     console.error('Błąd zatrzymywania nocnego przetwarzania:', e)
@@ -936,7 +938,7 @@ const startPdfPolling = () => {
           if (data.last_result) {
             pdfScrapeResult.value = data.last_result
           }
-          pdfMessage.value = data.last_message || 'Ekstrakcja PDF została zakończona.'
+          pdfMessage.value = data.last_message || t('admin.msgPdfDone')
           fetchReviews()
           loadSeasonsSummary()
         }
@@ -967,15 +969,15 @@ const runPdfScraper = async () => {
     const data = await res.json()
     if (res.ok) {
       isPdfScraping.value = true
-      pdfMessage.value = data.message || 'Ekstrakcja plików PDF została uruchomiona w tle.'
+      pdfMessage.value = data.message || t('admin.msgPdfStarted')
       await loadPdfStatus()
       startPdfPolling()
     } else {
-      alert('Błąd serwera: ' + (data.detail || 'Nieznany błąd'))
+      alert(t('admin.errServer', { msg: data.detail || t('admin.unknownErr') }))
     }
   } catch (e) {
     console.error(e)
-    alert('Błąd połączenia z backendem.')
+    alert(t('admin.errBackendConn'))
   }
 }
 
@@ -991,7 +993,7 @@ const triggerStopPdfScraper = async () => {
       headers: getHeaders(),
     })
     if (res.ok) {
-      pdfMessage.value = 'Wysłano sygnał bezpiecznego zatrzymania ekstrakcji PDF...'
+      pdfMessage.value = t('admin.msgPdfStopSent')
     }
   } catch (e) {
     console.error('Błąd zatrzymywania ekstrakcji PDF:', e)
@@ -1015,7 +1017,7 @@ const refreshAthletes = async () => {
     })
     const data = await res.json()
     if (res.ok) athletesScrapeResult.value = data.stats
-    else alert('Błąd: ' + data.detail)
+    else alert(t('admin.errPrefix', { msg: data.detail }))
   } catch (e) {
     console.error(e)
   } finally {
@@ -1059,7 +1061,7 @@ const handleAthleteReview = async (fisCode: number, action: 'approve' | 'reject'
 }
 
 const handleApproveAllAthletes = async () => {
-  if (!confirm(`Zatwierdzić wszystkie (${athleteReviews.value.length}) zmiany u skoczków?`)) return
+  if (!confirm(t('admin.confirmApproveAllAthletes', { count: athleteReviews.value.length }))) return
   isApprovingAll.value = true
   try {
     const res = await fetch(`${API_BASE_URL}/admin/reviews/athletes/approve-all`, {
@@ -1093,7 +1095,7 @@ const handleSessionReview = async (codex: string, action: 'approve' | 'reject') 
 }
 
 const handleApproveAllSessions = async () => {
-  if (!confirm(`Zatwierdzić wszystkie (${sessionReviews.value.length}) zmiany w sesjach?`)) return
+  if (!confirm(t('admin.confirmApproveAllSessions', { count: sessionReviews.value.length }))) return
   isApprovingAll.value = true
   try {
     const res = await fetch(`${API_BASE_URL}/admin/reviews/sessions/approve-all`, {
@@ -1114,7 +1116,7 @@ const handleApproveAllSessions = async () => {
 const handleRejectAllSessions = async () => {
   if (
     !confirm(
-      `UWAGA: Czy na pewno chcesz ODRZUCIĆ I USUNĄĆ wszystkie (${sessionReviews.value.length}) oczekujące sesje z kwarantanny?`
+      t('admin.confirmRejectAllSessions', { count: sessionReviews.value.length })
     )
   )
     return
@@ -1178,9 +1180,9 @@ const startModelPolling = () => {
         if (!isTrainingModel.value) {
           stopModelPolling()
           if (data.training_status?.error) {
-            modelTrainingMessage.value = `❌ Błąd treningu modelu: ${data.training_status.error}`
+            modelTrainingMessage.value = t('admin.msgTrainErr', { error: data.training_status.error })
           } else {
-            modelTrainingMessage.value = '✅ Trening modelu zakończony pomyślnie!'
+            modelTrainingMessage.value = t('admin.msgTrainOk')
           }
           setTimeout(() => (modelTrainingMessage.value = null), 10000)
         }
@@ -1224,7 +1226,7 @@ const loadHyperparams = async () => {
 }
 
 const resetHyperparams = async () => {
-  if (!confirm('Przywrócić domyślne hiperparametry sieci w MongoDB?')) return
+  if (!confirm(t('admin.confirmResetHyper'))) return
   try {
     const res = await fetch(`${API_BASE_URL}/prediction/hyperparams/reset`, {
       method: 'POST',
@@ -1232,10 +1234,10 @@ const resetHyperparams = async () => {
     })
     if (res.ok) {
       hyperparamsBundle.value = await res.json()
-      modelTrainingMessage.value = '↩️ Przywrócono domyślne hiperparametry w MongoDB. Uruchom „Trenuj model”, aby przebudować wagi.'
+      modelTrainingMessage.value = t('admin.msgResetHyperOk')
     }
   } catch (e: any) {
-    alert(`Błąd sieci: ${e.message}`)
+    alert(t('admin.errNetwork', { msg: e.message }))
   }
 }
 
@@ -1282,7 +1284,7 @@ const startAutotunePolling = () => {
 
 const triggerAutoTune = async () => {
   if (isAutoTuning.value) return
-  if (!confirm('Uruchomić 2-etapowy Auto-Tuning na podstawie Walk-Forward Backtestu? Jeśli znajdzie lepsze parametry, zapisze je w MongoDB i automatycznie przetrenowuje model.')) return
+  if (!confirm(t('admin.confirmAutotune'))) return
   try {
     const res = await fetch(`${API_BASE_URL}/prediction/autotune/start`, {
       method: 'POST',
@@ -1294,10 +1296,10 @@ const triggerAutoTune = async () => {
       await loadAutotuneStatus()
       startAutotunePolling()
     } else {
-      alert(`Błąd: ${data.detail || 'Nie udało się uruchomić Auto-Tunera'}`)
+      alert(t('admin.errPrefix', { msg: data.detail || t('admin.errAutotuneStart') }))
     }
   } catch (e: any) {
-    alert(`Błąd sieci: ${e.message}`)
+    alert(t('admin.errNetwork', { msg: e.message }))
   }
 }
 
@@ -1366,15 +1368,15 @@ const triggerWalkForwardBacktest = async () => {
       await loadBacktestStatus()
       startBacktestPolling()
     } else {
-      alert(`Błąd: ${data.detail || 'Nie udało się uruchomić backtestu'}`)
+      alert(t('admin.errPrefix', { msg: data.detail || t('admin.errBacktestStart') }))
     }
   } catch (e: any) {
-    alert(`Błąd sieci: ${e.message}`)
+    alert(t('admin.errNetwork', { msg: e.message }))
   }
 }
 
 const triggerModelRetrain = async () => {
-  if (!confirm('Czy na pewno chcesz przetrenować sieć neuronową na aktualnych danych z bazy? Operacja może potrwać kilka minut.')) return
+  if (!confirm(t('admin.confirmRetrain'))) return
   modelTrainingMessage.value = null
   try {
     const res = await fetch(`${API_BASE_URL}/prediction/retrain`, {
@@ -1384,14 +1386,14 @@ const triggerModelRetrain = async () => {
     const data = await res.json()
     if (res.ok) {
       isTrainingModel.value = true
-      modelTrainingMessage.value = data.message || 'Trening modelu został uruchomiony w tle.'
+      modelTrainingMessage.value = data.message || t('admin.msgRetrainStarted')
       await loadModelInfo()
       startModelPolling()
     } else {
-      alert(`Błąd: ${data.detail || 'Nie udało się uruchomić treningu modelu'}`)
+      alert(t('admin.errPrefix', { msg: data.detail || t('admin.errRetrainStart') }))
     }
   } catch (e: any) {
-    alert(`Błąd sieci: ${e.message}`)
+    alert(t('admin.errNetwork', { msg: e.message }))
   }
 }
 watch(reviewTab, () => {
@@ -1468,7 +1470,7 @@ const sendAdminSupportReply = async () => {
     })
     const data = await res.json()
     if (!res.ok) {
-      adminReplyError.value = data.detail || 'Nie udało się wysłać odpowiedzi.'
+      adminReplyError.value = data.detail || t('admin.errSendReply')
       return
     }
     const idx = supportThreads.value.findIndex((t) => t.user_id === uid)
@@ -1479,7 +1481,7 @@ const sendAdminSupportReply = async () => {
     }
     adminReplyText.value = ''
   } catch (e: any) {
-    adminReplyError.value = e?.message || 'Błąd połączenia z serwerem.'
+    adminReplyError.value = e?.message || t('admin.errBackendConn')
   } finally {
     isSendingAdminReply.value = false
   }
@@ -1534,10 +1536,10 @@ onUnmounted(() => {
 
 <template>
   <div class="admin-page">
-    <SkiLoader v-if="isAthletesScraping">Weryfikacja bazy skoczków z FIS...</SkiLoader>
-    <SkiLoader v-if="isLoadingReviews">Wczytywanie kwarantanny...</SkiLoader>
-    <SkiLoader v-if="isApprovingAll">Masowe zatwierdzanie...</SkiLoader>
-    <SkiLoader v-if="isRejectingAll">Odrzucanie wszystkich sesji...</SkiLoader>
+    <SkiLoader v-if="isAthletesScraping">{{ t('admin.loaderAthletes') }}</SkiLoader>
+    <SkiLoader v-if="isLoadingReviews">{{ t('admin.loaderReviews') }}</SkiLoader>
+    <SkiLoader v-if="isApprovingAll">{{ t('admin.loaderApproveAll') }}</SkiLoader>
+    <SkiLoader v-if="isRejectingAll">{{ t('admin.loaderRejectAll') }}</SkiLoader>
 
     <div
       v-if="showCategoryDropdown || showSeasonDropdown"
@@ -1545,32 +1547,32 @@ onUnmounted(() => {
       @click="closeDropdowns"
     ></div>
 
-    <h2>Panel Administratora</h2>
+    <h2>{{ t('nav.admin') }}</h2>
     <div class="tabs">
       <button :class="{ active: activeTab === 'scraper' }" @click="activeTab = 'scraper'">
-        <span>🏆</span> Sesje & Wyniki
+        <span>🏆</span> {{ t('admin.tabScraper') }}
       </button>
       <button :class="{ active: activeTab === 'trainings' }" @click="activeTab = 'trainings'">
-        <span>📄</span> Treningi & PDF
+        <span>📄</span> {{ t('admin.tabTrainings') }}
       </button>
       <button :class="{ active: activeTab === 'athletes' }" @click="activeTab = 'athletes'">
-        <span>🎿</span> Baza Skoczków
+        <span>🎿</span> {{ t('admin.tabAthletes') }}
       </button>
       <button :class="{ active: activeTab === 'review' }" @click="activeTab = 'review'">
-        <span>🛡️</span> Kwarantanna
+        <span>🛡️</span> {{ t('admin.tabReview') }}
         <span v-if="totalPendingReviews > 0" class="badge-counter">{{ totalPendingReviews }}</span>
       </button>
       <button :class="{ active: activeTab === 'users' }" @click="activeTab = 'users'">
-        <span>👥</span> Użytkownicy & Role
+        <span>👥</span> {{ t('admin.tabUsers') }}
       </button>
       <button :class="{ active: activeTab === 'neural' }" @click="activeTab = 'neural'">
-        <span>🧠</span> Sieć neuronowa
+        <span>🧠</span> {{ t('admin.tabNeural') }}
       </button>
       <button
         :class="{ active: activeTab === 'messages' }"
         @click="activeTab = 'messages'; loadSupportThreads(selectedSupportUserId || undefined)"
       >
-        <span>💬</span> Wiadomości
+        <span>💬</span> {{ t('admin.tabMessages') }}
         <span v-if="supportUnreadCount > 0" class="badge-counter">{{ supportUnreadCount }}</span>
       </button>
     </div>
@@ -1583,25 +1585,25 @@ onUnmounted(() => {
           <strong>
             {{
               isNightlyScraping
-                ? 'Nocne przetwarzanie bazy w toku (Batch Scrape)'
+                ? t('admin.bgNightly')
                 : isEnrichingWeather
-                ? 'Wzbogacanie bazy pogodą (Open-Meteo Archive)'
+                ? t('admin.bgWeather')
                 : isPdfScraping
-                ? 'Ekstrakcja wyników treningów z PDF'
+                ? t('admin.bgPdf')
                 : scrapeStatus?.job_type === 'retry_missing'
-                ? 'Dociąganie brakujących sesji / 429'
-                : 'Scrapowanie wyników FIS'
+                ? t('admin.bgRetry')
+                : t('admin.bgScrape')
             }}
           </strong>
           <span v-if="isScraping && scrapeStatus?.current_season" class="active-process-sub">
-            • Sezon {{ scrapeStatus.current_season }}
+            • {{ t('admin.seasonPrefix', { season: scrapeStatus.current_season }) }}
             <template v-if="scrapeStatus.current_category">({{ scrapeStatus.current_category }})</template>
           </span>
           <span v-else-if="isNightlyScraping && nightlyStatus?.current_season" class="active-process-sub">
-            • Sezon {{ nightlyStatus.current_season }} ({{ nightlyStatus.current_category }})
+            • {{ t('admin.seasonPrefix', { season: nightlyStatus.current_season }) }} ({{ nightlyStatus.current_category }})
           </span>
           <span v-else-if="isPdfScraping && pdfStatus?.total_files > 0" class="active-process-sub">
-            • {{ pdfStatus.files_done }} / {{ pdfStatus.total_files }} plików ({{ pdfStatus.percent_complete }}%)
+            • {{ t('admin.filesDone', { done: pdfStatus.files_done, total: pdfStatus.total_files, pct: pdfStatus.percent_complete }) }}
           </span>
         </div>
         <div class="active-process-actions">
@@ -1613,7 +1615,7 @@ onUnmounted(() => {
             :disabled="scrapeStatus?.stop_requested || isStoppingScraper"
           >
             <span>⏹️</span>
-            {{ (scrapeStatus?.stop_requested || isStoppingScraper) ? 'Zatrzymywanie...' : 'Zatrzymaj scrapowanie' }}
+            {{ (scrapeStatus?.stop_requested || isStoppingScraper) ? t('admin.stopping') : t('admin.stopScraper').replace('⏹️ ', '') }}
           </button>
           <button
             v-else-if="isNightlyScraping"
@@ -1623,7 +1625,7 @@ onUnmounted(() => {
             :disabled="nightlyStatus?.stop_requested || isStoppingNightly"
           >
             <span>⏹️</span>
-            {{ (nightlyStatus?.stop_requested || isStoppingNightly) ? 'Zatrzymywanie...' : 'Zatrzymaj nocne pobieranie' }}
+            {{ (nightlyStatus?.stop_requested || isStoppingNightly) ? t('admin.stopping') : t('admin.stopNightly') }}
           </button>
           <button
             v-else-if="isEnrichingWeather"
@@ -1633,7 +1635,7 @@ onUnmounted(() => {
             :disabled="weatherStatus?.status?.stop_requested || isStoppingWeather"
           >
             <span>⏹️</span>
-            {{ (weatherStatus?.status?.stop_requested || isStoppingWeather) ? 'Zatrzymywanie...' : 'Zatrzymaj pogodę' }}
+            {{ (weatherStatus?.status?.stop_requested || isStoppingWeather) ? t('admin.stopping') : t('admin.stopWeather') }}
           </button>
           <button
             v-else-if="isPdfScraping"
@@ -1643,7 +1645,7 @@ onUnmounted(() => {
             :disabled="pdfStatus?.stop_requested || isStoppingPdf"
           >
             <span>⏹️</span>
-            {{ (pdfStatus?.stop_requested || isStoppingPdf) ? 'Zatrzymywanie...' : 'Zatrzymaj PDF' }}
+            {{ (pdfStatus?.stop_requested || isStoppingPdf) ? t('admin.stopping') : t('admin.stopPdf') }}
           </button>
         </div>
       </div>
@@ -1680,10 +1682,10 @@ onUnmounted(() => {
         <div class="active-stats-pills">
           <template v-if="isScraping && scrapeStatus">
             <span class="mini-stat-pill pill-green">
-              Nowe: {{ (scrapeStatus.inserted ?? scrapeStatus.stats?.inserted ?? 0) + (scrapeStatus.recovered_missing ?? scrapeStatus.stats?.recovered_missing ?? 0) }}
+              {{ t('admin.pillNew', { count: (scrapeStatus.inserted ?? scrapeStatus.stats?.inserted ?? 0) + (scrapeStatus.recovered_missing ?? scrapeStatus.stats?.recovered_missing ?? 0) }) }}
             </span>
             <span class="mini-stat-pill pill-cyan">
-              Pominięte: {{ (scrapeStatus.skipped_complete ?? scrapeStatus.stats?.skipped_complete ?? 0) + (scrapeStatus.unchanged ?? scrapeStatus.stats?.unchanged ?? 0) }}
+              {{ t('admin.pillSkipped', { count: (scrapeStatus.skipped_complete ?? scrapeStatus.stats?.skipped_complete ?? 0) + (scrapeStatus.unchanged ?? scrapeStatus.stats?.unchanged ?? 0) }) }}
             </span>
             <span v-if="scrapeStatus.failed_429 > 0" class="mini-stat-pill pill-red">
               429: {{ scrapeStatus.failed_429 }}
@@ -1694,10 +1696,10 @@ onUnmounted(() => {
           </template>
           <template v-else-if="isNightlyScraping && nightlyStatus">
             <span class="mini-stat-pill pill-green">
-              Nowe: {{ nightlyStatus.inserted_sessions || 0 }}
+              {{ t('admin.pillNew', { count: nightlyStatus.inserted_sessions || 0 }) }}
             </span>
             <span class="mini-stat-pill pill-blue">
-              Zakt.: {{ nightlyStatus.updated_sessions || 0 }}
+              {{ t('admin.pillUpdated', { count: nightlyStatus.updated_sessions || 0 }) }}
             </span>
             <span class="mini-stat-pill pill-cyan">
               🌤️ {{ nightlyStatus.weather_attached_count || 0 }}
@@ -1708,13 +1710,13 @@ onUnmounted(() => {
           </template>
           <template v-else-if="isPdfScraping && pdfStatus">
             <span class="mini-stat-pill pill-green">
-              Kwarantanna: {{ pdfStatus.saved_to_review || 0 }}
+              {{ t('admin.pillQuarantine', { count: pdfStatus.saved_to_review || 0 }) }}
             </span>
             <span class="mini-stat-pill pill-cyan">
-              Bez zmian: {{ pdfStatus.unchanged_files || 0 }}
+              {{ t('admin.pillUnchanged', { count: pdfStatus.unchanged_files || 0 }) }}
             </span>
             <span v-if="pdfStatus.failed_files > 0" class="mini-stat-pill pill-red">
-              Błędy: {{ pdfStatus.failed_files }}
+              {{ t('admin.pillErrors', { count: pdfStatus.failed_files }) }}
             </span>
             <span class="mini-stat-pill pill-gray">
               ⏱️ {{ Math.floor((pdfStatus.elapsed_seconds || 0) / 60) }}m {{ (pdfStatus.elapsed_seconds || 0) % 60 }}s
@@ -1729,49 +1731,49 @@ onUnmounted(() => {
       <div class="admin-card">
         <div class="admin-card-header">
           <div>
-            <h3>Pobierz Wyniki Konkursów z FIS</h3>
-            <p class="subtitle">Pobieranie oficjalnych wyników konkursowych oraz kwalifikacji do bazy danych.</p>
+            <h3>{{ t('admin.scraperTitle') }}</h3>
+            <p class="subtitle">{{ t('admin.scraperSub') }}</p>
           </div>
         </div>
 
         <div class="filter-row">
           <div class="filter-section">
-            <label class="field-label">Kategorie:</label>
+            <label class="field-label">{{ t('admin.categoriesLabel') }}</label>
             <div class="custom-dropdown">
               <button
                 class="dropdown-toggle"
                 @click="showCategoryDropdown = !showCategoryDropdown; showSeasonDropdown = false"
               >
-                <span>{{ selectedCategories.length > 0 ? `Wybrano: ${selectedCategories.length}` : 'Wybierz kategorie...' }}</span>
+                <span>{{ selectedCategories.length > 0 ? t('admin.selectedCount', { count: selectedCategories.length }) : t('admin.chooseCategories') }}</span>
                 <span class="arrow">▼</span>
               </button>
               <div v-if="showCategoryDropdown" class="dropdown-menu">
                 <div class="dropdown-actions-row">
-                  <button type="button" @click="selectAllCategories" class="btn-text-sm">Zaznacz wszystkie</button>
-                  <button type="button" @click="clearCategories" class="btn-text-sm">Wyczyść</button>
+                  <button type="button" @click="selectAllCategories" class="btn-text-sm">{{ t('admin.selectAll') }}</button>
+                  <button type="button" @click="clearCategories" class="btn-text-sm">{{ t('admin.clear') }}</button>
                 </div>
-                <label v-for="(info, code) in availableCategories" :key="code" class="dropdown-item">
+                <label v-for="(_info, code) in availableCategories" :key="code" class="dropdown-item">
                   <input type="checkbox" :value="code" v-model="selectedCategories" />
-                  <span>{{ info.pl }} ({{ code }})</span>
+                  <span>{{ formatCategory(String(code)) }} ({{ code }})</span>
                 </label>
               </div>
             </div>
           </div>
 
           <div class="filter-section">
-            <label class="field-label">Sezony:</label>
+            <label class="field-label">{{ t('admin.seasonsLabel') }}</label>
             <div class="custom-dropdown">
               <button
                 class="dropdown-toggle"
                 @click="showSeasonDropdown = !showSeasonDropdown; showCategoryDropdown = false"
               >
-                <span>{{ selectedSeasons.length > 0 ? `Wybrano: ${selectedSeasons.length}` : 'Wybierz sezony...' }}</span>
+                <span>{{ selectedSeasons.length > 0 ? t('admin.selectedCount', { count: selectedSeasons.length }) : t('admin.chooseSeasons') }}</span>
                 <span class="arrow">▼</span>
               </button>
               <div v-if="showSeasonDropdown" class="dropdown-menu">
                 <div class="dropdown-actions-row">
-                  <button type="button" @click="selectAllSeasons" class="btn-text-sm">Zaznacz wszystkie</button>
-                  <button type="button" @click="clearSeasons" class="btn-text-sm">Wyczyść</button>
+                  <button type="button" @click="selectAllSeasons" class="btn-text-sm">{{ t('admin.selectAll') }}</button>
+                  <button type="button" @click="clearSeasons" class="btn-text-sm">{{ t('admin.clear') }}</button>
                 </div>
                 <label v-for="year in availableSeasons" :key="year" class="dropdown-item dropdown-season-item">
                   <div class="season-checkbox-label">
@@ -1783,29 +1785,29 @@ onUnmounted(() => {
                     class="season-pill-mini"
                     :class="`pill-${getSeasonStatus(year).status.toLowerCase()}`"
                   >
-                    {{ getSeasonStatus(year).status === 'COMPLETE' ? '✓ Kompletny' : (getSeasonStatus(year).status === 'PARTIAL' ? `⚠️ ${getSeasonStatus(year).completeness_pct}% (${getSeasonStatus(year).sessions_with_results}/${getSeasonStatus(year).total_sessions})` : 'Pusty') }}
+                    {{ getSeasonStatus(year).status === 'COMPLETE' ? t('admin.statusComplete') : (getSeasonStatus(year).status === 'PARTIAL' ? `⚠️ ${getSeasonStatus(year).completeness_pct}% (${getSeasonStatus(year).sessions_with_results}/${getSeasonStatus(year).total_sessions})` : t('admin.statusEmpty')) }}
                   </span>
-                  <span v-else class="season-pill-mini pill-empty">Brak</span>
+                  <span v-else class="season-pill-mini pill-empty">{{ t('admin.statusNone') }}</span>
                 </label>
               </div>
             </div>
           </div>
 
           <div class="filter-section">
-            <label class="field-label">Tryb Pobierania:</label>
+            <label class="field-label">{{ t('admin.modeLabel') }}</label>
             <select v-model="scrapeMode" class="form-select">
-              <option value="IND">Tylko Indywidualne (IND)</option>
-              <option value="TEAM" disabled>Drużynówki (Wkrótce)</option>
+              <option value="IND">{{ t('admin.modeInd') }}</option>
+              <option value="TEAM" disabled>{{ t('admin.modeTeamSoon') }}</option>
             </select>
           </div>
 
           <div class="filter-section checkbox-filter-section">
-            <label class="field-label">Optymalizacja pobierania:</label>
-            <label class="checkbox-control-box" title="Pomija zapytania HTTP do konkursów, które są już kompletne w bazie. Pobiera tylko brakujące lub niepełne sesje.">
+            <label class="field-label">{{ t('admin.optLabel') }}</label>
+            <label class="checkbox-control-box" :title="t('admin.onlyMissingTitle')">
               <input type="checkbox" v-model="onlyMissing" />
               <div class="checkbox-control-text">
-                <strong>⚡ Pobieraj tylko brakujące zawody</strong>
-                <span class="help-desc">Pomija kompletne konkursy (nie zapycha bazy, chroni przed 429)</span>
+                <strong>{{ t('admin.onlyMissing') }}</strong>
+                <span class="help-desc">{{ t('admin.onlyMissingDesc') }}</span>
               </div>
             </label>
           </div>
@@ -1813,7 +1815,7 @@ onUnmounted(() => {
 
         <div class="action-footer scraper-action-footer">
           <button v-if="!isScraping" @click="runScraper" class="btn-primary" :disabled="isNightlyScraping">
-            <span>🚀</span> Rozpocznij Scrapowanie
+            {{ t('admin.runScraper') }}
           </button>
           <button
             v-else
@@ -1822,14 +1824,14 @@ onUnmounted(() => {
             class="btn-danger"
             :disabled="scrapeStatus?.stop_requested || isStoppingScraper"
           >
-            <span>⏹️</span> {{ (scrapeStatus?.stop_requested || isStoppingScraper) ? 'Zatrzymywanie...' : 'Zatrzymaj scrapowanie' }}
+            <span>⏹️</span> {{ (scrapeStatus?.stop_requested || isStoppingScraper) ? t('admin.stopping') : t('admin.stopScraper').replace('⏹️ ', '') }}
           </button>
           <span
             class="status-pill-indicator"
             :class="isScraping ? 'pill-running' : 'pill-idle'"
           >
             <span class="status-dot"></span>
-            {{ isScraping ? ((scrapeStatus?.stop_requested || isStoppingScraper) ? 'Zatrzymywanie...' : 'Scrapowanie w toku') : 'Gotowy' }}
+            {{ isScraping ? ((scrapeStatus?.stop_requested || isStoppingScraper) ? t('admin.stopping') : t('admin.statusRunningScrape')) : t('admin.statusReady') }}
           </span>
         </div>
 
@@ -1844,36 +1846,32 @@ onUnmounted(() => {
         >
           <div class="progress-header">
             <div class="progress-title">
-              <span>{{ scrapeStatus.job_type === 'retry_missing' ? 'Dociąganie brakujących / 429:' : 'Postęp scrapowania FIS:' }}</span>
+              <span>{{ scrapeStatus.job_type === 'retry_missing' ? t('admin.progressRetryTitle') : t('admin.progressScrapeTitle') }}</span>
               <strong v-if="scrapeStatus.current_season">
-                Sezon {{ scrapeStatus.current_season }}
+                {{ t('admin.seasonPrefix', { season: scrapeStatus.current_season }) }}
                 <template v-if="scrapeStatus.current_category">({{ scrapeStatus.current_category }})</template>
               </strong>
               <span v-if="scrapeStatus.current_item && isScraping" class="current-item-text">
                 • {{ scrapeStatus.current_item }}
               </span>
               <span v-else-if="!isScraping" class="current-item-text text-green font-semibold">
-                • {{ scrapeStatus.current_item || 'Zakończono pomyślnie' }}
+                • {{ scrapeStatus.current_item || t('admin.doneOk') }}
               </span>
             </div>
             <div class="progress-stat">
               <template v-if="scrapeStatus.job_type === 'retry_missing' && scrapeStatus.races_total > 0">
-                {{ scrapeStatus.races_done }} / {{ scrapeStatus.races_total }} sesji ({{ scrapeStatus.percent_complete }}%)
+                {{ t('admin.sessionsSuffix', { done: scrapeStatus.races_done, total: scrapeStatus.races_total, pct: scrapeStatus.percent_complete }) }}
               </template>
               <template v-else-if="scrapeStatus.events_total > 0">
                 <template v-if="isScraping">
-                  Kombinacja {{ scrapeStatus.combination_index }}/{{ scrapeStatus.total_combinations }}
-                  • Event {{ scrapeStatus.events_done }}/{{ scrapeStatus.events_total }}
-                  ({{ scrapeStatus.percent_complete }}%)
+                  {{ t('admin.comboEventProgress', { combo: scrapeStatus.combination_index, totalCombos: scrapeStatus.total_combinations, ev: scrapeStatus.events_done, totalEv: scrapeStatus.events_total, pct: scrapeStatus.percent_complete }) }}
                 </template>
                 <template v-else>
-                  Kombinacji: {{ scrapeStatus.total_combinations }}/{{ scrapeStatus.total_combinations }}
-                  • Eventów: {{ scrapeStatus.events_total }}/{{ scrapeStatus.events_total }}
-                  (100%)
+                  {{ t('admin.combosDone', { totalCombos: scrapeStatus.total_combinations, totalEv: scrapeStatus.events_total }) }}
                 </template>
               </template>
               <template v-else>
-                {{ scrapeStatus.combination_index }} / {{ scrapeStatus.total_combinations }} kombinacji ({{ scrapeStatus.percent_complete }}%)
+                {{ t('admin.combosProgress', { combo: scrapeStatus.combination_index, totalCombos: scrapeStatus.total_combinations, pct: scrapeStatus.percent_complete }) }}
               </template>
             </div>
           </div>
@@ -1888,30 +1886,30 @@ onUnmounted(() => {
 
           <div class="live-metrics-grid">
             <div class="live-metric-card">
-              <span class="metric-label">Nowe / Uzupełnione</span>
+              <span class="metric-label">{{ t('admin.metricNewUpdated') }}</span>
               <strong class="metric-value text-green">
                 {{ (scrapeStatus.inserted ?? scrapeStatus.stats?.inserted ?? 0) + (scrapeStatus.recovered_missing ?? scrapeStatus.stats?.recovered_missing ?? 0) }}
                 <span v-if="isScraping && (scrapeStatus.inserted || 0) === 0 && (scrapeStatus.races_done || 0) > 0" class="text-xs text-muted font-normal">
-                  ({{ scrapeStatus.races_done }} w buforze)
+                  {{ t('admin.inBuffer', { count: scrapeStatus.races_done }) }}
                 </span>
               </strong>
             </div>
             <div class="live-metric-card">
-              <span class="metric-label">Pominięte (kompletne)</span>
+              <span class="metric-label">{{ t('admin.metricSkippedComplete') }}</span>
               <strong class="metric-value text-cyan">
                 {{ (scrapeStatus.skipped_complete ?? scrapeStatus.stats?.skipped_complete ?? 0) + (scrapeStatus.unchanged ?? scrapeStatus.stats?.unchanged ?? 0) }}
               </strong>
             </div>
             <div class="live-metric-card">
-              <span class="metric-label">Kwarantanna</span>
+              <span class="metric-label">{{ t('admin.tabReview') }}</span>
               <strong class="metric-value text-blue">{{ scrapeStatus.sent_to_review ?? scrapeStatus.stats?.sent_to_review ?? 0 }}</strong>
             </div>
             <div class="live-metric-card" v-if="(scrapeStatus.failed_429 ?? scrapeStatus.stats?.failed_429 ?? 0) > 0">
-              <span class="metric-label">Błędy 429 (do wznowienia)</span>
+              <span class="metric-label">{{ t('admin.metricErrors429') }}</span>
               <strong class="metric-value text-red">🚦 {{ scrapeStatus.failed_429 ?? scrapeStatus.stats?.failed_429 }}</strong>
             </div>
             <div class="live-metric-card">
-              <span class="metric-label">Czas trwania</span>
+              <span class="metric-label">{{ t('admin.metricDuration') }}</span>
               <strong class="metric-value">
                 {{ Math.floor((scrapeStatus.elapsed_seconds || 0) / 60) }}m {{ (scrapeStatus.elapsed_seconds || 0) % 60 }}s
               </strong>
@@ -1920,19 +1918,19 @@ onUnmounted(() => {
         </div>
 
         <div v-if="scrapeResult && !isScraping" class="results-box">
-          <h4>Raport z wykonania:</h4>
+          <h4>{{ t('admin.reportTitle') }}</h4>
           <ul class="stats-list">
-            <li>Przetworzono kombinacji: <span>{{ scrapeResult.combinations_processed || scrapeStatus?.total_combinations }}</span></li>
-            <li>Zapisano nowych konkursów: <span class="text-green">{{ scrapeResult.inserted || 0 }}</span></li>
-            <li>Uzupełniono brakujących / 429: <span class="text-cyan">{{ scrapeResult.recovered_missing || 0 }}</span></li>
-            <li>Pominięto kompletnych (bez zmian): <span class="text-cyan">{{ (scrapeResult.skipped_complete || 0) + (scrapeResult.unchanged || 0) }}</span></li>
-            <li>Wysłano do kwarantanny: <span class="text-yellow">{{ scrapeResult.sent_to_review || 0 }}</span></li>
-            <li v-if="scrapeResult.failed_429 > 0">Błędy 429 (oznaczone w bazie): <span class="text-red">{{ scrapeResult.failed_429 }}</span></li>
+            <li>{{ t('admin.repCombos') }} <span>{{ scrapeResult.combinations_processed || scrapeStatus?.total_combinations }}</span></li>
+            <li>{{ t('admin.repInserted') }} <span class="text-green">{{ scrapeResult.inserted || 0 }}</span></li>
+            <li>{{ t('admin.repRecovered') }} <span class="text-cyan">{{ scrapeResult.recovered_missing || 0 }}</span></li>
+            <li>{{ t('admin.repSkipped') }} <span class="text-cyan">{{ (scrapeResult.skipped_complete || 0) + (scrapeResult.unchanged || 0) }}</span></li>
+            <li>{{ t('admin.repReview') }} <span class="text-yellow">{{ scrapeResult.sent_to_review || 0 }}</span></li>
+            <li v-if="scrapeResult.failed_429 > 0">{{ t('admin.repErrors429') }} <span class="text-red">{{ scrapeResult.failed_429 }}</span></li>
           </ul>
           <div class="nn-retrain-hint-inline">
-            <span>🧠 <strong>Wskazówka AI:</strong> Po aktualizacjach wyników w bazie warto przetrenować sieć neuronową na zaktualizowanych danych.</span>
+            <span>🧠 <strong>{{ t('admin.aiHintPrefix') }}</strong> {{ t('admin.aiHintText') }}</span>
             <button type="button" class="btn-link-neural" @click="activeTab = 'neural'">
-              Przejdź do: Sieć neuronowa →
+              {{ t('admin.aiHintBtn') }}
             </button>
           </div>
         </div>
@@ -1941,9 +1939,9 @@ onUnmounted(() => {
         <div class="seasons-database-section">
           <div class="seasons-header-row">
             <div>
-              <h4 class="seasons-summary-title">📊 Stan bazy: Wgrane sezony i kompletność</h4>
+              <h4 class="seasons-summary-title">{{ t('admin.dbStateTitle') }}</h4>
               <p class="seasons-summary-subtitle">
-                Sprawdź, które sezony i zawody są już w bazie danych, albo wznów wyłącznie brakujące lub zablokowane przez limit 429 konkursy.
+                {{ t('admin.dbStateSub') }}
               </p>
             </div>
             <div class="seasons-header-actions">
@@ -1953,9 +1951,9 @@ onUnmounted(() => {
                 class="btn-danger btn-header-stop"
                 @click="triggerStopScraper"
                 :disabled="scrapeStatus?.stop_requested || isStoppingScraper"
-                title="Bezpiecznie zatrzymaj aktywne zadanie scrapowania"
+                :title="t('admin.stopTaskTitle')"
               >
-                ⏹️ {{ (scrapeStatus?.stop_requested || isStoppingScraper) ? 'Zatrzymywanie...' : 'Zatrzymaj zadanie' }}
+                ⏹️ {{ (scrapeStatus?.stop_requested || isStoppingScraper) ? t('admin.stopping') : t('admin.stopTask') }}
               </button>
               <button
                 v-if="totalFailed429AcrossDb > 0"
@@ -1963,9 +1961,9 @@ onUnmounted(() => {
                 class="btn-resume-429"
                 @click="triggerRetryMissing(null, true)"
                 :disabled="isScraping"
-                title="Pobierz wyłącznie sesje oznaczone w bazie błędem HTTP 429"
+                :title="t('admin.resume429Title')"
               >
-                🚦 Wznów błędy 429 ({{ totalFailed429AcrossDb }})
+                {{ t('admin.resume429', { count: totalFailed429AcrossDb }) }}
               </button>
               <button
                 v-if="totalMissingAcrossDb > 0"
@@ -1973,9 +1971,9 @@ onUnmounted(() => {
                 class="btn-fetch-missing-header"
                 @click="triggerRetryMissing(null, false)"
                 :disabled="isScraping"
-                title="Pobierz wyłącznie brakujące sesje wprost z bazy (bez pełnego skanu kalendarza)"
+                :title="t('admin.fetchMissingAllTitle')"
               >
-                ⚡ Dociągnij wszystkie brakujące ({{ totalMissingAcrossDb }})
+                {{ t('admin.fetchMissingAll', { count: totalMissingAcrossDb }) }}
               </button>
               <button
                 type="button"
@@ -1983,16 +1981,16 @@ onUnmounted(() => {
                 @click="loadSeasonsSummary"
                 :disabled="isLoadingSeasonsSummary"
               >
-                <span :class="{ spinning: isLoadingSeasonsSummary }">🔄</span> Odśwież stan bazy
+                <span :class="{ spinning: isLoadingSeasonsSummary }">🔄</span> {{ t('admin.refreshDb').replace('🔄 ', '') }}
               </button>
             </div>
           </div>
 
           <div v-if="isLoadingSeasonsSummary" class="seasons-loading">
-            Wczytywanie podsumowania bazy danych...
+            {{ t('admin.loadingSeasons') }}
           </div>
           <div v-else-if="seasonsSummary.length === 0" class="seasons-empty">
-            Baza nie zawiera jeszcze żadnych wgranych sesji.
+            {{ t('admin.emptySeasons') }}
           </div>
           <div v-else class="seasons-grid">
             <div
@@ -2002,15 +2000,15 @@ onUnmounted(() => {
               :class="`border-${s.status.toLowerCase()}`"
             >
               <div class="season-card-header">
-                <span class="season-year">Sezon {{ s.season }}</span>
+                <span class="season-year">{{ t('admin.seasonPrefix', { season: s.season }) }}</span>
                 <span class="season-status-badge" :class="`badge-${s.status.toLowerCase()}`">
-                  {{ s.status === 'COMPLETE' ? '✓ Kompletny' : (s.status === 'PARTIAL' ? '⚠️ Częściowy' : 'Pusty') }}
+                  {{ s.status === 'COMPLETE' ? t('admin.statusComplete') : (s.status === 'PARTIAL' ? t('admin.statusPartial') : t('admin.statusEmpty')) }}
                 </span>
               </div>
 
               <div class="season-progress">
                 <div class="progress-info">
-                  <span>Kompletność sezonu:</span>
+                  <span>{{ t('admin.seasonCompleteness') }}</span>
                   <strong>{{ s.completeness_pct }}%</strong>
                 </div>
                 <div class="progress-bar-bg">
@@ -2021,48 +2019,48 @@ onUnmounted(() => {
                   ></div>
                 </div>
                 <div class="progress-stats-breakdown">
-                  <span class="stat-pill-sm pill-results" title="Liczba rozegranych sesji z wynikami">
-                    ✅ {{ s.sessions_with_results }} rozegranych
+                  <span class="stat-pill-sm pill-results" :title="t('admin.playedTitle')">
+                    {{ t('admin.playedCount', { count: s.sessions_with_results }) }}
                   </span>
                   <span
                     v-if="s.cancelled_sessions > 0"
                     class="stat-pill-sm pill-cancelled"
-                    title="Liczba zawodów odwołanych przez jury (np. wiatr)"
+                    :title="t('admin.cancelledTitle')"
                   >
-                    💨 {{ s.cancelled_sessions }} odwołanych
+                    {{ t('admin.cancelledCount', { count: s.cancelled_sessions }) }}
                   </span>
                   <span
                     v-if="s.failed_429_sessions > 0"
                     class="stat-pill-sm pill-429"
-                    title="Liczba zawodów przerwanych przez limit FIS 429 — gotowych do szybkiego wznowienia"
+                    :title="t('admin.err429Title')"
                   >
-                    🚦 {{ s.failed_429_sessions }} błędów 429
+                    {{ t('admin.err429Count', { count: s.failed_429_sessions }) }}
                   </span>
                   <span
                     v-if="s.missing_sessions > 0"
                     class="stat-pill-sm pill-missing"
-                    title="Liczba zawodów zaplanowanych, ale brakujących w bazie"
+                    :title="t('admin.missingTitle')"
                   >
-                    ⚠️ {{ s.missing_sessions }} do pobrania
+                    {{ t('admin.missingCount', { count: s.missing_sessions }) }}
                   </span>
                 </div>
               </div>
 
               <div class="season-details">
                 <div class="season-detail-row">
-                  <span class="detail-label-inline">Skocznie / miejsca:</span>
-                  <span class="detail-value">{{ s.unique_places_count }} lokalizacji</span>
+                  <span class="detail-label-inline">{{ t('admin.hillsPlaces') }}</span>
+                  <span class="detail-value">{{ t('admin.locationsCount', { count: s.unique_places_count }) }}</span>
                 </div>
                 <div class="season-categories-list">
-                  <span class="detail-label-inline">Zawody:</span>
+                  <span class="detail-label-inline">{{ t('admin.competitionsLabel') }}</span>
                   <div class="cat-tags">
                     <span
                       v-for="cat in s.categories"
                       :key="cat.category_code"
                       class="cat-tag"
-                      :title="`${cat.category_code}: ${cat.sessions_with_results}/${cat.total_sessions} sesji z wynikami`"
+                      :title="t('admin.catTooltip', { code: cat.category_code, done: cat.sessions_with_results, total: cat.total_sessions })"
                     >
-                      {{ cat.category_name_pl || cat.category_code }}
+                      {{ formatCategory(cat.category_code) }}
                       <small>({{ cat.sessions_with_results }}/{{ cat.total_sessions }})</small>
                     </span>
                   </div>
@@ -2076,26 +2074,26 @@ onUnmounted(() => {
                   class="btn-fetch-missing"
                   @click="scrapeMissingSeason(s.season)"
                   :disabled="isScraping"
-                  title="Pobierz wyłącznie brakujące / błędne 429 zawody z tego sezonu bez skanowania kompletnych eventów"
+                  :title="t('admin.fetchMissingSeasonTitle')"
                 >
-                  ⚡ Dociągnij tylko brakujące ({{ s.missing_sessions }})
+                  {{ t('admin.fetchMissingSeason', { count: s.missing_sessions }) }}
                 </button>
                 <div class="footer-btn-group">
                   <button
                     type="button"
                     class="btn-view-details"
                     @click="openMissingDetails(s.season)"
-                    title="Zobacz listę odwołanych lub brakujących zawodów"
+                    :title="t('admin.detailsTitle')"
                   >
-                    🔍 Szczegóły ({{ (s.cancelled_sessions || 0) + (s.missing_sessions || 0) }})
+                    {{ t('admin.detailsCount', { count: (s.cancelled_sessions || 0) + (s.missing_sessions || 0) }) }}
                   </button>
                   <button
                     type="button"
                     class="btn-quick-select"
                     @click="quickSelectSeason(s.season)"
-                    title="Ustaw ten sezon w formularzu na górze"
+                    :title="t('admin.chooseBtnTitle')"
                   >
-                    Wybierz
+                    {{ t('admin.chooseBtn') }}
                   </button>
                 </div>
               </div>
@@ -2109,33 +2107,33 @@ onUnmounted(() => {
         <div class="modal-card">
           <div class="modal-header">
             <div>
-              <h3 class="modal-title">🔍 Zawody w sezonie {{ selectedMissingSeason }}</h3>
-              <p class="modal-subtitle">Szczegółowa weryfikacja statusu konkursów: rozegrane, odwołane przez jury oraz brakujące w bazie.</p>
+              <h3 class="modal-title">{{ t('admin.modalTitle', { season: selectedMissingSeason }) }}</h3>
+              <p class="modal-subtitle">{{ t('admin.modalSub') }}</p>
             </div>
             <button type="button" class="btn-modal-close" @click="closeMissingDetails">✕</button>
           </div>
 
           <div v-if="isLoadingMissing" class="modal-loading">
-            <span class="spinning">🔄</span> Pobieranie szczegółowej listy zawodów...
+            <span class="spinning">🔄</span> {{ t('admin.modalLoading') }}
           </div>
 
           <div v-else-if="missingSeasonData" class="modal-body">
             <!-- Pigułki podsumowania -->
             <div class="missing-summary-banner">
               <div class="summary-pill pill-success">
-                <span>Rozegrane z wynikami:</span>
+                <span>{{ t('admin.sumPlayed') }}</span>
                 <strong>{{ getSeasonStatus(selectedMissingSeason)?.sessions_with_results || 0 }}</strong>
               </div>
               <div class="summary-pill pill-cancelled">
-                <span>Odwołane przez jury:</span>
+                <span>{{ t('admin.sumCancelled') }}</span>
                 <strong>{{ missingSeasonData.cancelled_count }}</strong>
               </div>
               <div class="summary-pill pill-missing">
-                <span>Brakujące w bazie:</span>
+                <span>{{ t('admin.sumMissing') }}</span>
                 <strong>{{ missingSeasonData.missing_count }}</strong>
               </div>
               <div v-if="missingSeasonData.failed_429_count > 0" class="summary-pill pill-429">
-                <span>Błędy 429 (do wznowienia):</span>
+                <span>{{ t('admin.sum429') }}</span>
                 <strong>{{ missingSeasonData.failed_429_count }}</strong>
               </div>
             </div>
@@ -2143,26 +2141,26 @@ onUnmounted(() => {
             <!-- SEKCJA: BRAKUJĄCE W BAZIE -->
             <div v-if="missingSeasonData.missing_sessions && missingSeasonData.missing_sessions.length > 0" class="missing-section">
               <div class="section-title-row">
-                <h4 class="text-missing">⚠️ Zawody do pobrania (brak wyników w bazie)</h4>
+                <h4 class="text-missing">{{ t('admin.secMissingTitle') }}</h4>
                 <button
                   type="button"
                   class="btn-primary-sm"
                   @click="scrapeMissingSeason(selectedMissingSeason)"
                   :disabled="isScraping"
                 >
-                  ⚡ Pobierz te brakujące zawody
+                  {{ t('admin.fetchTheseMissing') }}
                 </button>
               </div>
               <div class="table-responsive">
                 <table class="missing-table">
                   <thead>
                     <tr>
-                      <th>Data</th>
-                      <th>Miejscowość</th>
-                      <th>Nazwa konkursu</th>
-                      <th>Kategoria</th>
-                      <th>Skocznia</th>
-                      <th>Status</th>
+                      <th>{{ t('admin.thDate') }}</th>
+                      <th>{{ t('admin.thPlace') }}</th>
+                      <th>{{ t('admin.thCompName') }}</th>
+                      <th>{{ t('admin.thCategory') }}</th>
+                      <th>{{ t('admin.thHill') }}</th>
+                      <th>{{ t('admin.thStatus') }}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2185,20 +2183,20 @@ onUnmounted(() => {
 
             <!-- SEKCJA: ODWOŁANE PRZEZ JURY -->
             <div v-if="missingSeasonData.cancelled_sessions && missingSeasonData.cancelled_sessions.length > 0" class="missing-section">
-              <h4 class="text-cancelled">💨 Zawody odwołane przez jury FIS (warunki / wiatr)</h4>
+              <h4 class="text-cancelled">{{ t('admin.secCancelledTitle') }}</h4>
               <p class="section-desc">
-                Te zawody widnieją w oficjalnym kalendarzu FIS, ale zostały odwołane przez jury (np. zbyt silny wiatr, odwilż). Baza prawidłowo rejestruje je jako odwołane bez pustych rekordów.
+                {{ t('admin.secCancelledDesc') }}
               </p>
               <div class="table-responsive">
                 <table class="missing-table">
                   <thead>
                     <tr>
-                      <th>Data</th>
-                      <th>Miejscowość</th>
-                      <th>Nazwa konkursu</th>
-                      <th>Kategoria</th>
-                      <th>Skocznia</th>
-                      <th>Status</th>
+                      <th>{{ t('admin.thDate') }}</th>
+                      <th>{{ t('admin.thPlace') }}</th>
+                      <th>{{ t('admin.thCompName') }}</th>
+                      <th>{{ t('admin.thCategory') }}</th>
+                      <th>{{ t('admin.thHill') }}</th>
+                      <th>{{ t('admin.thStatus') }}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2217,13 +2215,13 @@ onUnmounted(() => {
 
             <div v-if="missingSeasonData.total_unresolved === 0" class="empty-state-card">
               <span class="text-2xl">🎉</span>
-              <strong>Kompletny sezon!</strong>
-              <p>Wszystkie zawody w sezonie {{ selectedMissingSeason }} zostały rozegrane i posiadają pełne wyniki.</p>
+              <strong>{{ t('admin.completeSeasonTitle') }}</strong>
+              <p>{{ t('admin.completeSeasonDesc', { season: selectedMissingSeason }) }}</p>
             </div>
           </div>
 
           <div class="modal-footer">
-            <button type="button" class="btn-secondary" @click="closeMissingDetails">Zamknij</button>
+            <button type="button" class="btn-secondary" @click="closeMissingDetails">{{ t('admin.closeBtn') }}</button>
           </div>
         </div>
       </div>
@@ -2232,9 +2230,9 @@ onUnmounted(() => {
       <div class="admin-card mt-6">
         <div class="admin-card-header flex-between">
           <div>
-            <h3>🌙 Nocne Przetwarzanie Bazy (Batch Scrape)</h3>
+            <h3>{{ t('admin.nightlyTitle') }}</h3>
             <p class="subtitle">
-              Pobieranie wszystkich wyników ze wszystkich sezonów ze sztucznym opóźnieniem chroniącym przed błędem 429 oraz automatycznym dołączaniem danych pogodowych.
+              {{ t('admin.nightlySub') }}
             </p>
           </div>
           <div class="header-badges">
@@ -2243,7 +2241,7 @@ onUnmounted(() => {
               :class="isNightlyScraping ? 'pill-running' : 'pill-idle'"
             >
               <span class="status-dot"></span>
-              {{ isNightlyScraping ? 'W toku (Aktywne)' : 'Bezczynny (Gotowy)' }}
+              {{ isNightlyScraping ? t('admin.nightlyRunning') : t('admin.nightlyIdle') }}
             </span>
           </div>
         </div>
@@ -2251,9 +2249,9 @@ onUnmounted(() => {
         <div class="info-alert-banner">
           <span class="alert-icon">⏱️</span>
           <div>
-            <strong>Ochrona przed błędem HTTP 429 (Too Many Requests):</strong>
+            <strong>{{ t('admin.nightlyWarnTitle') }}</strong>
             <p>
-              Proces wysyła żądania do FIS w kontrolowanych odstępach czasowych z losowym szumem (jitter). Dzięki temu możesz bezpiecznie uruchomić pobieranie na noc bez ryzyka tymczasowej blokady IP. Każdy pobrany konkurs otrzymuje od razu historyczne dane pogodowe.
+              {{ t('admin.nightlyWarnDesc') }}
             </p>
           </div>
         </div>
@@ -2266,37 +2264,37 @@ onUnmounted(() => {
         <div class="range-config-box">
           <div class="range-sliders-block">
             <div class="range-header-row">
-              <label class="field-label">Zakres sezonów (od – do):</label>
+              <label class="field-label">{{ t('admin.seasonRangeLabel') }}</label>
               <span class="range-badge font-mono">
                 {{ Math.min(nightlySeasonFrom, nightlySeasonTo) }} – {{ Math.max(nightlySeasonFrom, nightlySeasonTo) }}
-                ({{ Math.abs(nightlySeasonTo - nightlySeasonFrom) + 1 }} lat)
+                {{ t('admin.yearsSuffix', { count: Math.abs(nightlySeasonTo - nightlySeasonFrom) + 1 }) }}
               </span>
             </div>
             <div class="dual-sliders-grid">
               <div class="slider-item">
-                <span>Od sezonu: <strong class="font-mono">{{ nightlySeasonFrom }}</strong></span>
+                <span>{{ t('admin.fromSeason') }} <strong class="font-mono">{{ nightlySeasonFrom }}</strong></span>
                 <input type="range" min="2000" :max="maxSelectableSeason" v-model.number="nightlySeasonFrom" :disabled="isNightlyScraping" class="styled-slider" />
               </div>
               <div class="slider-item">
-                <span>Do sezonu: <strong class="font-mono">{{ nightlySeasonTo }}</strong></span>
+                <span>{{ t('admin.toSeason') }} <strong class="font-mono">{{ nightlySeasonTo }}</strong></span>
                 <input type="range" min="2000" :max="maxSelectableSeason" v-model.number="nightlySeasonTo" :disabled="isNightlyScraping" class="styled-slider" />
               </div>
             </div>
             <div class="range-presets-row">
               <button type="button" class="btn-preset-chip" :disabled="isNightlyScraping" @click="applyNightlyPreset(maxSelectableSeason - 1, maxSelectableSeason, ['WC', 'GP', 'COC'])">
-                Ostatnie 2 sezony
+                {{ t('admin.presetLast2') }}
               </button>
               <button type="button" class="btn-preset-chip" :disabled="isNightlyScraping" @click="applyNightlyPreset(2020, maxSelectableSeason, ['WC', 'GP', 'COC', 'FC'])">
                 2020–{{ maxSelectableSeason }}
               </button>
               <button type="button" class="btn-preset-chip" :disabled="isNightlyScraping" @click="applyNightlyPreset(2000, maxSelectableSeason, ['WC', 'GP', 'COC', 'FC', 'OWG', 'WSC', 'SFWC'])">
-                Pełna historia (2000–{{ maxSelectableSeason }})
+                {{ t('admin.presetFullHistory', { max: maxSelectableSeason }) }}
               </button>
             </div>
           </div>
 
           <div class="categories-pills-block">
-            <label class="field-label">Rodzaje zawodów (kategorie FIS):</label>
+            <label class="field-label">{{ t('admin.catTypesLabel') }}</label>
             <div class="cat-pills-wrap">
               <button
                 v-for="cat in allScraperCatOptions"
@@ -2307,7 +2305,7 @@ onUnmounted(() => {
                 :disabled="isNightlyScraping"
                 @click="toggleNightlyCategory(cat.code)"
               >
-                {{ cat.label }}
+                {{ cat.code === 'FESA' ? 'FESA' : `${formatCategory(cat.code)} (${cat.code})` }}
               </button>
             </div>
           </div>
@@ -2315,7 +2313,7 @@ onUnmounted(() => {
 
         <div class="batch-controls-row">
           <div class="control-group">
-            <label class="field-label">Opóźnienie między żądaniami (sekundy):</label>
+            <label class="field-label">{{ t('admin.delayLabel') }}</label>
             <div class="input-with-hint">
               <input
                 type="number"
@@ -2326,7 +2324,7 @@ onUnmounted(() => {
                 :disabled="isNightlyScraping"
                 class="form-input-number"
               />
-              <span class="hint-text">Zalecane: 1.5 – 2.5s (bezpieczne nocne pobieranie)</span>
+              <span class="hint-text">{{ t('admin.delayHint') }}</span>
             </div>
           </div>
 
@@ -2338,7 +2336,7 @@ onUnmounted(() => {
               class="btn-primary btn-nightly-start"
               :disabled="isScraping"
             >
-              <span>🌙</span> Rozpocznij nocne pobieranie
+              <span>🌙</span> {{ t('admin.nightlyStartBtn') }}
             </button>
             <button
               v-else
@@ -2347,7 +2345,7 @@ onUnmounted(() => {
               class="btn-danger btn-nightly-stop"
               :disabled="nightlyStatus?.stop_requested || isStoppingNightly"
             >
-              <span>⏹️</span> {{ (nightlyStatus?.stop_requested || isStoppingNightly) ? 'Zatrzymywanie...' : 'Zatrzymaj pobieranie' }}
+              <span>⏹️</span> {{ (nightlyStatus?.stop_requested || isStoppingNightly) ? t('admin.stopping') : t('admin.nightlyStopBtn') }}
             </button>
             <button
               type="button"
@@ -2355,7 +2353,7 @@ onUnmounted(() => {
               :disabled="isLoadingNightlyStatus"
               class="btn-refresh-summary"
             >
-              <span :class="{ spinning: isLoadingNightlyStatus }">🔄</span> Odśwież stan
+              <span :class="{ spinning: isLoadingNightlyStatus }">🔄</span> {{ t('admin.refreshStateBtn') }}
             </button>
           </div>
         </div>
@@ -2364,11 +2362,11 @@ onUnmounted(() => {
         <div v-if="nightlyStatus && (nightlyStatus.is_running || nightlyStatus.total_combinations > 0)" class="live-progress-box mt-4">
           <div class="progress-header">
             <div class="progress-title">
-              <span>Postęp nocnego przetwarzania:</span>
+              <span>{{ t('admin.nightlyProgressTitle') }}</span>
               <strong v-if="nightlyStatus.current_season">
-                Sezon {{ nightlyStatus.current_season }} ({{ nightlyStatus.current_category }})
+                {{ t('admin.seasonPrefix', { season: nightlyStatus.current_season }) }} ({{ nightlyStatus.current_category }})
               </strong>
-              <strong v-else>Oczekiwanie...</strong>
+              <strong v-else>{{ t('admin.waiting') }}</strong>
               <span v-if="nightlyStatus.current_item && isNightlyScraping" class="current-item-text">
                 • {{ nightlyStatus.current_item }}
               </span>
@@ -2377,7 +2375,7 @@ onUnmounted(() => {
               </span>
             </div>
             <div class="progress-stat">
-              {{ nightlyStatus.progress_index }} / {{ nightlyStatus.total_combinations }} kombinacji ({{ nightlyStatus.percent_complete }}%)
+              {{ t('admin.combosProgress', { combo: nightlyStatus.progress_index, totalCombos: nightlyStatus.total_combinations, pct: nightlyStatus.percent_complete }) }}
             </div>
           </div>
 
@@ -2391,27 +2389,27 @@ onUnmounted(() => {
 
           <div class="live-metrics-grid">
             <div class="live-metric-card">
-              <span class="metric-label">Zapisano nowych</span>
+              <span class="metric-label">{{ t('admin.nightlySavedNew') }}</span>
               <strong class="metric-value text-green">{{ nightlyStatus.inserted_sessions ?? 0 }}</strong>
             </div>
             <div class="live-metric-card">
-              <span class="metric-label">Zaktualizowano</span>
+              <span class="metric-label">{{ t('admin.nightlyUpdated') }}</span>
               <strong class="metric-value text-blue">{{ nightlyStatus.updated_sessions ?? 0 }}</strong>
             </div>
             <div class="live-metric-card">
-              <span class="metric-label">Bez zmian</span>
+              <span class="metric-label">{{ t('admin.nightlyUnchanged') }}</span>
               <strong class="metric-value">{{ nightlyStatus.unchanged_sessions ?? 0 }}</strong>
             </div>
             <div class="live-metric-card">
-              <span class="metric-label">Pogoda dołączona</span>
+              <span class="metric-label">{{ t('admin.nightlyWeatherAttached') }}</span>
               <strong class="metric-value text-cyan">🌤️ {{ nightlyStatus.weather_attached_count ?? 0 }}</strong>
             </div>
             <div class="live-metric-card" v-if="nightlyStatus.failed_combinations > 0">
-              <span class="metric-label">Błędy</span>
+              <span class="metric-label">{{ t('admin.weatherApiErrors') }}</span>
               <strong class="metric-value text-red">{{ nightlyStatus.failed_combinations }}</strong>
             </div>
             <div class="live-metric-card">
-              <span class="metric-label">Czas trwania</span>
+              <span class="metric-label">{{ t('admin.metricDuration') }}</span>
               <strong class="metric-value">
                 {{ Math.floor(nightlyStatus.elapsed_seconds / 60) }}m {{ nightlyStatus.elapsed_seconds % 60 }}s
               </strong>
@@ -2424,9 +2422,9 @@ onUnmounted(() => {
       <div class="admin-card mt-6">
         <div class="admin-card-header flex-between">
           <div>
-            <h3>🌤️ Wzbogacanie Bazy Danymi Pogodowymi (Open-Meteo Archive)</h3>
+            <h3>{{ t('admin.weatherTitle') }}</h3>
             <p class="subtitle">
-              Pobieranie historycznych warunków pogodowych (wiatr, kierunek, porywy, składowa czołowa, temperatura, ciśnienie) pod kątem predykcji AI.
+              {{ t('admin.weatherSub') }}
             </p>
           </div>
           <div class="header-badges">
@@ -2435,7 +2433,7 @@ onUnmounted(() => {
               :class="isEnrichingWeather ? 'pill-running' : 'pill-idle'"
             >
               <span class="status-dot"></span>
-              {{ isEnrichingWeather ? 'Wzbogacanie w toku' : 'Gotowy' }}
+              {{ isEnrichingWeather ? t('admin.weatherRunning') : t('admin.statusReady') }}
             </span>
           </div>
         </div>
@@ -2445,14 +2443,14 @@ onUnmounted(() => {
           <div class="coverage-grid">
             <div class="coverage-card">
               <div class="coverage-card-header">
-                <span class="coverage-db-name">🗄️ Baza Środowiska DEV (Główna)</span>
+                <span class="coverage-db-name">{{ t('admin.dbDevName') }}</span>
                 <span class="coverage-badge" :class="weatherStatus?.dev?.coverage_pct >= 90 ? 'badge-complete' : 'badge-partial'">
                   {{ weatherStatus?.dev?.coverage_pct || 0 }}%
                 </span>
               </div>
               <div class="coverage-numbers">
                 <strong>{{ weatherStatus?.dev?.with_weather || 0 }}</strong>
-                <span>z {{ weatherStatus?.dev?.total_sessions || 0 }} sesji posiada pogodę</span>
+                <span>{{ t('admin.dbSessionsHaveWeather', { total: weatherStatus?.dev?.total_sessions || 0 }) }}</span>
               </div>
               <div class="progress-bar-bg">
                 <div
@@ -2464,14 +2462,14 @@ onUnmounted(() => {
 
             <div class="coverage-card">
               <div class="coverage-card-header">
-                <span class="coverage-db-name">🧪 Baza Środowiska TEST</span>
+                <span class="coverage-db-name">{{ t('admin.dbTestName') }}</span>
                 <span class="coverage-badge" :class="weatherStatus?.test?.coverage_pct >= 90 ? 'badge-complete' : 'badge-partial'">
                   {{ weatherStatus?.test?.coverage_pct || 0 }}%
                 </span>
               </div>
               <div class="coverage-numbers">
                 <strong>{{ weatherStatus?.test?.with_weather || 0 }}</strong>
-                <span>z {{ weatherStatus?.test?.total_sessions || 0 }} sesji posiada pogodę</span>
+                <span>{{ t('admin.dbSessionsHaveWeather', { total: weatherStatus?.test?.total_sessions || 0 }) }}</span>
               </div>
               <div class="progress-bar-bg">
                 <div
@@ -2483,11 +2481,11 @@ onUnmounted(() => {
 
             <div class="coverage-card prod-note-card">
               <div class="coverage-card-header">
-                <span class="coverage-db-name">🚀 Środowisko PROD</span>
+                <span class="coverage-db-name">{{ t('admin.dbProdName') }}</span>
                 <span class="coverage-badge badge-prod">Auto-Enrich</span>
               </div>
               <p class="prod-note-text">
-                Na środowisku produkcyjnym dane pogodowe pobierane są i dołączane automatycznie w locie przy każdym scrapowaniu konkursu.
+                {{ t('admin.dbProdNote') }}
               </p>
             </div>
           </div>
@@ -2500,18 +2498,18 @@ onUnmounted(() => {
         <!-- Sterowanie enricherem -->
         <div class="enricher-controls-row mt-4">
           <div class="control-group">
-            <label class="field-label">Baza docelowa do uzupełnienia:</label>
+            <label class="field-label">{{ t('admin.weatherTargetLabel') }}</label>
             <select v-model="weatherTarget" :disabled="isEnrichingWeather" class="form-select">
-              <option value="all">Wszystkie bazy (DEV oraz TEST)</option>
-              <option value="dev">Tylko baza DEV (FIS_DATA_DB_DEV)</option>
-              <option value="test">Tylko baza TEST (FIS_DATA_DB_TEST)</option>
+              <option value="all">{{ t('admin.targetAll') }}</option>
+              <option value="dev">{{ t('admin.targetDev') }}</option>
+              <option value="test">{{ t('admin.targetTest') }}</option>
             </select>
           </div>
 
           <div class="control-group checkbox-group">
             <label class="custom-checkbox-label">
               <input type="checkbox" v-model="weatherForce" :disabled="isEnrichingWeather" />
-              <span>Nadpisz istniejące dane (Force refresh)</span>
+              <span>{{ t('admin.weatherForceLabel') }}</span>
             </label>
           </div>
 
@@ -2522,7 +2520,7 @@ onUnmounted(() => {
               @click="triggerStartWeatherEnrichment"
               class="btn-primary"
             >
-              <span>🌤️</span> Uzupełnij pogodę
+              <span>🌤️</span> {{ t('admin.weatherStartBtn') }}
             </button>
             <button
               v-else
@@ -2530,7 +2528,7 @@ onUnmounted(() => {
               @click="triggerStopWeatherEnrichment"
               class="btn-danger"
             >
-              <span>⏹️</span> Zatrzymaj wzbogacanie
+              <span>⏹️</span> {{ t('admin.weatherStopBtn') }}
             </button>
             <button
               type="button"
@@ -2538,7 +2536,7 @@ onUnmounted(() => {
               :disabled="isLoadingWeatherStatus"
               class="btn-refresh-summary"
             >
-              <span :class="{ spinning: isLoadingWeatherStatus }">🔄</span> Odśwież stan
+              <span :class="{ spinning: isLoadingWeatherStatus }">🔄</span> {{ t('admin.refreshStateBtn') }}
             </button>
           </div>
         </div>
@@ -2547,13 +2545,13 @@ onUnmounted(() => {
         <div v-if="weatherStatus?.status && weatherStatus.status.is_running" class="live-progress-box mt-4">
           <div class="progress-header">
             <div class="progress-title">
-              <span>Wzbogacanie bazy <strong>{{ weatherStatus.status.db_name }}</strong>:</span>
+              <span>{{ t('admin.weatherProgressDb') }} <strong>{{ weatherStatus.status.db_name }}</strong>:</span>
               <span v-if="weatherStatus.status.current_item" class="current-item-text">
                 {{ weatherStatus.status.current_item }}
               </span>
             </div>
             <div class="progress-stat">
-              {{ weatherStatus.status.processed_sessions }} / {{ weatherStatus.status.total_sessions }} sesji ({{ weatherStatus.status.percent_complete }}%)
+              {{ t('admin.sessionsSuffix', { done: weatherStatus.status.processed_sessions, total: weatherStatus.status.total_sessions, pct: weatherStatus.status.percent_complete }) }}
             </div>
           </div>
 
@@ -2566,11 +2564,11 @@ onUnmounted(() => {
 
           <div class="live-metrics-grid">
             <div class="live-metric-card">
-              <span class="metric-label">Zaktualizowano sesji</span>
+              <span class="metric-label">{{ t('admin.weatherUpdatedSessions') }}</span>
               <strong class="metric-value text-green">{{ weatherStatus.status.updated_sessions }}</strong>
             </div>
             <div class="live-metric-card" v-if="weatherStatus.status.failed_sessions > 0">
-              <span class="metric-label">Błędy API</span>
+              <span class="metric-label">{{ t('admin.weatherApiErrors') }}</span>
               <strong class="metric-value text-red">{{ weatherStatus.status.failed_sessions }}</strong>
             </div>
           </div>
@@ -2583,9 +2581,9 @@ onUnmounted(() => {
       <div class="admin-card">
         <div class="admin-card-header">
           <div>
-            <h3>Pobieranie Wyników Treningów & Serii Próbnych (PDF)</h3>
+            <h3>{{ t('admin.pdfTitle') }}</h3>
             <p class="subtitle">
-              Skrypt przeszukuje załączniki PDF z oficjalnymi treningami lub seriami próbnymi, pobiera je, wyciąga surowy tekst i zasila system niezależnymi sesjami (TRAINING / TRIAL).
+              {{ t('admin.pdfSub') }}
             </p>
           </div>
         </div>
@@ -2593,25 +2591,25 @@ onUnmounted(() => {
         <div class="range-config-box">
           <div class="range-sliders-block">
             <div class="range-header-row">
-              <label class="field-label">Zakres sezonów do ekstrakcji PDF:</label>
+              <label class="field-label">{{ t('admin.pdfRangeLabel') }}</label>
               <span class="range-badge font-mono">
                 {{ Math.min(pdfSeasonFrom, pdfSeasonTo) }} – {{ Math.max(pdfSeasonFrom, pdfSeasonTo) }}
               </span>
             </div>
             <div class="dual-sliders-grid">
               <div class="slider-item">
-                <span>Od sezonu: <strong class="font-mono">{{ pdfSeasonFrom }}</strong></span>
+                <span>{{ t('admin.fromSeason') }} <strong class="font-mono">{{ pdfSeasonFrom }}</strong></span>
                 <input type="range" min="2000" :max="maxSelectableSeason" v-model.number="pdfSeasonFrom" :disabled="isPdfScraping" class="styled-slider" />
               </div>
               <div class="slider-item">
-                <span>Do sezonu: <strong class="font-mono">{{ pdfSeasonTo }}</strong></span>
+                <span>{{ t('admin.toSeason') }} <strong class="font-mono">{{ pdfSeasonTo }}</strong></span>
                 <input type="range" min="2000" :max="maxSelectableSeason" v-model.number="pdfSeasonTo" :disabled="isPdfScraping" class="styled-slider" />
               </div>
             </div>
           </div>
 
           <div class="categories-pills-block">
-            <label class="field-label">Rodzaje zawodów:</label>
+            <label class="field-label">{{ t('admin.pdfCatTypesLabel') }}</label>
             <div class="cat-pills-wrap">
               <button
                 v-for="cat in allScraperCatOptions"
@@ -2622,7 +2620,7 @@ onUnmounted(() => {
                 :disabled="isPdfScraping"
                 @click="togglePdfCategory(cat.code)"
               >
-                {{ cat.label }}
+                {{ cat.code === 'FESA' ? 'FESA' : `${formatCategory(cat.code)} (${cat.code})` }}
               </button>
             </div>
           </div>
@@ -2630,15 +2628,15 @@ onUnmounted(() => {
           <label class="checkbox-control-card mt-2">
             <input type="checkbox" v-model="pdfForceReprocess" :disabled="isPdfScraping" />
             <div class="checkbox-control-text">
-              <strong>🔄 Przetwórz ponownie istniejące sesje</strong>
-              <span class="help-desc">Ponownie pobiera i parsuje PDF-y nawet dla oznaczonych sesji (uzupełnia fis_code i klasyfikacje)</span>
+              <strong>{{ t('admin.pdfForceTitle') }}</strong>
+              <span class="help-desc">{{ t('admin.pdfForceDesc') }}</span>
             </div>
           </label>
         </div>
 
         <div class="action-footer">
           <button v-if="!isPdfScraping" @click="runPdfScraper" class="btn-primary">
-            <span>📄</span> Przeprowadź Ekstrakcję Treningów (PDF)
+            <span>📄</span> {{ t('admin.pdfStartBtn') }}
           </button>
           <button
             v-else
@@ -2647,10 +2645,10 @@ onUnmounted(() => {
             class="btn-danger"
             :disabled="pdfStatus?.stop_requested || isStoppingPdf"
           >
-            <span>⏹️</span> {{ (pdfStatus?.stop_requested || isStoppingPdf) ? 'Zatrzymywanie...' : 'Zatrzymaj Ekstrakcję PDF' }}
+            <span>⏹️</span> {{ (pdfStatus?.stop_requested || isStoppingPdf) ? t('admin.stopping') : t('admin.pdfStopBtn') }}
           </button>
           <button type="button" @click="loadPdfStatus" class="btn-refresh-summary">
-            <span>🔄</span> Odśwież stan
+            <span>🔄</span> {{ t('admin.refreshStateBtn') }}
           </button>
         </div>
 
@@ -2662,7 +2660,7 @@ onUnmounted(() => {
         <div v-if="pdfStatus && (pdfStatus.is_running || pdfStatus.total_files > 0)" class="live-progress-box mt-4">
           <div class="progress-header">
             <div class="progress-title">
-              <span>Postęp ekstrakcji PDF:</span>
+              <span>{{ t('admin.pdfProgressTitle') }}</span>
               <span v-if="pdfStatus.current_item && isPdfScraping" class="current-item-text">
                 • {{ pdfStatus.current_item }}
               </span>
@@ -2671,7 +2669,7 @@ onUnmounted(() => {
               </span>
             </div>
             <div class="progress-stat font-mono">
-              {{ pdfStatus.files_done }} / {{ pdfStatus.total_files }} plików ({{ pdfStatus.percent_complete }}%)
+              {{ t('admin.filesDone', { done: pdfStatus.files_done, total: pdfStatus.total_files, pct: pdfStatus.percent_complete }) }}
             </div>
           </div>
 
@@ -2685,23 +2683,23 @@ onUnmounted(() => {
 
           <div class="live-metrics-grid">
             <div class="live-metric-card">
-              <span class="metric-label">Sesji w paczce</span>
+              <span class="metric-label">{{ t('admin.pdfBatchSessions') }}</span>
               <strong class="metric-value text-blue font-mono">{{ pdfStatus.total_sessions ?? 0 }}</strong>
             </div>
             <div class="live-metric-card">
-              <span class="metric-label">Do kwarantanny</span>
+              <span class="metric-label">{{ t('admin.pdfToQuarantine') }}</span>
               <strong class="metric-value text-yellow font-mono">{{ pdfStatus.saved_to_review ?? 0 }}</strong>
             </div>
             <div class="live-metric-card">
-              <span class="metric-label">Bez zmian</span>
+              <span class="metric-label">{{ t('admin.nightlyUnchanged') }}</span>
               <strong class="metric-value font-mono">{{ pdfStatus.unchanged_files ?? 0 }}</strong>
             </div>
             <div class="live-metric-card" v-if="(pdfStatus.failed_files ?? 0) > 0">
-              <span class="metric-label">Błędy pobierania</span>
+              <span class="metric-label">{{ t('admin.pdfDownloadErrors') }}</span>
               <strong class="metric-value text-red font-mono">{{ pdfStatus.failed_files }}</strong>
             </div>
             <div class="live-metric-card">
-              <span class="metric-label">Czas trwania</span>
+              <span class="metric-label">{{ t('admin.metricDuration') }}</span>
               <strong class="metric-value font-mono">
                 {{ Math.floor((pdfStatus.elapsed_seconds || 0) / 60) }}m {{ (pdfStatus.elapsed_seconds || 0) % 60 }}s
               </strong>
@@ -2717,21 +2715,21 @@ onUnmounted(() => {
           <div class="summary-stats-grid">
             <div class="summary-stat-card">
               <span class="stat-number text-yellow">{{ pdfScrapeResult.saved_to_review ?? 0 }}</span>
-              <span class="stat-label">Wysłano do Kwarantanny</span>
+              <span class="stat-label">{{ t('admin.pdfRepQuarantine') }}</span>
             </div>
             <div class="summary-stat-card">
               <span class="stat-number text-muted">{{ pdfScrapeResult.unchanged_files ?? 0 }}</span>
-              <span class="stat-label">Pominięto (Brak zmian)</span>
+              <span class="stat-label">{{ t('admin.pdfRepUnchanged') }}</span>
             </div>
             <div class="summary-stat-card">
               <span class="stat-number text-blue">{{ pdfScrapeResult.processed_sessions_in_batch ?? 0 }}</span>
-              <span class="stat-label">Przetworzone sesje</span>
+              <span class="stat-label">{{ t('admin.pdfRepProcessed') }}</span>
             </div>
           </div>
 
           <!-- BŁĘDY / RAPORT POBIERANIA (np. ReadTimeout / 502 z FIS) -->
           <div v-if="(pdfScrapeResult.errors || pdfScrapeResult.report)?.length > 0" class="report-error-card">
-            <h4>⚠️ Zgłoszone błędy podczas pobierania/parsowania ({{ (pdfScrapeResult.errors || pdfScrapeResult.report).length }}):</h4>
+            <h4>{{ t('admin.pdfRepErrorsTitle', { count: (pdfScrapeResult.errors || pdfScrapeResult.report).length }) }}</h4>
             <div v-for="(item, idx) in (pdfScrapeResult.errors || pdfScrapeResult.report)" :key="idx" class="report-error-item">
               <div class="report-error-header">
                 <span class="badge-codex">Codex {{ item.codex }}</span>
@@ -2743,7 +2741,7 @@ onUnmounted(() => {
           </div>
 
           <div v-if="pdfScrapeResult.distinct_doc_types_in_batch?.length" class="doc-types-box">
-            <p class="field-label">Wykryte typy dokumentów w paczce:</p>
+            <p class="field-label">{{ t('admin.pdfDocTypesLabel') }}</p>
             <div class="chips-wrap">
               <span v-for="type in pdfScrapeResult.distinct_doc_types_in_batch" :key="type" class="doc-pill">
                 {{ type }}
@@ -2757,16 +2755,16 @@ onUnmounted(() => {
       <div class="admin-card mt-6">
         <div class="admin-card-header">
           <div>
-            <h3>🛠️ Debugger Algorytmu (Test pojedynczego PDF)</h3>
+            <h3>{{ t('admin.dbgTitle') }}</h3>
             <p class="subtitle">
-              Narzędzie testowe pozwalające zrzucić proces analizy parsera dla konkretnego pliku PDF.
+              {{ t('admin.dbgSub') }}
             </p>
           </div>
         </div>
 
         <div class="debug-inputs-row">
           <div class="filter-section flex-3">
-            <label class="field-label">Pełny URL do pliku PDF:</label>
+            <label class="field-label">{{ t('admin.dbgUrlLabel') }}</label>
             <input
               type="text"
               v-model="checkerForm.url"
@@ -2775,11 +2773,11 @@ onUnmounted(() => {
             />
           </div>
           <div class="filter-section flex-1">
-            <label class="field-label">Codex:</label>
+            <label class="field-label">{{ t('admin.dbgCodexLabel') }}</label>
             <input
               type="text"
               v-model="checkerForm.codex"
-              placeholder="np. 3700"
+              :placeholder="t('admin.dbgCodexPh')"
               class="form-input"
             />
           </div>
@@ -2788,7 +2786,7 @@ onUnmounted(() => {
             <input
               type="text"
               v-model="checkerForm.race_id"
-              placeholder="np. 3001"
+              :placeholder="t('admin.dbgRacePh')"
               class="form-input"
             />
           </div>
@@ -2796,31 +2794,31 @@ onUnmounted(() => {
 
         <div class="action-footer">
           <button @click="runPdfChecker" :disabled="isCheckingPdf" class="btn-primary btn-secondary">
-            <span>🔍</span> {{ isCheckingPdf ? 'Skanowanie...' : 'Analizuj Plik' }}
+            <span>🔍</span> {{ isCheckingPdf ? t('admin.dbgScanning') : t('admin.dbgAnalyzeBtn') }}
           </button>
         </div>
 
         <div v-if="checkerResult" class="results-box debug-console">
-          <h4 class="console-title">Log Systemowy (Zrozumienie Pliku):</h4>
+          <h4 class="console-title">{{ t('admin.dbgLogTitle') }}</h4>
           <ul class="console-logs">
             <li v-for="(log, i) in checkerResult.debug_log" :key="i">&gt;&gt; {{ log }}</li>
           </ul>
 
           <div v-if="checkerResult.parsed_results" class="parsed-results-box">
-            <h4 class="text-green">Zidentyfikowano Zawodników: {{ checkerResult.athletes_found }}</h4>
+            <h4 class="text-green">{{ t('admin.dbgFoundAthletes', { count: checkerResult.athletes_found }) }}</h4>
             <div
               v-for="ath in checkerResult.parsed_results"
               :key="ath.name"
               class="parsed-ath-item"
             >
               <div class="ath-name">{{ ath.name }}</div>
-              <div class="ath-floats">Liczby: {{ ath.floats_found }}</div>
+              <div class="ath-floats">{{ t('admin.dbgNumbers') }} {{ ath.floats_found }}</div>
               <div class="ath-raw">Chunk: {{ ath.raw_text }}</div>
             </div>
           </div>
 
           <div v-if="checkerResult.error" class="error-banner">
-            <strong>BŁĄD:</strong> {{ checkerResult.error }}
+            <strong>{{ t('admin.dbgErrorPrefix') }}</strong> {{ checkerResult.error }}
           </div>
         </div>
       </div>
@@ -2831,9 +2829,9 @@ onUnmounted(() => {
       <div class="admin-card">
         <div class="admin-card-header">
           <div>
-            <h3>Zarządzanie Bazą Skoczków</h3>
+            <h3>{{ t('admin.athletesTitle') }}</h3>
             <p class="subtitle">
-              Pobierz najnowszą listę zawodników z FIS lub zaktualizuj ceny Fantasy.
+              {{ t('admin.athletesSub') }}
             </p>
           </div>
         </div>
@@ -2841,23 +2839,23 @@ onUnmounted(() => {
         <div class="options-container">
           <label class="toggle-label">
             <input v-model="onlyPriceUpdate" type="checkbox" />
-            <span>Szybka aktualizacja cen Fantasy (omija pełne scrapowanie FIS)</span>
+            <span>{{ t('admin.athletesQuickPrice') }}</span>
           </label>
         </div>
 
         <div class="action-footer">
           <button @click="refreshAthletes" :disabled="isAthletesScraping" class="btn-primary">
-            <span>🔄</span> Odśwież Bazę Skoczków
+            {{ t('admin.refreshAthletes') }}
           </button>
         </div>
 
         <div v-if="athletesScrapeResult" class="results-box">
-          <h4>Raport weryfikacji zawodników:</h4>
+          <h4>{{ t('admin.athletesRepTitle') }}</h4>
           <ul class="stats-list">
-            <li>Bez zmian (aktualni): <span>{{ athletesScrapeResult.unchanged }}</span></li>
-            <li>Nowi skoczkowie (kwarantanna): <span class="text-blue">{{ athletesScrapeResult.new_to_review }}</span></li>
-            <li>Zmienieni skoczkowie (kwarantanna): <span class="text-yellow">{{ athletesScrapeResult.modified_to_review }}</span></li>
-            <li>Usunięci / Zniknęli: <span class="text-red">{{ athletesScrapeResult.deleted_to_review }}</span></li>
+            <li>{{ t('admin.athletesUnchanged') }} <span>{{ athletesScrapeResult.unchanged }}</span></li>
+            <li>{{ t('admin.athletesNew') }} <span class="text-blue">{{ athletesScrapeResult.new_to_review }}</span></li>
+            <li>{{ t('admin.athletesModified') }} <span class="text-yellow">{{ athletesScrapeResult.modified_to_review }}</span></li>
+            <li>{{ t('admin.athletesDeleted') }} <span class="text-red">{{ athletesScrapeResult.deleted_to_review }}</span></li>
           </ul>
         </div>
       </div>
@@ -2867,10 +2865,10 @@ onUnmounted(() => {
     <div v-if="activeTab === 'review'" class="tab-content">
       <div class="review-sub-tabs">
         <button :class="{ active: reviewTab === 'athletes' }" @click="reviewTab = 'athletes'">
-          Skoczkowie ({{ athleteReviews.length }})
+          {{ t('admin.revSubAthletes', { count: athleteReviews.length }) }}
         </button>
         <button :class="{ active: reviewTab === 'sessions' }" @click="reviewTab = 'sessions'">
-          Sesje i Wyniki ({{ sessionReviews.length }})
+          {{ t('admin.revSubSessions', { count: sessionReviews.length }) }}
         </button>
       </div>
 
@@ -2878,24 +2876,24 @@ onUnmounted(() => {
         <div v-if="athleteReviews.length > 0">
           <div class="actions-header">
             <p>
-              Do weryfikacji: {{ athleteReviews.length }}
+              {{ t('admin.toVerifyCount', { count: athleteReviews.length }) }}
             </p>
             <button
               @click="handleApproveAllAthletes"
               class="btn-primary"
               style="background: #22c55e"
             >
-              ✅ Akceptuj Wszystkich
+              {{ t('admin.approveAllBtn') }}
             </button>
           </div>
 
           <table class="review-table">
             <thead>
               <tr>
-                <th>FIS Code</th>
-                <th>Zawodnik</th>
-                <th>Status</th>
-                <th style="text-align: right">Akcja</th>
+                <th>{{ t('admin.thFisCode') }}</th>
+                <th>{{ t('admin.thAthlete') }}</th>
+                <th>{{ t('admin.thStatus') }}</th>
+                <th style="text-align: right">{{ t('admin.thAction') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -2914,7 +2912,7 @@ onUnmounted(() => {
                     <button
                       @click="toggleAthleteDiff(item.fis_code)"
                       class="btn-icon"
-                      title="Pokaż różnice"
+                      :title="t('admin.showDiffTitle')"
                     >
                       🔍
                     </button>
@@ -2949,14 +2947,14 @@ onUnmounted(() => {
             </tbody>
           </table>
         </div>
-        <p v-else class="empty-state">Brak skoczków oczekujących na weryfikację. 🎉</p>
+        <p v-else class="empty-state">{{ t('admin.emptyRevAthletes') }}</p>
       </div>
 
       <div v-if="reviewTab === 'sessions'">
         <div v-if="sessionReviews.length > 0">
           <div class="actions-header">
             <p>
-              Do weryfikacji: {{ sessionReviews.length }}
+              {{ t('admin.toVerifyCount', { count: sessionReviews.length }) }}
             </p>
             <div style="display: flex; gap: 10px">
               <button
@@ -2964,14 +2962,14 @@ onUnmounted(() => {
                 class="btn-primary"
                 style="background: #22c55e"
               >
-                ✅ Akceptuj Wszystkie
+                {{ t('admin.approveAllSessionsBtn') }}
               </button>
               <button
                 @click="handleRejectAllSessions"
                 class="btn-primary"
                 style="background: #ef4444"
               >
-                ❌ Odrzuć Wszystkie
+                {{ t('admin.rejectAllBtn') }}
               </button>
             </div>
           </div>
@@ -2980,9 +2978,9 @@ onUnmounted(() => {
             <thead>
               <tr>
                 <th>Codex</th>
-                <th>Konkurs</th>
-                <th>Miejsce / Sezon / Data</th>
-                <th style="text-align: right">Akcje</th>
+                <th>{{ t('admin.thContest') }}</th>
+                <th>{{ t('admin.thPlaceSeasonDate') }}</th>
+                <th style="text-align: right">{{ t('admin.thActions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -3020,7 +3018,7 @@ onUnmounted(() => {
                     <button
                       @click="toggleSessionDiff(item.codex)"
                       class="btn-icon"
-                      title="Pokaż różnice"
+                      :title="t('admin.showDiffTitle')"
                     >
                       🔍
                     </button>
@@ -3055,7 +3053,7 @@ onUnmounted(() => {
             </tbody>
           </table>
         </div>
-        <p v-else class="empty-state">Brak wyników oczekujących na weryfikację. 🎿</p>
+        <p v-else class="empty-state">{{ t('admin.emptyRevSessions') }}</p>
       </div>
     </div>
 
@@ -3064,11 +3062,11 @@ onUnmounted(() => {
       <div class="admin-card">
         <div class="admin-card-header flex-between">
           <div>
-            <h3>Zarządzanie Użytkownikami i Uprawnieniami</h3>
-            <p class="subtitle">Przeglądaj zarejestrowanych użytkowników i zarządzaj dostępem do FantaSKI PRO.</p>
+            <h3>{{ t('admin.usersTitle') }}</h3>
+            <p class="subtitle">{{ t('admin.usersSub') }}</p>
           </div>
           <button class="btn btn-secondary" @click="loadUsers" :disabled="isLoadingUsers">
-            🔄 Odśwież listę
+            {{ t('admin.refreshList') }}
           </button>
         </div>
 
@@ -3087,14 +3085,14 @@ onUnmounted(() => {
               v-model="userSearchQuery"
               type="text"
               class="form-input users-search-input"
-              placeholder="Szukaj użytkownika po nazwie lub adresie e-mail..."
+              :placeholder="t('admin.usersSearchPh')"
             />
             <button
               v-if="userSearchQuery"
               type="button"
               class="btn-clear-search"
               @click="userSearchQuery = ''"
-              title="Wyczyść pole wyszukiwania"
+              :title="t('admin.clearSearchTitle')"
             >
               ✕
             </button>
@@ -3108,7 +3106,7 @@ onUnmounted(() => {
                 :class="{ active: userRoleFilter === 'ALL' }"
                 @click="userRoleFilter = 'ALL'"
               >
-                Wszyscy ({{ userRoleCounts.ALL }})
+                {{ t('admin.filterAll', { count: userRoleCounts.ALL }) }}
               </button>
               <button
                 type="button"
@@ -3116,7 +3114,7 @@ onUnmounted(() => {
                 :class="{ active: userRoleFilter === 'ADMIN' }"
                 @click="userRoleFilter = 'ADMIN'"
               >
-                Admin ({{ userRoleCounts.ADMIN }})
+                {{ t('admin.filterAdmin', { count: userRoleCounts.ADMIN }) }}
               </button>
               <button
                 type="button"
@@ -3124,7 +3122,7 @@ onUnmounted(() => {
                 :class="{ active: userRoleFilter === 'USER_PRO' }"
                 @click="userRoleFilter = 'USER_PRO'"
               >
-                PRO ({{ userRoleCounts.USER_PRO }})
+                {{ t('admin.filterPro', { count: userRoleCounts.USER_PRO }) }}
               </button>
               <button
                 type="button"
@@ -3132,7 +3130,7 @@ onUnmounted(() => {
                 :class="{ active: userRoleFilter === 'USER' }"
                 @click="userRoleFilter = 'USER'"
               >
-                Darmowe ({{ userRoleCounts.USER }})
+                {{ t('admin.filterFree', { count: userRoleCounts.USER }) }}
               </button>
             </div>
 
@@ -3142,42 +3140,42 @@ onUnmounted(() => {
               class="btn-reset-filters"
               @click="clearUserFilters"
             >
-              ✕ Wyczyść filtry
+              {{ t('admin.clearFilters') }}
             </button>
           </div>
 
           <div class="esm-season-bar">
-            <label for="esmSeasonLeagueInput" class="esm-season-label">🏆 ID Ligi ESM (bieżący sezon):</label>
+            <label for="esmSeasonLeagueInput" class="esm-season-label">{{ t('admin.esmLeagueLabel') }}</label>
             <input
               id="esmSeasonLeagueInput"
               v-model="esmSeasonLeagueId"
               type="text"
               class="form-input esm-season-input"
-              placeholder="np. 6ae06420a36131d6eb48db15"
+              :placeholder="t('admin.esmLeaguePh')"
             />
           </div>
         </div>
 
         <div v-if="isLoadingUsers" class="loading-state">
-          Wczytywanie listy użytkowników...
+          {{ t('admin.usersLoading') }}
         </div>
 
         <div v-else-if="usersList.length > 0">
           <div v-if="filteredUsersList.length > 0">
             <div class="table-summary-bar">
-              <span>Znaleziono: <strong>{{ filteredUsersList.length }}</strong> z <strong>{{ usersList.length }}</strong> zarejestrowanych użytkowników</span>
+              <span>{{ t('admin.usersFoundSummary', { shown: filteredUsersList.length, total: usersList.length }) }}</span>
             </div>
 
             <div class="table-responsive desktop-users-only">
               <table class="admin-table">
                 <thead>
                   <tr>
-                    <th>Użytkownik &amp; E-mail</th>
-                    <th>Rejestracja</th>
-                    <th>Ostatnie logowanie</th>
-                    <th>Rola</th>
-                    <th>Zmień uprawnienia</th>
-                    <th>esmManager (Team ID)</th>
+                    <th>{{ t('admin.thUserEmail') }}</th>
+                    <th>{{ t('admin.thReg') }}</th>
+                    <th>{{ t('admin.thLastLogin') }}</th>
+                    <th>{{ t('admin.thRole') }}</th>
+                    <th>{{ t('admin.thChangeRole') }}</th>
+                    <th>{{ t('admin.thEsm') }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3192,8 +3190,8 @@ onUnmounted(() => {
                         </div>
                       </div>
                     </td>
-                    <td>{{ u.created_at ? new Date(u.created_at).toLocaleDateString() : '-' }}</td>
-                    <td>{{ u.last_login ? new Date(u.last_login).toLocaleString() : '-' }}</td>
+                    <td>{{ u.created_at ? new Date(u.created_at).toLocaleDateString(bcp47Locale) : '-' }}</td>
+                    <td>{{ u.last_login ? new Date(u.last_login).toLocaleString(bcp47Locale) : '-' }}</td>
                     <td>
                       <span
                         class="role-badge"
@@ -3221,14 +3219,14 @@ onUnmounted(() => {
                     <td>
                       <div class="admin-esm-cell">
                         <div v-if="u.esm_summary?.connected" class="admin-esm-status">
-                          <span class="esm-linked-pill">✅ {{ u.esm_summary.team_name || 'Zsynchronizowano' }}</span>
+                          <span class="esm-linked-pill">✅ {{ u.esm_summary.team_name || t('admin.esmSynced') }}</span>
                         </div>
                         <div class="admin-esm-controls">
                           <input
                             v-model="esmTeamDrafts[u.id]"
                             type="text"
                             class="form-input esm-tid-input"
-                            placeholder="ESM Team ID..."
+                            :placeholder="t('admin.esmTidPh')"
                             :disabled="savingEsmUserId === u.id"
                           />
                           <button
@@ -3236,7 +3234,7 @@ onUnmounted(() => {
                             class="btn-esm-save"
                             :disabled="savingEsmUserId === u.id || !(esmTeamDrafts[u.id] || '').trim()"
                             @click="assignUserEsmTeam(u)"
-                            title="Przypisz i pobierz aktualny skład z ESM"
+                            :title="t('admin.esmAssignTitle')"
                           >
                             {{ savingEsmUserId === u.id ? '⏳' : (u.esm_summary?.connected ? '🔄' : '🔗') }}
                           </button>
@@ -3246,7 +3244,7 @@ onUnmounted(() => {
                             class="btn-esm-unlink"
                             :disabled="savingEsmUserId === u.id"
                             @click="unlinkUserEsmTeam(u)"
-                            title="Odepnij ESM od użytkownika"
+                            :title="t('admin.esmUnlinkTitle')"
                           >
                             ✕
                           </button>
@@ -3283,7 +3281,7 @@ onUnmounted(() => {
                 </div>
 
                 <div class="umc-field">
-                  <label>Uprawnienia:</label>
+                  <label>{{ t('admin.rolePermLabel') }}</label>
                   <select
                     class="form-select role-select"
                     :value="u.role === 'USER_LITE' ? 'USER' : u.role"
@@ -3308,7 +3306,7 @@ onUnmounted(() => {
                       v-model="esmTeamDrafts[u.id]"
                       type="text"
                       class="form-input esm-tid-input"
-                      placeholder="ESM Team ID..."
+                      :placeholder="t('admin.esmTidPh')"
                       :disabled="savingEsmUserId === u.id"
                     />
                     <button
@@ -3334,13 +3332,13 @@ onUnmounted(() => {
             </div>
           </div>
           <div v-else class="empty-filter-state">
-            <p>Nie znaleziono użytkowników spełniających podane kryteria wyszukiwania.</p>
+            <p>{{ t('admin.emptyUsersFiltered') }}</p>
             <button type="button" class="btn btn-secondary" @click="clearUserFilters">
-              🔄 Zresetuj filtry
+              {{ t('admin.resetFiltersBtn') }}
             </button>
           </div>
         </div>
-        <p v-else class="empty-state">Brak zarejestrowanych użytkowników w bazie danych.</p>
+        <p v-else class="empty-state">{{ t('admin.emptyUsersDb') }}</p>
       </div>
     </div>
 
@@ -3349,9 +3347,9 @@ onUnmounted(() => {
       <div class="admin-card">
         <div class="admin-card-header flex-between">
           <div>
-            <h3>🧠 Sieć neuronowa — Trening modelu</h3>
+            <h3>{{ t('admin.nnTitle') }}</h3>
             <p class="subtitle">
-              Zarządzanie modelem predykcyjnym PyTorch ({{ modelInfo?.metadata?.input_features || 25 }} cech: skocznia, forma z time-decay, korytarz wiatru, konwersja presji, profil lotności i doświadczenie PŚ).
+              {{ t('admin.nnSub', { features: modelInfo?.metadata?.input_features || 25 }) }}
             </p>
           </div>
           <div class="header-badges">
@@ -3360,7 +3358,7 @@ onUnmounted(() => {
               :class="isTrainingModel ? 'pill-running' : 'pill-idle'"
             >
               <span class="status-dot"></span>
-              {{ isTrainingModel ? 'Trening w toku' : (modelInfo?.is_trained ? 'Wytrenowany' : 'Wymaga treningu') }}
+              {{ isTrainingModel ? t('admin.nnStatusTraining') : (modelInfo?.is_trained ? t('admin.nnStatusTrained') : t('admin.nnStatusUntrained')) }}
             </span>
           </div>
         </div>
@@ -3369,7 +3367,7 @@ onUnmounted(() => {
         <div class="nn-suggestion-banner">
           <span>💡</span>
           <div>
-            <strong>Ważna wskazówka treningowa:</strong> Po każdej aktualizacji wyników (ręczny scraper FIS, dociąganie brakujących zawodów, nocne przetwarzanie bazy czy wzbogacenie danych pogodowych) należy przetrenować model na zaktualizowanych danych, aby predykcje uwzględniały aktualną formę zawodników.
+            <strong>{{ t('admin.nnTipTitle') }}</strong> {{ t('admin.nnTipDesc') }}
           </div>
         </div>
 
@@ -3377,7 +3375,7 @@ onUnmounted(() => {
         <div v-if="modelInfo && !modelInfo.is_trained && !isTrainingModel" class="nn-warning-banner">
           <span>⚠️</span>
           <div>
-            <strong>Model nie jest jeszcze wytrenowany (lub zmieniła się liczba cech wejściowych):</strong> Uruchom trening przyciskiem „Trenuj model” poniżej, aby aktywować prognozy na podstronie Prognozy.
+            <strong>{{ t('admin.nnWarnTitle') }}</strong> {{ t('admin.nnWarnDesc') }}
           </div>
         </div>
 
@@ -3385,12 +3383,12 @@ onUnmounted(() => {
         <div v-if="isTrainingModel" class="live-progress-box mb-4">
           <div class="progress-header">
             <div class="progress-title">
-              <span>Postęp treningu sieci neuronowej:</span>
-              <strong>{{ modelInfo?.training_status?.message || 'Trwa przetwarzanie danych i epok...' }}</strong>
+              <span>{{ t('admin.nnProgTitle') }}</span>
+              <strong>{{ modelInfo?.training_status?.message || t('admin.nnProgDefaultMsg') }}</strong>
             </div>
             <div class="progress-stat">
               <template v-if="modelInfo?.training_status?.current_epoch">
-                Epoka {{ modelInfo.training_status.current_epoch }}/{{ modelInfo.training_status.total_epochs || 40 }} •
+                {{ t('admin.nnEpochProg', { epoch: modelInfo.training_status.current_epoch, total: modelInfo.training_status.total_epochs || 40 }) }}
               </template>
               {{ modelInfo?.training_status?.percent_complete ?? 0 }}%
             </div>
@@ -3402,58 +3400,58 @@ onUnmounted(() => {
               :style="{ width: `${Math.max(5, modelInfo?.training_status?.percent_complete ?? 10)}%` }"
             ></div>
           </div>
-          <p class="nn-training-subhint">Trening przebiega w tle — możesz swobodnie korzystać z pozostałych zakładek panelu.</p>
+          <p class="nn-training-subhint">{{ t('admin.nnProgSubhint') }}</p>
         </div>
 
         <!-- Stan modelu -->
         <div v-if="modelInfo" class="nn-model-status">
-          <h4>Aktualne metryki i stan modelu</h4>
+          <h4>{{ t('admin.nnMetricsTitle') }}</h4>
           <div class="nn-metrics-grid">
             <div class="nn-metric-card">
-              <span class="metric-label">Status</span>
+              <span class="metric-label">{{ t('admin.nnStatusLabel') }}</span>
               <strong class="metric-value" :class="modelInfo.is_trained ? 'text-green' : 'text-red'">
-                {{ modelInfo.is_trained ? '✅ Wytrenowany i gotowy' : '❌ Wymaga treningu' }}
+                {{ modelInfo.is_trained ? t('admin.nnStatusReady') : `❌ ${t('admin.nnStatusUntrained')}` }}
               </strong>
             </div>
             <div class="nn-metric-card" v-if="modelInfo.metadata?.trained_at">
-              <span class="metric-label">Ostatni trening</span>
-              <strong class="metric-value">{{ new Date(modelInfo.metadata.trained_at).toLocaleString('pl-PL') }}</strong>
+              <span class="metric-label">{{ t('admin.nnLastTrain') }}</span>
+              <strong class="metric-value">{{ new Date(modelInfo.metadata.trained_at).toLocaleString(bcp47Locale) }}</strong>
             </div>
             <div class="nn-metric-card" v-if="modelInfo.metadata?.sample_count">
-              <span class="metric-label">Próbki treningowe</span>
-              <strong class="metric-value">{{ modelInfo.metadata.sample_count.toLocaleString('pl-PL') }}</strong>
+              <span class="metric-label">{{ t('admin.nnSamples') }}</span>
+              <strong class="metric-value">{{ modelInfo.metadata.sample_count.toLocaleString(bcp47Locale) }}</strong>
             </div>
             <div class="nn-metric-card" v-if="modelInfo.metadata?.mae_distance_meters_approx != null">
-              <span class="metric-label">Śr. błąd dystansu (MAE)</span>
+              <span class="metric-label">{{ t('admin.nnMaeDist') }}</span>
               <strong class="metric-value">~{{ modelInfo.metadata.mae_distance_meters_approx }} m</strong>
             </div>
             <div class="nn-metric-card" v-if="modelInfo.metadata?.val_loss != null">
-              <span class="metric-label">Strata walidacyjna (SmoothL1)</span>
+              <span class="metric-label">{{ t('admin.nnValLoss') }}</span>
               <strong class="metric-value">{{ modelInfo.metadata.val_loss.toFixed(5) }}</strong>
             </div>
             <div class="nn-metric-card" v-if="modelInfo.metadata?.input_features">
-              <span class="metric-label">Cechy wejściowe</span>
+              <span class="metric-label">{{ t('admin.nnInputFeatures') }}</span>
               <strong class="metric-value">{{ modelInfo.metadata.input_features }}</strong>
             </div>
             <div class="nn-metric-card" v-if="modelInfo.tracked_athletes_count">
-              <span class="metric-label">Śledzeni zawodnicy</span>
+              <span class="metric-label">{{ t('admin.nnTrackedAthletes') }}</span>
               <strong class="metric-value">{{ modelInfo.tracked_athletes_count }}</strong>
             </div>
             <div class="nn-metric-card" v-if="modelInfo.metadata?.epochs != null">
-              <span class="metric-label">Epoki (najlepsza)</span>
+              <span class="metric-label">{{ t('admin.nnEpochs') }}</span>
               <strong class="metric-value">
                 {{ modelInfo.metadata.epochs }}<template v-if="modelInfo.metadata?.best_epoch"> (best: {{ modelInfo.metadata.best_epoch }})</template>
               </strong>
             </div>
             <div class="nn-metric-card" v-if="modelInfo.metadata?.training_seasons_range">
-              <span class="metric-label">Okno sezonów nauki</span>
+              <span class="metric-label">{{ t('admin.nnSeasonWindow') }}</span>
               <strong class="metric-value font-mono">{{ modelInfo.metadata.training_seasons_range }}</strong>
             </div>
           </div>
         </div>
 
         <div v-else-if="isLoadingModelInfo" class="nn-loading">
-          <span class="spinning">🔄</span> Ładowanie informacji o modelu...
+          <span class="spinning">🔄</span> {{ t('admin.nnLoading') }}
         </div>
 
         <!-- Komunikat wyniku -->
@@ -3472,7 +3470,7 @@ onUnmounted(() => {
             :disabled="isTrainingModel || isAutoTuning"
             class="btn-primary"
           >
-            <span>🧠</span> {{ isTrainingModel ? 'Trening modelu w toku...' : 'Trenuj model' }}
+            <span>🧠</span> {{ isTrainingModel ? t('admin.nnTraining') : t('admin.nnTrainBtn') }}
           </button>
           <button
             type="button"
@@ -3480,7 +3478,7 @@ onUnmounted(() => {
             :disabled="isRunningBacktest || isTrainingModel || isAutoTuning"
             class="btn-secondary"
           >
-            <span>📊</span> {{ isRunningBacktest ? 'Trwa Walk-Forward Backtest...' : 'Uruchom Walk-Forward Backtest' }}
+            <span>📊</span> {{ isRunningBacktest ? t('admin.nnBacktestRunning') : t('admin.nnBacktestBtn') }}
           </button>
           <button
             v-if="!isAutoTuning"
@@ -3489,7 +3487,7 @@ onUnmounted(() => {
             :disabled="isRunningBacktest || isTrainingModel"
             class="btn-secondary"
           >
-            <span>🎯</span> Uruchom Auto-Tuning (MongoDB)
+            <span>🎯</span> {{ t('admin.nnAutotuneBtn') }}
           </button>
           <button
             v-else
@@ -3498,7 +3496,7 @@ onUnmounted(() => {
             :disabled="isStoppingAutotune || autotuneStatus?.stop_requested"
             class="btn-danger"
           >
-            <span>⏹️</span> {{ isStoppingAutotune ? 'Zatrzymywanie...' : 'Zatrzymaj Auto-Tuning' }}
+            <span>⏹️</span> {{ isStoppingAutotune ? t('admin.stopping') : t('admin.nnAutotuneStopBtn') }}
           </button>
           <button
             type="button"
@@ -3506,7 +3504,7 @@ onUnmounted(() => {
             :disabled="isLoadingModelInfo"
             class="btn-refresh-summary"
           >
-            <span :class="{ spinning: isLoadingModelInfo }">🔄</span> Odśwież metryki
+            <span :class="{ spinning: isLoadingModelInfo }">🔄</span> {{ t('admin.nnRefreshBtn') }}
           </button>
         </div>
 
@@ -3514,9 +3512,9 @@ onUnmounted(() => {
         <div class="nn-backtest-section mt-6">
           <div class="nn-backtest-header flex-between" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
             <div>
-              <h4>🎛️ Aktywne Hiperparametry (MongoDB) & Auto-Tuner</h4>
+              <h4>{{ t('admin.nnHyperTitle') }}</h4>
               <p class="subtitle">
-                2-etapowe strojenie wag czasowych i sieci neuronowej z walidacją holdout na najnowszym sezonie i zapisem w MongoDB.
+                {{ t('admin.nnHyperSub') }}
               </p>
             </div>
             <button
@@ -3526,15 +3524,15 @@ onUnmounted(() => {
               :disabled="isAutoTuning || isTrainingModel"
               class="btn-refresh-summary"
             >
-              <span>↩️</span> Przywróć domyślne
+              <span>↩️</span> {{ t('admin.nnResetHyperBtn') }}
             </button>
           </div>
 
           <div v-if="isAutoTuning" class="live-progress-box mt-3 mb-4">
             <div class="progress-header">
               <div class="progress-title">
-                <span>Auto-Tuning w toku ({{ autotuneStatus?.trials_done || 0 }}/{{ autotuneStatus?.trials_total || 16 }}):</span>
-                <strong>{{ autotuneStatus?.message || 'Strojenie hiperparametrów...' }}</strong>
+                <span>{{ t('admin.nnAutotuneProgTitle', { done: autotuneStatus?.trials_done || 0, total: autotuneStatus?.trials_total || 16 }) }}</span>
+                <strong>{{ autotuneStatus?.message || t('admin.nnAutotuneDefaultMsg') }}</strong>
               </div>
               <div class="progress-stat font-mono">
                 {{ autotuneStatus?.percent_complete ?? 0 }}% • {{ autotuneStatus?.elapsed_seconds ?? 0 }}s
@@ -3546,35 +3544,35 @@ onUnmounted(() => {
           </div>
 
           <div v-if="autotuneStatus?.results" class="nn-message mb-3" :class="autotuneStatus.results.improved ? 'nn-message-success' : 'nn-message-info'">
-            {{ autotuneStatus.message || (autotuneStatus.results.improved ? `Zapisano lepszą konfigurację: ${autotuneStatus.results.best_candidate_label}` : 'Obecna konfiguracja pozostała najlepsza.') }}
+            {{ autotuneStatus.message || (autotuneStatus.results.improved ? t('admin.nnAutotuneImproved', { label: autotuneStatus.results.best_candidate_label }) : t('admin.nnAutotuneKept')) }}
           </div>
 
           <div v-if="hyperparamsBundle?.params" class="nn-metrics-grid mb-3">
             <div class="nn-metric-card">
-              <span class="metric-label">Źródło konfiguracji</span>
+              <span class="metric-label">{{ t('admin.nnConfigSource') }}</span>
               <strong class="metric-value" :class="hyperparamsBundle.source === 'autotuned' ? 'text-green' : ''">
-                {{ hyperparamsBundle.source === 'autotuned' ? '🎯 Dostrojone (MongoDB)' : '⚙️ Domyślne' }}
+                {{ hyperparamsBundle.source === 'autotuned' ? t('admin.nnSourceTuned') : t('admin.nnSourceDefault') }}
               </strong>
             </div>
             <div class="nn-metric-card">
-              <span class="metric-label">Półokres COMP / QUA</span>
+              <span class="metric-label">{{ t('admin.nnHalfLifeCompQua') }}</span>
               <strong class="metric-value font-mono">{{ hyperparamsBundle.params.comp_half_life_days }}d / {{ hyperparamsBundle.params.qua_half_life_days }}d</strong>
             </div>
             <div class="nn-metric-card">
-              <span class="metric-label">Półokres TRIAL / TRAIN</span>
+              <span class="metric-label">{{ t('admin.nnHalfLifeTrialTrain') }}</span>
               <strong class="metric-value font-mono">{{ hyperparamsBundle.params.trial_half_life_days }}d / {{ hyperparamsBundle.params.training_half_life_days }}d</strong>
             </div>
             <div class="nn-metric-card">
-              <span class="metric-label">Wagi weekend (Q / T / TR)</span>
+              <span class="metric-label">{{ t('admin.nnWeekendWeights') }}</span>
               <strong class="metric-value font-mono">{{ hyperparamsBundle.params.weekend_qua_weight }} / {{ hyperparamsBundle.params.weekend_trial_weight }} / {{ hyperparamsBundle.params.weekend_training_weight }}</strong>
             </div>
             <div class="nn-metric-card">
-              <span class="metric-label">Strata / Blend pkt (Qual)</span>
+              <span class="metric-label">{{ t('admin.nnLossBlend') }}</span>
               <strong class="metric-value font-mono">{{ Math.round(hyperparamsBundle.params.loss_quality_weight * 100) }}% / {{ Math.round(hyperparamsBundle.params.points_blend_quality_weight * 100) }}%</strong>
             </div>
             <div class="nn-metric-card">
-              <span class="metric-label">LR / Dropout / Okno</span>
-              <strong class="metric-value font-mono">{{ hyperparamsBundle.params.lr }} / {{ hyperparamsBundle.params.dropout }} / {{ hyperparamsBundle.params.rolling_window_seasons }} lat</strong>
+              <span class="metric-label">{{ t('admin.nnLrDropoutWin') }}</span>
+              <strong class="metric-value font-mono">{{ hyperparamsBundle.params.lr }} / {{ hyperparamsBundle.params.dropout }} / {{ hyperparamsBundle.params.rolling_window_seasons }} {{ t('admin.nnYearsUnit') }}</strong>
             </div>
           </div>
         </div>
@@ -3583,9 +3581,9 @@ onUnmounted(() => {
         <div class="nn-backtest-section mt-6">
           <div class="nn-backtest-header">
             <div>
-              <h4>📈 Walidacja Krocząca (Walk-Forward Backtest)</h4>
+              <h4>{{ t('admin.nnBtTitle') }}</h4>
               <p class="subtitle">
-                Symulacja kolejnych sezonów konkurs po konkursie (nauka na latach &lt; T, predykcja konkursu w sezonie T z treningami/QUA sprzed zawodów).
+                {{ t('admin.nnBtSub') }}
               </p>
             </div>
           </div>
@@ -3593,8 +3591,8 @@ onUnmounted(() => {
           <div v-if="isRunningBacktest" class="live-progress-box mb-4">
             <div class="progress-header">
               <div class="progress-title">
-                <span>Postęp walidacji kroczącej:</span>
-                <strong>{{ backtestStatus?.message || 'Obliczanie prognoz historycznych...' }}</strong>
+                <span>{{ t('admin.nnBtProgTitle') }}</span>
+                <strong>{{ backtestStatus?.message || t('admin.nnBtDefaultMsg') }}</strong>
               </div>
               <div class="progress-stat font-mono">{{ backtestStatus?.percent_complete ?? 0 }}%</div>
             </div>
@@ -3604,41 +3602,41 @@ onUnmounted(() => {
           </div>
 
           <div v-if="backtestStatus?.error" class="nn-message nn-message-error">
-            ❌ Błąd backtestu: {{ backtestStatus.error }}
+            {{ t('admin.nnBtErrorPrefix', { error: backtestStatus.error }) }}
           </div>
 
           <div v-if="backtestStatus?.results?.overall" class="nn-backtest-results">
             <div class="nn-metrics-grid mb-4">
               <div class="nn-metric-card">
-                <span class="metric-label">Przetestowane konkursy</span>
+                <span class="metric-label">{{ t('admin.nnBtComps') }}</span>
                 <strong class="metric-value font-mono">{{ backtestStatus.results.overall.competitions_evaluated }}</strong>
               </div>
               <div class="nn-metric-card">
-                <span class="metric-label">Trafność TOP 30</span>
+                <span class="metric-label">{{ t('admin.nnBtTop30') }}</span>
                 <strong class="metric-value text-green font-mono">{{ backtestStatus.results.overall.top30_hit_pct }}%</strong>
               </div>
               <div class="nn-metric-card">
-                <span class="metric-label">Trafność TOP 10</span>
+                <span class="metric-label">{{ t('admin.nnBtTop10') }}</span>
                 <strong class="metric-value text-blue font-mono">{{ backtestStatus.results.overall.top10_hit_pct }}%</strong>
               </div>
               <div class="nn-metric-card">
-                <span class="metric-label">Trafność Podium</span>
+                <span class="metric-label">{{ t('admin.nnBtPodium') }}</span>
                 <strong class="metric-value text-yellow font-mono">{{ backtestStatus.results.overall.podium_hit_pct }}%</strong>
               </div>
               <div class="nn-metric-card">
-                <span class="metric-label">Zwycięzca w TOP 3</span>
+                <span class="metric-label">{{ t('admin.nnBtWinnerTop3') }}</span>
                 <strong class="metric-value font-mono">{{ backtestStatus.results.overall.winner_top3_pct }}%</strong>
               </div>
               <div class="nn-metric-card">
-                <span class="metric-label">Śr. błąd miejsca (MAE)</span>
-                <strong class="metric-value font-mono">{{ backtestStatus.results.overall.avg_rank_mae }} poz.</strong>
+                <span class="metric-label">{{ t('admin.nnBtRankMae') }}</span>
+                <strong class="metric-value font-mono">{{ backtestStatus.results.overall.avg_rank_mae }} {{ t('admin.nnBtPosUnit') }}</strong>
               </div>
               <div class="nn-metric-card">
-                <span class="metric-label">Korelacja Spearmana</span>
+                <span class="metric-label">{{ t('admin.nnBtSpearman') }}</span>
                 <strong class="metric-value font-mono">{{ backtestStatus.results.overall.spearman_corr }}</strong>
               </div>
               <div class="nn-metric-card">
-                <span class="metric-label">Błąd dystansu (MAE)</span>
+                <span class="metric-label">{{ t('admin.nnBtDistMae') }}</span>
                 <strong class="metric-value font-mono">~{{ backtestStatus.results.overall.dist_mae_m }} m</strong>
               </div>
             </div>
@@ -3647,21 +3645,21 @@ onUnmounted(() => {
               <table class="backtest-table">
                 <thead>
                   <tr>
-                    <th>Sezon testowy</th>
-                    <th>Próbki nauki (&lt; T)</th>
-                    <th>Konkursy</th>
-                    <th>TOP 30</th>
-                    <th>TOP 10</th>
-                    <th>Podium</th>
-                    <th>Zw. w TOP 3</th>
-                    <th>MAE miejsca</th>
-                    <th>Spearman</th>
+                    <th>{{ t('admin.thBtSeason') }}</th>
+                    <th>{{ t('admin.thBtSamples') }}</th>
+                    <th>{{ t('admin.thBtComps') }}</th>
+                    <th>{{ t('admin.thBtTop30') }}</th>
+                    <th>{{ t('admin.thBtTop10') }}</th>
+                    <th>{{ t('admin.thBtPodium') }}</th>
+                    <th>{{ t('admin.thBtWinTop3') }}</th>
+                    <th>{{ t('admin.thBtRankMae') }}</th>
+                    <th>{{ t('admin.thBtSpearman') }}</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="fold in backtestStatus.results.folds" :key="fold.season">
                     <td class="font-mono"><strong>{{ fold.season }}</strong></td>
-                    <td class="font-mono">{{ fold.train_samples.toLocaleString('pl-PL') }}</td>
+                    <td class="font-mono">{{ fold.train_samples.toLocaleString(bcp47Locale) }}</td>
                     <td class="font-mono">{{ fold.competitions_evaluated }}</td>
                     <td class="font-mono text-green">{{ fold.top30_hit_pct }}%</td>
                     <td class="font-mono text-blue">{{ fold.top10_hit_pct }}%</td>
@@ -3683,8 +3681,8 @@ onUnmounted(() => {
       <div class="admin-card">
         <div class="admin-card-header flex-between">
           <div>
-            <h3>💬 Wiadomości od użytkowników</h3>
-            <p class="subtitle">Zapytania wysłane przyciskiem „Skontaktuj się z administratorem” oraz historia rozmów.</p>
+            <h3>{{ t('admin.msgTitle') }}</h3>
+            <p class="subtitle">{{ t('admin.msgSub') }}</p>
           </div>
           <button
             type="button"
@@ -3692,12 +3690,12 @@ onUnmounted(() => {
             :disabled="isLoadingSupportThreads"
             @click="loadSupportThreads(selectedSupportUserId || undefined)"
           >
-            🔄 Odśwież
+            {{ t('admin.msgRefresh') }}
           </button>
         </div>
 
         <div v-if="supportThreads.length === 0" class="empty-state">
-          Brak wiadomości od użytkowników.
+          {{ t('admin.msgEmpty') }}
         </div>
 
         <div v-else class="admin-support-layout">
@@ -3735,8 +3733,8 @@ onUnmounted(() => {
                 :class="m.sender_role === 'ADMIN' ? 'bubble-adm' : 'bubble-usr'"
               >
                 <div class="stv-meta">
-                  <strong>{{ m.sender_role === 'ADMIN' ? '🛡️ Administrator' : activeSupportThread.user_name }}</strong>
-                  <span>{{ m.created_at ? new Date(m.created_at).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' }) : '' }}</span>
+                  <strong>{{ m.sender_role === 'ADMIN' ? t('profile.msgSenderAdmin') : activeSupportThread.user_name }}</strong>
+                  <span>{{ m.created_at ? new Date(m.created_at).toLocaleString(bcp47Locale, { dateStyle: 'short', timeStyle: 'short' }) : '' }}</span>
                 </div>
                 <div v-if="m.context" class="stv-ctx">{{ m.context }}</div>
                 <p class="stv-text">{{ m.text }}</p>
@@ -3749,7 +3747,7 @@ onUnmounted(() => {
                 rows="3"
                 maxlength="1500"
                 class="form-input"
-                placeholder="Wpisz odpowiedź dla użytkownika..."
+                :placeholder="t('admin.msgPh')"
               ></textarea>
               <div v-if="adminReplyError" class="empty-state" style="color: #b91c1c; padding: 6px 0;">
                 {{ adminReplyError }}
@@ -3759,7 +3757,7 @@ onUnmounted(() => {
                 class="btn btn-primary"
                 :disabled="isSendingAdminReply || !adminReplyText.trim()"
               >
-                {{ isSendingAdminReply ? 'Wysyłanie...' : '📩 Wyślij odpowiedź' }}
+                {{ isSendingAdminReply ? t('admin.msgSending') : t('admin.msgSendBtn') }}
               </button>
             </form>
           </section>

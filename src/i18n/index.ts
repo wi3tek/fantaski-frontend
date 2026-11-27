@@ -1,22 +1,23 @@
 import { computed, ref } from 'vue'
+import pl, { type I18nKey } from './locales/pl'
+import en from './locales/en'
+import de from './locales/de'
 
-export type LocaleCode = 'pl' | 'en' | 'de' | 'no' | 'sl' | 'fi' | 'ja'
+export type { I18nKey }
+export type LocaleCode = 'pl' | 'en' | 'de'
 
 export interface LocaleOption {
   code: LocaleCode
   flag: string
   label: string
   nativeName: string
+  bcp47: string
 }
 
 export const SUPPORTED_LOCALES: LocaleOption[] = [
-  { code: 'pl', flag: '🇵🇱', label: 'Polski', nativeName: 'Polski' },
-  { code: 'en', flag: '🇬🇧', label: 'English', nativeName: 'English' },
-  { code: 'de', flag: '🇩🇪', label: 'Deutsch', nativeName: 'Deutsch' },
-  { code: 'no', flag: '🇳🇴', label: 'Norsk', nativeName: 'Norsk' },
-  { code: 'sl', flag: '🇸🇮', label: 'Slovenščina', nativeName: 'Slovenščina' },
-  { code: 'fi', flag: '🇫🇮', label: 'Suomi', nativeName: 'Suomi' },
-  { code: 'ja', flag: '🇯🇵', label: '日本語', nativeName: '日本語' },
+  { code: 'pl', flag: '🇵🇱', label: 'Polski', nativeName: 'Polski', bcp47: 'pl-PL' },
+  { code: 'en', flag: '🇬🇧', label: 'English', nativeName: 'English', bcp47: 'en-GB' },
+  { code: 'de', flag: '🇩🇪', label: 'Deutsch', nativeName: 'Deutsch', bcp47: 'de-DE' },
 ]
 
 const STORAGE_KEY = 'fantaski_locale'
@@ -32,9 +33,20 @@ const detectInitialLocale = (): LocaleCode => {
 
 const currentLocale = ref<LocaleCode>(detectInitialLocale())
 
-if (typeof document !== 'undefined') {
-  document.documentElement.lang = currentLocale.value
+const DICT: Record<LocaleCode, Record<I18nKey, string>> = {
+  pl,
+  en,
+  de,
 }
+
+const applyDomLocale = (code: LocaleCode) => {
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = code
+    document.title = DICT[code]['app.docTitle'] || DICT.pl['app.docTitle']
+  }
+}
+
+applyDomLocale(currentLocale.value)
 
 export const setAppLocale = (code: LocaleCode) => {
   if (!validCodes.has(code)) return
@@ -42,604 +54,122 @@ export const setAppLocale = (code: LocaleCode) => {
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_KEY, code)
   }
-  if (typeof document !== 'undefined') {
-    document.documentElement.lang = code
-  }
+  applyDomLocale(code)
 }
 
-const DICT: Record<LocaleCode, Record<string, string>> = {
-  pl: {
-    'nav.dashboard': '🏠 Pulpit',
-    'nav.dbSection': 'Bazy Danych',
-    'nav.athletes': '🎿 Baza skoczków',
-    'nav.sessions': '📅 Baza sesji',
-    'nav.hills': '🏔️ Baza skoczni',
-    'nav.eventsSection': 'Zawody i Wyniki',
-    'nav.standings': '🏆 Klasyfikacje',
-    'nav.toolsSection': 'Analityka i Narzędzia',
-    'nav.tools': 'Narzędzia',
-    'nav.stats': '⚖️ Porównywarka',
-    'nav.draft': '⚡ Draft',
-    'nav.predictions': '🔮 Prognozy',
-    'nav.adminSection': 'Administracja',
-    'nav.admin': '⚙️ Panel Administratora',
-    'nav.accountSection': 'Konto',
-    'nav.profile': '👤 Mój profil',
-    'nav.logout': '🚪 Wyloguj się',
-    'nav.login': 'Zaloguj się',
-    'nav.loginMobile': '🚀 Zaloguj się na konto',
-    'nav.appSection': 'Aplikacja na telefon',
-    'nav.installApp': '📲 Zainstaluj na ekranie głównym',
-    'nav.notifications': 'Powiadomienia',
-    'nav.markAllRead': 'Oznacz wszystkie',
-    'nav.noUnread': 'Brak nieprzeczytanych powiadomień.',
-    'nav.notifHistory': '📜 Historia powiadomień w Profilu →',
-    'nav.language': 'Język',
-    'footer.copy': 'FantaSKI • Fantasy & Wyniki Skoków Narciarskich • 2026',
+export const getCurrentBcp47 = (): string => {
+  const found = SUPPORTED_LOCALES.find((l) => l.code === currentLocale.value)
+  return found?.bcp47 || 'pl-PL'
+}
 
-    'dash.greeting': 'Cześć',
-    'dash.subtitle': 'Najważniejsze zawody, ligi drafta i forma skoczków w jednym miejscu.',
-    'dash.nextCompEyebrow': '⏭️ NAJBLIŻSZE ZAWODY PUCHARU ŚWIATA',
-    'dash.mainComp': 'Konkurs główny',
-    'dash.qualifications': 'Kwalifikacje',
-    'dash.ctaPredictions': '🔮 Prognozy AI na zawody',
-    'dash.ctaProTeaser': '✨ Prognozy AI (PRO)',
-    'dash.ctaCalendar': '📅 Kalendarz FIS',
-    'dash.noUpcoming': 'Brak zaplanowanych nadchodzących konkursów Pucharu Świata w kalendarzu FIS.',
-    'dash.draftTitle': '🏆 Twoje Ligi Drafta & Akcja',
-    'dash.draftDesc': 'Aktywne kolejki wyboru, zaproszenia i Twoja pozycja w ligach.',
-    'dash.openDraft': 'Otwórz Draft →',
-    'dash.emptyDraft': 'Nie uczestniczysz jeszcze w żadnej lidze Draft.',
-    'dash.newDraft': '➕ Utwórz lub dołącz do Drafta',
-    'dash.recentTitle': '🏁 Najnowsze wyniki',
-    'dash.recentDesc': 'Ostatnio rozegrane sesje i konkursy z bazy FIS.',
-    'dash.allSessions': 'Wszystkie sesje →',
-    'dash.top5Title': '🌍 Top 5 Pucharu Świata',
-    'dash.fullStandings': 'Pełna tabela →',
-    'dash.esmDesc': 'Aktualne ceny z bazy FantaSKI oraz podgląd aktywnego składu.',
-    'dash.esmCompare': '⚖️ Porównaj z ostatnim konkurssem',
-    'dash.esmCompareLabel': '⚖️ Porównaj z ostatnim konkursem',
-    'dash.manage': 'Zarządzaj →',
-    'dash.esmValue': 'Wartość składu',
-    'dash.esmPoints': 'Punkty ESM',
-    'dash.esmStarters': 'Podstawowi',
-    'dash.jumpersCount': 'skoczków',
+export const translate = (
+  key: I18nKey | string,
+  params?: Record<string, string | number>,
+  fallback?: string,
+): string => {
+  const langMap = DICT[currentLocale.value] as Record<string, string>
+  const plMap = DICT.pl as Record<string, string>
+  let raw = langMap[key] || plMap[key] || fallback || key
+  if (params) {
+    for (const [pKey, pVal] of Object.entries(params)) {
+      raw = raw.replace(new RegExp(`\\{${pKey}\\}`, 'g'), String(pVal))
+    }
+  }
+  return raw
+}
 
-    'login.badge': 'SEZON ZIMOWY 2026/27',
-    'login.subtitle': 'Twoje centrum skoków narciarskich: wyniki FIS, porównywarka skoczków, ligi Drafta oraz prognozy AI na zawody.',
-    'login.cardTitle': 'Zaloguj się do FantaSKI',
-    'login.cardSub': 'Szybki dostęp przez konto Google — bez haseł i zbędnych formularzy.',
-    'login.devTitle': 'Logowanie testowe (Dev)',
-    'login.devBtn': 'Zaloguj się',
-    'login.guestHint': 'Przeglądaj jako gość:',
-
-    'session.COMPETITION': 'Konkurs Główny',
-    'session.QUA': 'Kwalifikacje',
-    'session.QUALIFICATION': 'Kwalifikacje',
-    'session.TRAINING': 'Trening',
-    'session.TRIAL': 'Seria próbna',
-    'hill.FLYING': 'Mamucia',
-    'hill.LARGE': 'Duża',
-    'hill.NORMAL': 'Normalna',
-    'hill.MEDIUM': 'Średnia',
-    'common.season': 'Sezon',
-    'common.desktopHint': '💻 Pełną, wielokolumnową tabelę zobaczysz na większym ekranie (komputerze).',
-    'profile.tabEdit': '✏️ Profil',
-    'profile.tabEsm': '🏆 esmManager',
-    'profile.tabPlan': '💎 Pakiet',
-    'profile.tabNotifications': '🔔 Powiadomienia',
-    'profile.tabMessages': '💬 Admin',
-  },
-
-  en: {
-    'nav.dashboard': '🏠 Dashboard',
-    'nav.dbSection': 'Databases',
-    'nav.athletes': '🎿 Ski Jumpers',
-    'nav.sessions': '📅 Events & Sessions',
-    'nav.hills': '🏔️ Jumping Hills',
-    'nav.eventsSection': 'Standings & Results',
-    'nav.standings': '🏆 Standings',
-    'nav.toolsSection': 'Analytics & Tools',
-    'nav.tools': 'Tools',
-    'nav.stats': '⚖️ Comparison',
-    'nav.draft': '⚡ Draft',
-    'nav.predictions': '🔮 Predictions',
-    'nav.adminSection': 'Administration',
-    'nav.admin': '⚙️ Admin Panel',
-    'nav.accountSection': 'Account',
-    'nav.profile': '👤 My Profile',
-    'nav.logout': '🚪 Log out',
-    'nav.login': 'Sign in',
-    'nav.loginMobile': '🚀 Sign in to account',
-    'nav.appSection': 'Mobile App',
-    'nav.installApp': '📲 Install on Home Screen',
-    'nav.notifications': 'Notifications',
-    'nav.markAllRead': 'Mark all read',
-    'nav.noUnread': 'No unread notifications.',
-    'nav.notifHistory': '📜 Notification history in Profile →',
-    'nav.language': 'Language',
-    'footer.copy': 'FantaSKI • Ski Jumping Fantasy & Results • 2026',
-
-    'dash.greeting': 'Hi',
-    'dash.subtitle': 'Upcoming events, draft leagues, and jumper form in one place.',
-    'dash.nextCompEyebrow': '⏭️ NEXT WORLD CUP COMPETITION',
-    'dash.mainComp': 'Main competition',
-    'dash.qualifications': 'Qualification',
-    'dash.ctaPredictions': '🔮 AI Race Predictions',
-    'dash.ctaProTeaser': '✨ AI Predictions (PRO)',
-    'dash.ctaCalendar': '📅 FIS Calendar',
-    'dash.noUpcoming': 'No upcoming World Cup events scheduled in the FIS calendar.',
-    'dash.draftTitle': '🏆 Your Draft Leagues & Actions',
-    'dash.draftDesc': 'Active draft turns, pending invites, and league rankings.',
-    'dash.openDraft': 'Open Draft →',
-    'dash.emptyDraft': 'You are not in any Draft league yet.',
-    'dash.newDraft': '➕ Create or join Draft',
-    'dash.recentTitle': '🏁 Latest Results',
-    'dash.recentDesc': 'Most recently completed FIS sessions and competitions.',
-    'dash.allSessions': 'All sessions →',
-    'dash.top5Title': '🌍 World Cup Top 5',
-    'dash.fullStandings': 'Full standings →',
-    'dash.esmDesc': 'Live database prices and overview of your active squad.',
-    'dash.esmCompareLabel': '⚖️ Compare with latest race',
-    'dash.manage': 'Manage →',
-    'dash.esmValue': 'Squad Value',
-    'dash.esmPoints': 'ESM Points',
-    'dash.esmStarters': 'Starters',
-    'dash.jumpersCount': 'jumpers',
-
-    'login.badge': 'WINTER SEASON 2026/27',
-    'login.subtitle': 'Your ski jumping hub: FIS results, athlete analytics, fantasy Draft leagues, and AI race predictions.',
-    'login.cardTitle': 'Sign in to FantaSKI',
-    'login.cardSub': 'Instant access with Google — no extra passwords required.',
-    'login.devTitle': 'Developer Sign In (Test)',
-    'login.devBtn': 'Sign in',
-    'login.guestHint': 'Browse as guest:',
-
-    'session.COMPETITION': 'Competition',
-    'session.QUA': 'Qualification',
-    'session.QUALIFICATION': 'Qualification',
-    'session.TRAINING': 'Training',
-    'session.TRIAL': 'Trial Round',
-    'hill.FLYING': 'Ski Flying',
-    'hill.LARGE': 'Large Hill',
-    'hill.NORMAL': 'Normal Hill',
-    'hill.MEDIUM': 'Medium Hill',
-    'common.season': 'Season',
-    'common.desktopHint': '💻 Open on a larger screen (desktop) to view the full multi-column table.',
-    'profile.tabEdit': '✏️ Profile',
-    'profile.tabEsm': '🏆 esmManager',
-    'profile.tabPlan': '💎 Plan',
-    'profile.tabNotifications': '🔔 Notifications',
-    'profile.tabMessages': '💬 Admin',
-  },
-
-  de: {
-    'nav.dashboard': '🏠 Übersicht',
-    'nav.dbSection': 'Datenbanken',
-    'nav.athletes': '🎿 Skispringer',
-    'nav.sessions': '📅 Wettkämpfe',
-    'nav.hills': '🏔️ Schanzen',
-    'nav.eventsSection': 'Wertungen & Ergebnisse',
-    'nav.standings': '🏆 Gesamtwertung',
-    'nav.toolsSection': 'Analysen & Tools',
-    'nav.tools': 'Werkzeuge',
-    'nav.stats': '⚖️ Vergleich',
-    'nav.draft': '⚡ Draft',
-    'nav.predictions': '🔮 Prognosen',
-    'nav.adminSection': 'Verwaltung',
-    'nav.admin': '⚙️ Admin-Panel',
-    'nav.accountSection': 'Konto',
-    'nav.profile': '👤 Mein Profil',
-    'nav.logout': '🚪 Abmelden',
-    'nav.login': 'Anmelden',
-    'nav.loginMobile': '🚀 Konto anmelden',
-    'nav.appSection': 'Handy-App',
-    'nav.installApp': '📲 Zum Startbildschirm hinzufügen',
-    'nav.notifications': 'Benachrichtigungen',
-    'nav.markAllRead': 'Alle gelesen',
-    'nav.noUnread': 'Keine ungelesenen Nachrichten.',
-    'nav.notifHistory': '📜 Verlauf im Profil →',
-    'nav.language': 'Sprache',
-    'footer.copy': 'FantaSKI • Skisprung-Fantasy & Ergebnisse • 2026',
-
-    'dash.greeting': 'Hallo',
-    'dash.subtitle': 'Nächste Springen, Draft-Ligen und aktuelle Form auf einen Blick.',
-    'dash.nextCompEyebrow': '⏭️ NÄCHSTER WELTCUP-WETTKAMPF',
-    'dash.mainComp': 'Einzelspringen',
-    'dash.qualifications': 'Qualifikation',
-    'dash.ctaPredictions': '🔮 KI-Wettkampfprognose',
-    'dash.ctaProTeaser': '✨ KI-Prognosen (PRO)',
-    'dash.ctaCalendar': '📅 FIS-Kalender',
-    'dash.noUpcoming': 'Keine bevorstehenden Weltcup-Wettkämpfe im FIS-Kalender.',
-    'dash.draftTitle': '🏆 Deine Draft-Ligen & Aktionen',
-    'dash.draftDesc': 'Aktive Züge, Einladungen und deine Liga-Platzierung.',
-    'dash.openDraft': 'Draft öffnen →',
-    'dash.emptyDraft': 'Du nimmst noch an keiner Draft-Liga teil.',
-    'dash.newDraft': '➕ Liga erstellen oder beitreten',
-    'dash.recentTitle': '🏁 Neueste Ergebnisse',
-    'dash.recentDesc': 'Zuletzt abgeschlossene FIS-Durchgänge und Wettbewerbe.',
-    'dash.allSessions': 'Alle Springen →',
-    'dash.top5Title': '🌍 Weltcup Top 5',
-    'dash.fullStandings': 'Gesamtwertung →',
-    'dash.esmDesc': 'Aktuelle Datenbank-Marktwerte und Übersicht deines Kaders.',
-    'dash.esmCompareLabel': '⚖️ Mit letztem Springen vergleichen',
-    'dash.manage': 'Verwalten →',
-    'dash.esmValue': 'Kaderwert',
-    'dash.esmPoints': 'ESM-Punkte',
-    'dash.esmStarters': 'Stammteam',
-    'dash.jumpersCount': 'Springer',
-
-    'login.badge': 'WINTERSAISON 2026/27',
-    'login.subtitle': 'Dein Skisprung-Zentrum: FIS-Ergebnisse, Athleten-Analysen, Draft-Ligen und KI-Prognosen.',
-    'login.cardTitle': 'Bei FantaSKI anmelden',
-    'login.cardSub': 'Schneller Zugang mit Google-Konto — ohne Passwort.',
-    'login.devTitle': 'Test-Login (Dev)',
-    'login.devBtn': 'Anmelden',
-    'login.guestHint': 'Als Gast stöbern:',
-
-    'session.COMPETITION': 'Wettkampf',
-    'session.QUA': 'Qualifikation',
-    'session.QUALIFICATION': 'Qualifikation',
-    'session.TRAINING': 'Training',
-    'session.TRIAL': 'Probedurchgang',
-    'hill.FLYING': 'Flugschanze',
-    'hill.LARGE': 'Großschanze',
-    'hill.NORMAL': 'Normalschanze',
-    'hill.MEDIUM': 'Mittelschanze',
-    'common.season': 'Saison',
-    'common.desktopHint': '💻 Auf einem größeren Bildschirm (PC) siehst du die vollständige Tabelle.',
-    'profile.tabEdit': '✏️ Profil',
-    'profile.tabEsm': '🏆 esmManager',
-    'profile.tabPlan': '💎 Paket',
-    'profile.tabNotifications': '🔔 Hinweise',
-    'profile.tabMessages': '💬 Admin',
-  },
-
-  no: {
-    'nav.dashboard': '🏠 Oversikt',
-    'nav.dbSection': 'Databaser',
-    'nav.athletes': '🎿 Hoppere',
-    'nav.sessions': '📅 Renn & økter',
-    'nav.hills': '🏔️ Hoppbakker',
-    'nav.eventsSection': 'Sammenlagt & Resultater',
-    'nav.standings': '🏆 Verdenscup',
-    'nav.toolsSection': 'Analyse & Verktøy',
-    'nav.tools': 'Verktøy',
-    'nav.stats': '⚖️ Sammenligning',
-    'nav.draft': '⚡ Draft',
-    'nav.predictions': '🔮 AI-Prognoser',
-    'nav.adminSection': 'Administrasjon',
-    'nav.admin': '⚙️ Adminpanel',
-    'nav.accountSection': 'Konto',
-    'nav.profile': '👤 Min profil',
-    'nav.logout': '🚪 Logg ut',
-    'nav.login': 'Logg inn',
-    'nav.loginMobile': '🚀 Logg inn på konto',
-    'nav.appSection': 'Mobilapp',
-    'nav.installApp': '📲 Installer på hjemskjerm',
-    'nav.notifications': 'Varsler',
-    'nav.markAllRead': 'Merk alle lest',
-    'nav.noUnread': 'Ingen uleste varsler.',
-    'nav.notifHistory': '📜 Varselhistorikk i Profil →',
-    'nav.language': 'Språk',
-    'footer.copy': 'FantaSKI • Skihopp Fantasy & Resultater • 2026',
-
-    'dash.greeting': 'Hei',
-    'dash.subtitle': 'Neste renn, draft-ligaer og hoppernes form samlet ett sted.',
-    'dash.nextCompEyebrow': '⏭️ NESTE VERDENSCUPRENN',
-    'dash.mainComp': 'Hovedrenn',
-    'dash.qualifications': 'Kvalifisering',
-    'dash.ctaPredictions': '🔮 AI-prognose for rennet',
-    'dash.ctaProTeaser': '✨ AI-prognoser (PRO)',
-    'dash.ctaCalendar': '📅 FIS-kalender',
-    'dash.noUpcoming': 'Ingen kommende verdenscuprenn i FIS-kalenderen.',
-    'dash.draftTitle': '🏆 Dine Draft-ligaer',
-    'dash.draftDesc': 'Aktive runder, invitasjoner og din plassering.',
-    'dash.openDraft': 'Åpne Draft →',
-    'dash.emptyDraft': 'Du deltar ikke i noen Draft-liga ennå.',
-    'dash.newDraft': '➕ Opprett eller bli med',
-    'dash.recentTitle': '🏁 Siste resultater',
-    'dash.recentDesc': 'Nylig avsluttede FIS-renn og økter.',
-    'dash.allSessions': 'Alle økter →',
-    'dash.top5Title': '🌍 Verdenscup Topp 5',
-    'dash.fullStandings': 'Full tabell →',
-    'dash.esmDesc': 'Oppdaterte priser og oversikt over laget ditt.',
-    'dash.esmCompareLabel': '⚖️ Sammenlign med siste renn',
-    'dash.manage': 'Administrer →',
-    'dash.esmValue': 'Lagverdi',
-    'dash.esmPoints': 'ESM-poeng',
-    'dash.esmStarters': 'Utvalgte',
-    'dash.jumpersCount': 'hoppere',
-
-    'login.badge': 'VINTERSESONG 2026/27',
-    'login.subtitle': 'Ditt senter for skihopp: FIS-resultater, statistikk, Draft-ligaer og AI-prognoser.',
-    'login.cardTitle': 'Logg inn på FantaSKI',
-    'login.cardSub': 'Rask innlogging med Google — uten ekstra passord.',
-    'login.devTitle': 'Test-innlogging (Dev)',
-    'login.devBtn': 'Logg inn',
-    'login.guestHint': 'Se som gjest:',
-
-    'session.COMPETITION': 'Konkurranse',
-    'session.QUA': 'Kvalifisering',
-    'session.QUALIFICATION': 'Kvalifisering',
-    'session.TRAINING': 'Trening',
-    'session.TRIAL': 'Prøveomgang',
-    'hill.FLYING': 'Skiflyging',
-    'hill.LARGE': 'Stor bakke',
-    'hill.NORMAL': 'Normalbakke',
-    'hill.MEDIUM': 'Mellombakke',
-    'common.season': 'Sesong',
-    'common.desktopHint': '💻 Se den fullstendige tabellen på en større skjerm (PC).',
-    'profile.tabEdit': '✏️ Profil',
-    'profile.tabEsm': '🏆 esmManager',
-    'profile.tabPlan': '💎 Pakke',
-    'profile.tabNotifications': '🔔 Varsler',
-    'profile.tabMessages': '💬 Admin',
-  },
-
-  sl: {
-    'nav.dashboard': '🏠 Pregled',
-    'nav.dbSection': 'Podatkovne baze',
-    'nav.athletes': '🎿 Skakalci',
-    'nav.sessions': '📅 Tekme in serije',
-    'nav.hills': '🏔️ Skakalnice',
-    'nav.eventsSection': 'Lestvice in rezultati',
-    'nav.standings': '🏆 Skupni seštevek',
-    'nav.toolsSection': 'Analitika in orodja',
-    'nav.tools': 'Orodja',
-    'nav.stats': '⚖️ Primerjava',
-    'nav.draft': '⚡ Draft',
-    'nav.predictions': '🔮 Napovedi AI',
-    'nav.adminSection': 'Administracija',
-    'nav.admin': '⚙️ Skrbniška plošča',
-    'nav.accountSection': 'Račun',
-    'nav.profile': '👤 Moj profil',
-    'nav.logout': '🚪 Odjava',
-    'nav.login': 'Prijava',
-    'nav.loginMobile': '🚀 Prijava v račun',
-    'nav.appSection': 'Mobilna aplikacija',
-    'nav.installApp': '📲 Namesti na začetni zaslon',
-    'nav.notifications': 'Obvestila',
-    'nav.markAllRead': 'Označi vse prebrano',
-    'nav.noUnread': 'Ni neprebranih obvestil.',
-    'nav.notifHistory': '📜 Zgodovina v Profilu →',
-    'nav.language': 'Jezik',
-    'footer.copy': 'FantaSKI • Smučarski skoki Fantasy & Rezultati • 2026',
-
-    'dash.greeting': 'Živjo',
-    'dash.subtitle': 'Prihajajoče tekme, draft lige in forma skakalcev na enem mestu.',
-    'dash.nextCompEyebrow': '⏭️ NASLEDNJA TEKMA SVETOVNEGA POKALA',
-    'dash.mainComp': 'Glavna tekma',
-    'dash.qualifications': 'Kvalifikacije',
-    'dash.ctaPredictions': '🔮 AI napoved tekme',
-    'dash.ctaProTeaser': '✨ AI napovedi (PRO)',
-    'dash.ctaCalendar': '📅 FIS koledar',
-    'dash.noUpcoming': 'V koledarju FIS ni načrtovanih tekem.',
-    'dash.draftTitle': '🏆 Tvoje Draft lige',
-    'dash.draftDesc': 'Aktivne izbire, povabila in uvrstitve.',
-    'dash.openDraft': 'Odpri Draft →',
-    'dash.emptyDraft': 'Še nisi v nobeni Draft ligi.',
-    'dash.newDraft': '➕ Ustvari ali se pridruži',
-    'dash.recentTitle': '🏁 Zadnji rezultati',
-    'dash.recentDesc': 'Zadnje odigrane serije in tekme FIS.',
-    'dash.allSessions': 'Vse tekme →',
-    'dash.top5Title': '🌍 Najboljših 5 v pokalu',
-    'dash.fullStandings': 'Celotna lestvica →',
-    'dash.esmDesc': 'Aktualne cene in pregled tvoje ekipe.',
-    'dash.esmCompareLabel': '⚖️ Primerjaj z zadnjo tekmo',
-    'dash.manage': 'Upravljaj →',
-    'dash.esmValue': 'Vrednost ekipe',
-    'dash.esmPoints': 'Točke ESM',
-    'dash.esmStarters': 'Prva postava',
-    'dash.jumpersCount': 'skakalcev',
-
-    'login.badge': 'ZIMSKA SEZONA 2026/27',
-    'login.subtitle': 'Središče za smučarske skoke: rezultati FIS, statistika, Draft lige in napovedi AI.',
-    'login.cardTitle': 'Prijava v FantaSKI',
-    'login.cardSub': 'Hiter dostop z Google računom — brez gesla.',
-    'login.devTitle': 'Testna prijava (Dev)',
-    'login.devBtn': 'Prijava',
-    'login.guestHint': 'Brskaj kot gost:',
-
-    'session.COMPETITION': 'Tekma',
-    'session.QUA': 'Kvalifikacije',
-    'session.QUALIFICATION': 'Kvalifikacije',
-    'session.TRAINING': 'Trening',
-    'session.TRIAL': 'Poskusna serija',
-    'hill.FLYING': 'Letalnica',
-    'hill.LARGE': 'Velika skakalnica',
-    'hill.NORMAL': 'Srednja skakalnica',
-    'hill.MEDIUM': 'Manjša skakalnica',
-    'common.season': 'Sezona',
-    'common.desktopHint': '💻 Celotno tabelo z vsemi stolpci si oglej na večjem zaslonu (računalniku).',
-    'profile.tabEdit': '✏️ Profil',
-    'profile.tabEsm': '🏆 esmManager',
-    'profile.tabPlan': '💎 Paket',
-    'profile.tabNotifications': '🔔 Obvestila',
-    'profile.tabMessages': '💬 Admin',
-  },
-
-  fi: {
-    'nav.dashboard': '🏠 Etusivu',
-    'nav.dbSection': 'Tietokannat',
-    'nav.athletes': '🎿 Mäkihyppääjät',
-    'nav.sessions': '📅 Kilpailut',
-    'nav.hills': '🏔️ Hyppyrimäet',
-    'nav.eventsSection': 'Tilastot & Tulokset',
-    'nav.standings': '🏆 Maailmancup',
-    'nav.toolsSection': 'Analytiikka & Työkalut',
-    'nav.tools': 'Työkalut',
-    'nav.stats': '⚖️ Vertailu',
-    'nav.draft': '⚡ Draft',
-    'nav.predictions': '🔮 AI-Ennusteet',
-    'nav.adminSection': 'Hallinta',
-    'nav.admin': '⚙️ Ylläpito',
-    'nav.accountSection': 'Tili',
-    'nav.profile': '👤 Oma profiili',
-    'nav.logout': '🚪 Kirjaudu ulos',
-    'nav.login': 'Kirjaudu',
-    'nav.loginMobile': '🚀 Kirjaudu tilille',
-    'nav.appSection': 'Mobiilisovellus',
-    'nav.installApp': '📲 Asenna aloitusnäyttöön',
-    'nav.notifications': 'Ilmoitukset',
-    'nav.markAllRead': 'Merkitse luetuiksi',
-    'nav.noUnread': 'Ei lukemattomia ilmoituksia.',
-    'nav.notifHistory': '📜 Historia profiilissa →',
-    'nav.language': 'Kieli',
-    'footer.copy': 'FantaSKI • Mäkihyppy Fantasy & Tulokset • 2026',
-
-    'dash.greeting': 'Hei',
-    'dash.subtitle': 'Seuraavat kilpailut, draft-liigat ja hyppääjien vire yhdessä paikassa.',
-    'dash.nextCompEyebrow': '⏭️ SEURAAVA MAAILMANCUP-KILPAILU',
-    'dash.mainComp': 'Kilpailu',
-    'dash.qualifications': 'Karsinta',
-    'dash.ctaPredictions': '🔮 AI-ennusteet kisaan',
-    'dash.ctaProTeaser': '✨ AI-ennusteet (PRO)',
-    'dash.ctaCalendar': '📅 FIS-kalenteri',
-    'dash.noUpcoming': 'Ei tulevia maailmancupin kilpailuja kalenterissa.',
-    'dash.draftTitle': '🏆 Draft-liigasi',
-    'dash.draftDesc': 'Aktiiviset varausvuorot, kutsut ja sijoitukset.',
-    'dash.openDraft': 'Avaa Draft →',
-    'dash.emptyDraft': 'Et ole vielä mukana Draft-liigassa.',
-    'dash.newDraft': '➕ Luo tai liity liigaan',
-    'dash.recentTitle': '🏁 Viimeisimmät tulokset',
-    'dash.recentDesc': 'Viimeksi hypätyt FIS-kierrokset ja kilpailut.',
-    'dash.allSessions': 'Kaikki kisat →',
-    'dash.top5Title': '🌍 Maailmancup Top 5',
-    'dash.fullStandings': 'Koko taulukko →',
-    'dash.esmDesc': 'Päivitetyt hinnat ja aloituskokoonpano.',
-    'dash.esmCompareLabel': '⚖️ Vertaa viimeisimpään kisaan',
-    'dash.manage': 'Hallitse →',
-    'dash.esmValue': 'Joukkueen arvo',
-    'dash.esmPoints': 'ESM-pisteet',
-    'dash.esmStarters': 'Aloittajat',
-    'dash.jumpersCount': 'hyppääjää',
-
-    'login.badge': 'TALVIKAUSI 2026/27',
-    'login.subtitle': 'Mäkihypyn keskus: FIS-tulokset, tilastot, Draft-liigat ja tekoälyennusteet.',
-    'login.cardTitle': 'Kirjaudu FantaSKI-palveluun',
-    'login.cardSub': 'Nopea kirjautuminen Google-tilillä ilman salasanoja.',
-    'login.devTitle': 'Testikirjautuminen (Dev)',
-    'login.devBtn': 'Kirjaudu',
-    'login.guestHint': 'Selaa vieraana:',
-
-    'session.COMPETITION': 'Kilpailu',
-    'session.QUA': 'Karsinta',
-    'session.QUALIFICATION': 'Karsinta',
-    'session.TRAINING': 'Harjoitus',
-    'session.TRIAL': 'Koekierros',
-    'hill.FLYING': 'Lentomäki',
-    'hill.LARGE': 'Suurmäki',
-    'hill.NORMAL': 'Normaalimäki',
-    'hill.MEDIUM': 'Keskisuuri mäki',
-    'common.season': 'Kausi',
-    'common.desktopHint': '💻 Täysi monisarakkeinen taulukko näkyy suuremmalla näytöllä (tietokoneella).',
-    'profile.tabEdit': '✏️ Profiili',
-    'profile.tabEsm': '🏆 esmManager',
-    'profile.tabPlan': '💎 Paketti',
-    'profile.tabNotifications': '🔔 Ilmoitukset',
-    'profile.tabMessages': '💬 Admin',
-  },
-
-  ja: {
-    'nav.dashboard': '🏠 ダッシュボード',
-    'nav.dbSection': 'データベース',
-    'nav.athletes': '🎿 選手一覧',
-    'nav.sessions': '📅 大会・セッション',
-    'nav.hills': '🏔️ ジャンプ台',
-    'nav.eventsSection': '順位・結果',
-    'nav.standings': '🏆 総合順位',
-    'nav.toolsSection': '分析・ツール',
-    'nav.tools': 'ツール',
-    'nav.stats': '⚖️ 比較分析',
-    'nav.draft': '⚡ ドラフト',
-    'nav.predictions': '🔮 AI予測',
-    'nav.adminSection': '管理',
-    'nav.admin': '⚙️ 管理パネル',
-    'nav.accountSection': 'アカウント',
-    'nav.profile': '👤 マイプロフィール',
-    'nav.logout': '🚪 ログアウト',
-    'nav.login': 'ログイン',
-    'nav.loginMobile': '🚀 ログイン',
-    'nav.appSection': 'モバイルアプリ',
-    'nav.installApp': '📲 ホーム画面に追加',
-    'nav.notifications': '通知',
-    'nav.markAllRead': 'すべて既読',
-    'nav.noUnread': '未読の通知はありません。',
-    'nav.notifHistory': '📜 プロフィールで履歴を見る →',
-    'nav.language': '言語',
-    'footer.copy': 'FantaSKI • スキージャンプ Fantasy & 大会結果 • 2026',
-
-    'dash.greeting': 'こんにちは',
-    'dash.subtitle': '次の大会、ドラフトリーグ、選手の調子をひと目で確認できます。',
-    'dash.nextCompEyebrow': '⏭️ 次のワールドカップ大会',
-    'dash.mainComp': '本戦',
-    'dash.qualifications': '予選',
-    'dash.ctaPredictions': '🔮 AI予測を見る',
-    'dash.ctaProTeaser': '✨ AI予測 (PRO)',
-    'dash.ctaCalendar': '📅 FISカレンダー',
-    'dash.noUpcoming': 'FISカレンダーに予定されている大会はありません。',
-    'dash.draftTitle': '🏆 ドラフトリーグ',
-    'dash.draftDesc': 'アクティブな指名順、招待、現在の順位。',
-    'dash.openDraft': 'ドラフトを開く →',
-    'dash.emptyDraft': 'まだドラフトリーグに参加していません。',
-    'dash.newDraft': '➕ リーグ作成・参加',
-    'dash.recentTitle': '🏁 最新の結果',
-    'dash.recentDesc': '直近のFISセッションと大会結果。',
-    'dash.allSessions': 'すべての大会 →',
-    'dash.top5Title': '🌍 W杯 トップ5',
-    'dash.fullStandings': '総合順位表 →',
-    'dash.esmDesc': '最新データベース価格とスターティングメンバー。',
-    'dash.esmCompareLabel': '⚖️ 直近の大会と比較',
-    'dash.manage': '管理 →',
-    'dash.esmValue': 'チーム価値',
-    'dash.esmPoints': 'ESMポイント',
-    'dash.esmStarters': 'スタメン',
-    'dash.jumpersCount': '名',
-
-    'login.badge': '2026/27 ウィンターシーズン',
-    'login.subtitle': 'スキージャンプ総合サイト：FIS公式結果、選手分析、ドラフトリーグ、AI予測。',
-    'login.cardTitle': 'FantaSKI にログイン',
-    'login.cardSub': 'Googleアカウントですぐに利用できます。',
-    'login.devTitle': 'テストログイン (Dev)',
-    'login.devBtn': 'ログイン',
-    'login.guestHint': 'ゲストとして閲覧:',
-
-    'session.COMPETITION': '本戦',
-    'session.QUA': '予選',
-    'session.QUALIFICATION': '予選',
-    'session.TRAINING': '公式練習',
-    'session.TRIAL': '試技',
-    'hill.FLYING': 'フライング',
-    'hill.LARGE': 'ラージヒル',
-    'hill.NORMAL': 'ノーマルヒル',
-    'hill.MEDIUM': 'ミディアム',
-    'common.season': 'シーズン',
-    'common.desktopHint': '💻 詳しい表や複数列の表示はPCなどの大きな画面でご覧いただけます。',
-    'profile.tabEdit': '✏️ プロフィール',
-    'profile.tabEsm': '🏆 esmManager',
-    'profile.tabPlan': '💎 プラン',
-    'profile.tabNotifications': '🔔 通知',
-    'profile.tabMessages': '💬 管理者',
-  },
+const pluralLookup = (
+  n: number,
+  k1: I18nKey,
+  k2: I18nKey,
+  k5: I18nKey,
+): string => {
+  const abs = Math.abs(Number(n || 0))
+  const loc = currentLocale.value
+  if (loc === 'pl') {
+    if (abs === 1) return translate(k1)
+    const mod10 = abs % 10
+    const mod100 = abs % 100
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return translate(k2)
+    return translate(k5)
+  }
+  return abs === 1 ? translate(k1) : translate(k5)
 }
 
 export function useI18n() {
   const locale = computed(() => currentLocale.value)
+  const bcp47Locale = computed(() => getCurrentBcp47())
   const currentOption = computed(
     () => SUPPORTED_LOCALES.find((l) => l.code === currentLocale.value) || SUPPORTED_LOCALES[0]!,
   )
 
-  const t = (key: string, fallback?: string): string => {
-    const langMap = DICT[currentLocale.value] || DICT.pl
-    return langMap[key] || DICT.pl[key] || fallback || key
+  const t = (
+    key: I18nKey | string,
+    params?: Record<string, string | number>,
+    fallback?: string,
+  ): string => translate(key, params, fallback)
+
+  const formatSessionType = (raw?: string | null): string => {
+    const code = String(raw || '').toUpperCase()
+    const key = `session.${code}` as I18nKey
+    if ((DICT.pl as Record<string, string>)[key]) return translate(key)
+    return raw || translate('session.UNKNOWN')
+  }
+
+  const formatHillType = (raw?: string | null, size?: number | null, full = false): string => {
+    const s = Number(size || 0)
+    let code = String(raw || '').toUpperCase()
+    if (s > 0 && s < 85) code = 'MEDIUM'
+    else if (s >= 85 && s <= 109 && code === 'LARGE') code = 'NORMAL'
+    if (full) {
+      const fullKey = `hill.${code.toLowerCase()}Full` as I18nKey
+      if ((DICT.pl as Record<string, string>)[fullKey]) return translate(fullKey)
+    }
+    const key = `hill.${code}` as I18nKey
+    if ((DICT.pl as Record<string, string>)[key]) return translate(key)
+    return raw || translate('hill.NORMAL')
+  }
+
+  const formatCategory = (code?: string | null): string => {
+    const c = String(code || '').toUpperCase()
+    const key = `cat.${c}` as I18nKey
+    if ((DICT.pl as Record<string, string>)[key]) return translate(key)
+    return code || ''
+  }
+
+  const formatStarts = (n: number): string =>
+    `${n} ${pluralLookup(n, 'common.start1', 'common.start2', 'common.start5')}`
+
+  const formatSessionsCount = (n: number): string =>
+    `${n} ${pluralLookup(n, 'common.session1', 'common.session2', 'common.session5')}`
+
+  const formatJumpersCount = (n: number): string =>
+    `${n} ${pluralLookup(n, 'common.jumper1', 'common.jumper2', 'common.jumper5')}`
+
+  const formatLocaleDate = (raw?: string | Date | null, options?: Intl.DateTimeFormatOptions): string => {
+    if (!raw) return '-'
+    try {
+      const d = raw instanceof Date ? raw : new Date(raw)
+      if (Number.isNaN(d.getTime())) return String(raw)
+      return d.toLocaleDateString(bcp47Locale.value, options)
+    } catch {
+      return String(raw)
+    }
   }
 
   return {
     locale,
+    bcp47Locale,
     currentOption,
     locales: SUPPORTED_LOCALES,
     setLocale: setAppLocale,
     t,
+    formatSessionType,
+    formatHillType,
+    formatCategory,
+    formatStarts,
+    formatSessionsCount,
+    formatJumpersCount,
+    formatLocaleDate,
   }
 }

@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useI18n } from '@/i18n'
 
-const { t } = useI18n()
+const { t, bcp47Locale, formatCategory, formatJumpersCount, formatHillType } = useI18n()
 import SkiLoader from '@/components/SkiLoader.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import { api } from '@/api/client'
@@ -171,7 +171,7 @@ const weather = ref<WeatherState>({
   relative_humidity: 75,
   precipitation: 0.0,
   headwind_component: 0.6,
-  source: 'Domyślna',
+  source: t('pred.defaultSource'),
   is_forecast: true
 })
 
@@ -201,7 +201,7 @@ const fetchCalendarForModal = async () => {
     )
     calendarEvents.value = data.events || []
   } catch (e: any) {
-    calendarError.value = e?.message || 'Nie udało się pobrać kalendarza FIS.'
+    calendarError.value = e?.message || t('pred.errFetchCal')
   } finally {
     isLoadingCalendar.value = false
   }
@@ -288,17 +288,17 @@ const sortKey = ref<string>('predicted_rank')
 const sortOrder = ref<'asc' | 'desc'>('asc')
 const mobileViewMode = ref<'cards' | 'table'>('cards')
 
-const mobileSortOptions = [
-  { key: 'predicted_rank', label: 'Miejsce (Prognoza)' },
-  { key: 'predicted_distance', label: 'Dystans (m)' },
-  { key: 'predicted_points', label: 'Punkty' },
-  { key: 'top30_probability', label: 'Szansa Top 30 (%)' },
-  { key: 'podium_probability', label: 'Szansa Podium (%)' },
-  { key: 'form_score', label: 'Forma (%)' },
-  { key: 'price', label: 'Cena Fantasy' },
-  { key: 'consistency_score', label: 'Stabilność (%)' },
-  { key: 'name', label: 'Nazwisko (A-Z)' },
-]
+const mobileSortOptions = computed(() => [
+  { key: 'predicted_rank', label: t('pred.sortRank') },
+  { key: 'predicted_distance', label: t('pred.sortDist') },
+  { key: 'predicted_points', label: t('pred.sortPts') },
+  { key: 'top30_probability', label: t('pred.sortTop30') },
+  { key: 'podium_probability', label: t('pred.sortPodium') },
+  { key: 'form_score', label: t('pred.sortForm') },
+  { key: 'price', label: t('analytics.optPrice') },
+  { key: 'consistency_score', label: t('pred.sortStab') },
+  { key: 'name', label: t('analytics.optName') },
+])
 
 const onMobileSortKeyChange = (event: Event) => {
   const nextKey = (event.target as HTMLSelectElement).value
@@ -501,10 +501,10 @@ const fetchWeatherForecast = async () => {
       temperature_drift: data.temperature_drift,
       lottery_risk_level: data.lottery_risk_level
     }
-    weatherMessage.value = `Pobrano dane pogodowe dla: ${place} (${data.source})`
+    weatherMessage.value = t('pred.weatherFetched', { place, source: data.source || 'Open-Meteo' })
   } catch (e) {
     console.error('Błąd pobierania pogody:', e)
-    weatherMessage.value = 'Błąd połączenia z API pogodowym.'
+    weatherMessage.value = t('pred.weatherErr')
   } finally {
     isFetchingWeather.value = false
   }
@@ -513,7 +513,7 @@ const fetchWeatherForecast = async () => {
 // Uruchomienie predykcji
 const runPrediction = async () => {
   if (selectedFisCodes.value.length === 0) {
-    errorMsg.value = 'Lista startowa jest pusta. Wybierz lub dodaj skoczków.'
+    errorMsg.value = t('pred.errEmptyRoster')
     return
   }
 
@@ -538,7 +538,7 @@ const runPrediction = async () => {
     detectedWeekendSessions.value = data.weekend_sessions_detected || []
     weatherCorridor.value = data.corridor || null
   } catch (err: any) {
-    errorMsg.value = err.message || 'Wystąpił błąd podczas generowania predykcji.'
+    errorMsg.value = err.message || t('pred.errPredict')
   } finally {
     isPredicting.value = false
   }
@@ -552,29 +552,48 @@ const applyWeatherPreset = (type: 'headwind' | 'tailwind' | 'calm' | 'thaw') => 
     weather.value.wind_direction = 0
     weather.value.temperature = -3.0
     weather.value.surface_pressure = 955.0
-    weather.value.source = 'Symulacja: Mocny wiatr pod narty'
+    weather.value.source = t('pred.simHeadwind')
   } else if (type === 'tailwind') {
     weather.value.headwind_component = -1.8
     weather.value.wind_speed = 2.5
     weather.value.wind_direction = 180
     weather.value.temperature = -4.0
     weather.value.surface_pressure = 962.0
-    weather.value.source = 'Symulacja: Trudny wiatr w plecy'
+    weather.value.source = t('pred.simTailwind')
   } else if (type === 'calm') {
     weather.value.headwind_component = 0.2
     weather.value.wind_speed = 0.5
     weather.value.wind_direction = 90
     weather.value.temperature = -8.0
     weather.value.surface_pressure = 970.0
-    weather.value.source = 'Symulacja: Bezwietrzny mróz'
+    weather.value.source = t('pred.simCalm')
   } else if (type === 'thaw') {
     weather.value.headwind_component = 0.5
     weather.value.wind_speed = 1.8
     weather.value.wind_direction = 240
     weather.value.temperature = 4.5
     weather.value.surface_pressure = 948.0
-    weather.value.source = 'Symulacja: Ciepła odwilż'
+    weather.value.source = t('pred.simThaw')
   }
+}
+
+const profileTagKeyMap: Record<string, { labelKey: string; descKey: string }> = {
+  lower_tier_gem: { labelKey: 'pred.profGem', descKey: 'pred.legendGemDesc' },
+  clutch: { labelKey: 'pred.profClutch', descKey: 'pred.legendClutchDesc' },
+  training_champ: { labelKey: 'pred.profChoker', descKey: 'pred.legendChokerDesc' },
+  balanced_pressure: { labelKey: 'pred.profBalanced', descKey: 'pred.legendBalancedDesc' },
+  metronome: { labelKey: 'pred.profMetronome', descKey: 'pred.legendMetronomeDesc' },
+  volatile: { labelKey: 'pred.profVolatile', descKey: 'pred.legendVolatileDesc' },
+}
+
+const formatProfileTag = (prof: AthleteProfile) => {
+  const mapped = profileTagKeyMap[prof.code]
+  return mapped ? t(mapped.labelKey) : `${prof.icon} ${prof.label}`
+}
+
+const formatProfileDesc = (prof: AthleteProfile) => {
+  const mapped = profileTagKeyMap[prof.code]
+  return mapped ? t(mapped.descKey) : prof.description
 }
 
 // Filtrowanie i sortowanie listy zawodników w tabeli wyników
@@ -626,10 +645,10 @@ const podiumAthletes = computed(() => {
 })
 
 const formattedTrainedDate = computed(() => {
-  if (!modelMeta.value?.trained_at) return 'Niedawno'
+  if (!modelMeta.value?.trained_at) return t('pred.recent')
   try {
     const d = new Date(modelMeta.value.trained_at)
-    return d.toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })
+    return d.toLocaleString(bcp47Locale.value, { dateStyle: 'short', timeStyle: 'short' })
   } catch {
     return modelMeta.value.trained_at
   }
@@ -678,18 +697,18 @@ onMounted(async () => {
 <template>
   <div class="predictions-page">
     <SkiLoader v-if="isInitializing">
-      Pobieranie najbliższego konkursu i listy startowej...
+      {{ t('pred.loadingInit') }}
     </SkiLoader>
     <!-- HERO HEADER -->
     <header class="page-hero">
       <div class="hero-content">
         <div class="hero-badge">
           <span class="badge-icon">🔮</span>
-          <span>PROGNOZY AI NA KONKURS</span>
+          <span>{{ t('pred.heroBadge') }}</span>
         </div>
         <h1 class="hero-title">{{ t('nav.predictions') }}</h1>
         <p class="hero-desc">
-          Sztuczna inteligencja ocenia aktualną formę skoczków, wyniki na wybranej skoczni, pogodę i powtarzalność skoków, aby oszacować szanse w nadchodzącym konkursie.
+          {{ t('pred.heroDesc') }}
         </p>
 
         <div class="hero-meta-toggle-row" v-if="modelMeta">
@@ -698,28 +717,28 @@ onMounted(async () => {
             class="hero-details-btn"
             @click="showModelTechDetails = !showModelTechDetails"
           >
-            {{ showModelTechDetails ? '▲ Ukryj szczegóły modelu AI' : 'ℹ️ Jak działają prognozy AI?' }}
+            {{ showModelTechDetails ? t('pred.howItWorksHide') : t('pred.howItWorksShow') }}
           </button>
         </div>
 
         <div class="model-meta-bar" v-if="modelMeta && showModelTechDetails">
           <div class="meta-item">
-            <span class="meta-label">Historia nauki AI:</span>
-            <strong class="meta-val">{{ modelMeta.sample_count?.toLocaleString() || '69 500+' }} skoków</strong>
+            <span class="meta-label">{{ t('pred.metaHistory') }}</span>
+            <strong class="meta-val">{{ modelMeta.sample_count?.toLocaleString() || '69 500+' }}</strong>
           </div>
           <div class="meta-divider">|</div>
           <div class="meta-item">
-            <span class="meta-label">Średnia dokładność dystansu:</span>
+            <span class="meta-label">{{ t('pred.metaDist') }}</span>
             <strong class="meta-val">±{{ modelMeta.mae_distance_meters_approx }} m</strong>
           </div>
           <div class="meta-divider">|</div>
           <div class="meta-item">
-            <span class="meta-label">Analizowane czynniki:</span>
-            <strong class="meta-val">forma, skocznia, wiatr, presja zawodów</strong>
+            <span class="meta-label">{{ t('pred.metaFactors') }}</span>
+            <strong class="meta-val">{{ t('pred.metaFactorsVal') }}</strong>
           </div>
           <div class="meta-divider">|</div>
           <div class="meta-item">
-            <span class="meta-label">Aktualizacja:</span>
+            <span class="meta-label">{{ t('pred.metaUpdate') }}</span>
             <strong class="meta-val">{{ formattedTrainedDate }}</strong>
           </div>
         </div>
@@ -732,19 +751,19 @@ onMounted(async () => {
         <div class="upcoming-comp-left">
           <div class="upcoming-badge">
             <span class="pulse-indicator"></span>
-            <strong>NAJBLIŻSZE ZAWODY Z KALENDARZA FIS</strong>
+            <strong>{{ t('pred.upcomingBadge') }}</strong>
           </div>
           <div class="upcoming-info">
             <span class="upcoming-event-title">
               📍 <strong>{{ upcomingCompetition.event_name || upcomingCompetition.place }}</strong>
               <span class="upcoming-hill-spec" v-if="upcomingCompetition.hill_size">
-                ({{ upcomingCompetition.session_title || 'Konkurs Indywidualny' }} &bull; HS{{ upcomingCompetition.hill_size }})
+                ({{ upcomingCompetition.session_title || t('pred.upcomingHillDefault') }} &bull; HS{{ upcomingCompetition.hill_size }})
               </span>
             </span>
             <span class="upcoming-timing">
-              📅 Konkurs: <strong>{{ upcomingCompetition.date }}</strong> godz. <strong>{{ upcomingCompetition.time }}</strong>
+              {{ t('pred.upcomingCompDate') }} <strong>{{ upcomingCompetition.date }}</strong> {{ t('pred.upcomingTimePrefix') }} <strong>{{ upcomingCompetition.time }}</strong>
               <template v-if="upcomingCompetition.qualification">
-                &bull; ⏱️ Kwalifikacje: {{ upcomingCompetition.qualification.date }} {{ upcomingCompetition.qualification.time }}
+                &bull; ⏱️ {{ t('pred.upcomingQuali') }} {{ upcomingCompetition.qualification.date }} {{ upcomingCompetition.qualification.time }}
               </template>
             </span>
           </div>
@@ -753,9 +772,9 @@ onMounted(async () => {
           <button
             class="btn-apply-upcoming"
             @click="applyUpcomingCompetition"
-            title="Kliknij, aby ustawić te zawody jako aktualny cel predykcji"
+            :title="t('pred.upcomingSetTitle')"
           >
-            ⚡ Zastosuj zawody
+            {{ t('pred.upcomingSetEmojiBtn') }}
           </button>
         </div>
       </div>
@@ -765,13 +784,13 @@ onMounted(async () => {
         <!-- KARTA 1: WYBÓR SKOCZNI I TERMINU -->
         <div class="card setup-card">
           <div class="card-header setup-header-wrap">
-            <h3>🏔️ Skocznia i Termin</h3>
+            <h3>{{ t('pred.hillHeader') }}</h3>
             <div class="setup-header-actions">
               <button type="button" class="btn-cal-picker" @click="openCalendarModal">
-                📅 Wybierz z kalendarza
+                {{ t('pred.pickFromCalBtn') }}
               </button>
               <button type="button" class="text-btn" @click="isCustomHill = !isCustomHill">
-                {{ isCustomHill ? 'Wybierz z bazy' : '+ Własna skocznia' }}
+                {{ isCustomHill ? t('pred.pickFromDbBtn') : t('pred.customHillBtn') }}
               </button>
             </div>
           </div>
@@ -779,10 +798,10 @@ onMounted(async () => {
           <div class="card-body">
             <!-- Wybór z bazy -->
             <div class="form-group" v-if="!isCustomHill">
-              <label>Wybierz skocznię z bazy:</label>
+              <label>{{ t('pred.pickHillLabel') }}</label>
               <select v-model="selectedHillId" class="custom-select">
                 <option v-for="h in hills" :key="h.hill_id" :value="h.hill_id">
-                  {{ h.place }} ({{ h.unit || 'HS' }}{{ h.size }}) &bull; {{ h.type }} [{{ h.country_code }}]
+                  {{ h.place }} ({{ h.unit || 'HS' }}{{ h.size }}) &bull; {{ formatHillType(h.type) }} [{{ h.country_code }}]
                 </option>
               </select>
             </div>
@@ -790,20 +809,20 @@ onMounted(async () => {
             <!-- Własna konfiguracja skoczni -->
             <div v-else class="custom-hill-fields">
               <div class="form-group">
-                <label>Miejscowość:</label>
-                <input v-model="customPlace" type="text" class="custom-input" placeholder="np. Zakopane" />
+                <label>{{ t('pred.customPlaceLabel') }}</label>
+                <input v-model="customPlace" type="text" class="custom-input" :placeholder="t('searchForm.placePh')" />
               </div>
               <div class="form-row">
                 <div class="form-group half">
-                  <label>Rozmiar (HS w metrach):</label>
+                  <label>{{ t('pred.customHsLabel') }}</label>
                   <input v-model.number="customHillSize" type="number" class="custom-input" min="60" max="250" />
                 </div>
                 <div class="form-group half">
-                  <label>Typ skoczni:</label>
+                  <label>{{ t('pred.customTypeLabel') }}</label>
                   <select v-model="customHillType" class="custom-select">
-                    <option value="NORMAL">Normalna (HS 85-109)</option>
-                    <option value="LARGE">Duża (HS 110-184)</option>
-                    <option value="FLYING">Mamucia (HS 185+)</option>
+                    <option value="NORMAL">{{ t('pred.customNormalOpt') }}</option>
+                    <option value="LARGE">{{ t('pred.customLargeOpt') }}</option>
+                    <option value="FLYING">{{ t('pred.customFlyingOpt') }}</option>
                   </select>
                 </div>
               </div>
@@ -811,23 +830,23 @@ onMounted(async () => {
 
             <!-- Wybór rangi zawodów (Liga FIS) -->
             <div class="form-group">
-              <label>🏆 Ranga zawodów (Poziom ligowy FIS):</label>
+              <label>{{ t('pred.compRankLabel') }}</label>
               <select v-model="selectedCompetitionType" class="custom-select tier-select">
-                <option value="WC">Puchar Świata (WC / Igrzyska / MŚ) &bull; Super-Elita (Waga 1.00)</option>
-                <option value="GP">Letnie Grand Prix (GP) &bull; Elita Igelit (Waga 0.70)</option>
-                <option value="COC">Puchar Kontynentalny (COC) &bull; Zaplecze / II liga (Waga 0.45)</option>
-                <option value="FC">FIS Cup (FC) &bull; III liga (Waga 0.20)</option>
+                <option value="WC">{{ t('pred.tierWcOpt') }}</option>
+                <option value="GP">{{ t('pred.tierGpOpt') }}</option>
+                <option value="COC">{{ t('pred.tierCocOpt') }}</option>
+                <option value="FC">{{ t('pred.tierFcOpt') }}</option>
               </select>
             </div>
 
             <!-- Data i Godzina -->
             <div class="form-row">
               <div class="form-group half">
-                <label>Data konkursu:</label>
+                <label>{{ t('pred.compDateLabel') }}</label>
                 <input v-model="selectedDate" type="date" class="custom-input" />
               </div>
               <div class="form-group half">
-                <label>Godzina startu:</label>
+                <label>{{ t('pred.compTimeLabel') }}</label>
                 <input v-model="selectedTime" type="time" class="custom-input" />
               </div>
             </div>
@@ -836,7 +855,7 @@ onMounted(async () => {
             <div class="hill-summary-badge">
               <div class="h-badge-left">
                 <span class="h-name">{{ currentHill.place }}</span>
-                <span class="h-type">{{ currentHill.type }}</span>
+                <span class="h-type">{{ formatHillType(currentHill.type) }}</span>
               </div>
               <div class="h-badge-right">
                 <span class="h-hs">HS {{ currentHill.size }} m</span>
@@ -846,9 +865,9 @@ onMounted(async () => {
             <!-- Pasek Listy Startowej -->
             <div class="start-list-toggle-bar">
               <div class="start-list-info">
-                <span class="sl-title">📋 Skład:</span>
+                <span class="sl-title">{{ t('pred.rosterTitle') }}</span>
                 <strong class="sl-count">{{ selectedFisCodes.length }}</strong>
-                <span class="sl-badge">{{ currentPreset === 'scored' ? '⚡ Punktowali w sezonie' : (currentPreset === 'priced' ? 'Wycenieni' : (currentPreset === 'top30' ? 'TOP 30' : (currentPreset === 'pol' ? 'Polacy' : 'Własny'))) }}</span>
+                <span class="sl-badge">{{ currentPreset === 'scored' ? t('pred.presetScored') : (currentPreset === 'priced' ? t('pred.badgePriced') : (currentPreset === 'top30' ? 'TOP 30' : (currentPreset === 'pol' ? t('pred.badgePol') : t('pred.badgeCustom')))) }}</span>
               </div>
               <div class="quick-preset-pills">
                 <button
@@ -856,25 +875,25 @@ onMounted(async () => {
                   class="pill-quick-btn"
                   :class="{ active: currentPreset === 'priced' }"
                   @click="applyAthletePreset('priced')"
-                  title="Wszyscy wycenieni w Fantasy"
+                  :title="t('pred.pricedTitle')"
                 >
-                  Wycenieni
+                  {{ t('pred.badgePriced') }}
                 </button>
                 <button
                   type="button"
                   class="pill-quick-btn highlight-gold"
                   :class="{ active: currentPreset === 'scored' }"
                   @click="applyAthletePreset('scored')"
-                  title="Zawodnicy, którzy punktowali w obecnym sezonie zimowym"
+                  :title="t('pred.scoredTitle')"
                 >
-                  ⚡ Punktowali w sezonie ({{ scoredCount }})
+                  {{ t('pred.presetScored') }} ({{ scoredCount }})
                 </button>
               </div>
               <button
                 class="manage-list-btn"
                 @click="showStartListManager = !showStartListManager"
               >
-                {{ showStartListManager ? 'Zwiń ▲' : 'Wybierz ▼' }}
+                {{ showStartListManager ? `${t('common.collapse')} ▲` : t('pred.rosterPickOpen') }}
               </button>
             </div>
           </div>
@@ -883,26 +902,26 @@ onMounted(async () => {
         <!-- ROZWIJANY PANEL ZARZĄDZANIA LISTĄ STARTOWĄ (od razu pod Skocznią na mobile!) -->
         <div v-if="showStartListManager" class="card start-list-manager-card">
           <div class="card-header">
-            <h3>👥 Lista Startowa ({{ selectedFisCodes.length }} wybranych)</h3>
+            <h3>{{ t('pred.rosterHeader', { count: selectedFisCodes.length }) }}</h3>
             <div class="manager-presets">
-              <button class="small-preset-btn" :class="{ active: currentPreset === 'priced' }" @click="applyAthletePreset('priced')">Wszyscy wycenieni</button>
-              <button class="small-preset-btn highlight-gold" :class="{ active: currentPreset === 'scored' }" @click="applyAthletePreset('scored')">⚡ Punktowali w sezonie ({{ scoredCount }})</button>
-              <button class="small-preset-btn" :class="{ active: currentPreset === 'top30' }" @click="applyAthletePreset('top30')">TOP 30 Wycenionych</button>
-              <button class="small-preset-btn" :class="{ active: currentPreset === 'pol' }" @click="applyAthletePreset('pol')">Tylko Polacy 🇵🇱</button>
-              <button class="small-preset-btn danger" @click="applyAthletePreset('clear')">Wyczyść listę</button>
+              <button class="small-preset-btn" :class="{ active: currentPreset === 'priced' }" @click="applyAthletePreset('priced')">{{ t('pred.presetPriced') }}</button>
+              <button class="small-preset-btn highlight-gold" :class="{ active: currentPreset === 'scored' }" @click="applyAthletePreset('scored')">{{ t('pred.presetScored') }} ({{ scoredCount }})</button>
+              <button class="small-preset-btn" :class="{ active: currentPreset === 'top30' }" @click="applyAthletePreset('top30')">{{ t('pred.presetTop30') }}</button>
+              <button class="small-preset-btn" :class="{ active: currentPreset === 'pol' }" @click="applyAthletePreset('pol')">{{ t('pred.presetPol') }}</button>
+              <button class="small-preset-btn danger" @click="applyAthletePreset('clear')">{{ t('pred.presetClear') }}</button>
             </div>
           </div>
 
           <div class="card-body">
             <div class="add-athlete-wrapper">
-              <label>Dodaj skoczka z bazy do prognozy:</label>
+              <label>{{ t('pred.rosterAddLabel') }}</label>
               <div class="search-box-relative">
                 <input
                   v-model="athleteSearchQuery"
                   @focus="showAutocomplete = true"
                   type="text"
                   class="custom-input"
-                  placeholder="Wpisz nazwisko skoczka (np. Stoch, Kubacki, Prevc, Kraft)..."
+                  :placeholder="t('pred.rosterAddPh')"
                 />
                 <div v-if="showAutocomplete && filteredAvailableAthletes.length > 0" class="autocomplete-dropdown">
                   <div
@@ -915,8 +934,8 @@ onMounted(async () => {
                     <span class="ath-name">{{ ath.full_name }}</span>
                     <span class="ath-country">({{ ath.country_code }})</span>
                     <span v-if="ath.price" class="ath-price-tag">💰 {{ Number(ath.price).toFixed(1) }}</span>
-                    <span v-if="ath.has_wc" class="ath-wc-tag">PŚ</span>
-                    <span class="ath-add-plus">+ Dodaj</span>
+                    <span v-if="ath.has_wc" class="ath-wc-tag">WC</span>
+                    <span class="ath-add-plus">{{ t('pred.addPlus') }}</span>
                   </div>
                 </div>
               </div>
@@ -934,7 +953,7 @@ onMounted(async () => {
                 <button
                   class="chip-remove"
                   @click.stop="removeAthlete(ath.fis_code)"
-                  title="Usuń z listy startowej"
+                  :title="t('pred.removeTitle')"
                 >
                   ✕
                 </button>
@@ -947,7 +966,7 @@ onMounted(async () => {
         <div class="card weather-card">
           <div class="card-header weather-header-wrap">
             <div class="weather-title-col">
-              <h3>🌤️ Warunki Pogodowe</h3>
+              <h3>{{ t('pred.weatherTitle') }}</h3>
               <span class="weather-mini-summary">
                 {{ weather.headwind_component >= 0 ? '+' : '' }}{{ weather.headwind_component.toFixed(1) }} m/s · {{ weather.temperature.toFixed(1) }}°C · {{ Math.round(weather.surface_pressure) }} hPa
               </span>
@@ -957,7 +976,7 @@ onMounted(async () => {
                 class="refresh-weather-btn"
                 @click="fetchWeatherForecast"
                 :disabled="isFetchingWeather"
-                title="Pobierz świeże dane z Open-Meteo"
+                :title="t('pred.refreshWeatherTitle')"
               >
                 <span :class="{ spinning: isFetchingWeather }">🔄</span>
                 <span class="rwb-txt">Open-Meteo</span>
@@ -967,7 +986,7 @@ onMounted(async () => {
                 class="weather-collapse-btn"
                 @click="isWeatherCollapsed = !isWeatherCollapsed"
               >
-                {{ isWeatherCollapsed ? 'Rozwiń ▼' : 'Zwiń ▲' }}
+                {{ isWeatherCollapsed ? `${t('common.expand')} ▼` : `${t('common.collapse')} ▲` }}
               </button>
             </div>
           </div>
@@ -982,11 +1001,11 @@ onMounted(async () => {
 
               <!-- Szybkie presety -->
               <div class="weather-presets">
-                <span class="presets-label">Szybkie scenariusze:</span>
-                <button class="preset-btn" @click="applyWeatherPreset('headwind')">🌪️ Pod narty (+2.2m/s)</button>
-                <button class="preset-btn" @click="applyWeatherPreset('tailwind')">💨 W plecy (-1.8m/s)</button>
-                <button class="preset-btn" @click="applyWeatherPreset('calm')">❄️ Cisza (-8°C)</button>
-                <button class="preset-btn" @click="applyWeatherPreset('thaw')">☀️ Odwilż (+4.5°C)</button>
+                <span class="presets-label">{{ t('pred.weatherPresets') }}</span>
+                <button class="preset-btn" @click="applyWeatherPreset('headwind')">{{ t('pred.presetHeadwind') }}</button>
+                <button class="preset-btn" @click="applyWeatherPreset('tailwind')">{{ t('pred.presetTailwind') }}</button>
+                <button class="preset-btn" @click="applyWeatherPreset('calm')">{{ t('pred.presetCalm') }}</button>
+                <button class="preset-btn" @click="applyWeatherPreset('thaw')">{{ t('pred.presetThaw') }}</button>
               </div>
 
               <!-- Suwaki interaktywne -->
@@ -994,7 +1013,7 @@ onMounted(async () => {
                 <!-- Wiatr pod narty / w plecy (kluczowy parametr) -->
                 <div class="slider-box highlight">
                   <div class="slider-header">
-                    <span class="s-title">Kompensacja wiatru (w osi zeskoku):</span>
+                    <span class="s-title">{{ t('pred.windComp') }}</span>
                     <span
                       class="s-value"
                       :class="{
@@ -1003,7 +1022,7 @@ onMounted(async () => {
                       }"
                     >
                       {{ weather.headwind_component > 0 ? '+' : '' }}{{ weather.headwind_component.toFixed(1) }} m/s
-                      <small>({{ weather.headwind_component > 0 ? 'pod narty 🚀' : weather.headwind_component < 0 ? 'w plecy 🔻' : 'bezwietrznie' }})</small>
+                      <small>({{ weather.headwind_component > 0 ? t('pred.headwindWord') : weather.headwind_component < 0 ? t('pred.tailwindWord') : t('pred.calmWord') }})</small>
                     </span>
                   </div>
                   <input
@@ -1015,9 +1034,9 @@ onMounted(async () => {
                     class="range-slider headwind-slider"
                   />
                   <div class="slider-scale">
-                    <span>-2.5 (W plecy)</span>
-                    <span>0.0 (Cisza)</span>
-                    <span>+3.0 (Pod narty)</span>
+                    <span>{{ t('pred.scaleTail') }}</span>
+                    <span>{{ t('pred.scaleCalm') }}</span>
+                    <span>{{ t('pred.scaleHead') }}</span>
                   </div>
                 </div>
 
@@ -1025,7 +1044,7 @@ onMounted(async () => {
                 <div class="sliders-row">
                   <div class="slider-box mini">
                     <div class="slider-header">
-                      <span>Prędkość ogólna:</span>
+                      <span>{{ t('pred.windSpeed') }}</span>
                       <strong>{{ weather.wind_speed.toFixed(1) }} m/s</strong>
                     </div>
                     <input type="range" v-model.number="weather.wind_speed" min="0" max="8" step="0.2" class="range-slider" />
@@ -1033,7 +1052,7 @@ onMounted(async () => {
 
                   <div class="slider-box mini">
                     <div class="slider-header">
-                      <span>Temperatura:</span>
+                      <span>{{ t('pred.temp') }}</span>
                       <strong>{{ weather.temperature.toFixed(1) }} °C</strong>
                     </div>
                     <input type="range" v-model.number="weather.temperature" min="-20" max="15" step="0.5" class="range-slider" />
@@ -1041,7 +1060,7 @@ onMounted(async () => {
 
                   <div class="slider-box mini">
                     <div class="slider-header">
-                      <span>Ciśnienie pow.:</span>
+                      <span>{{ t('pred.pressure') }}</span>
                       <strong>{{ Math.round(weather.surface_pressure) }} hPa</strong>
                     </div>
                     <input type="range" v-model.number="weather.surface_pressure" min="900" max="1025" step="1" class="range-slider" />
@@ -1056,8 +1075,8 @@ onMounted(async () => {
               @click="runPrediction"
               :disabled="isPredicting"
             >
-              <span v-if="!isPredicting">🚀 Generuj prognozy ({{ selectedFisCodes.length }} skoczków)</span>
-              <span v-else>Obliczanie prognozy...</span>
+              <span v-if="!isPredicting">{{ t('pred.runBtn', { count: selectedFisCodes.length }) }}</span>
+              <span v-else>{{ t('pred.runningBtn') }}</span>
             </button>
           </div>
         </div>
@@ -1067,7 +1086,7 @@ onMounted(async () => {
       <div v-if="detectedWeekendSessions.length > 0" class="weekend-context-banner">
         <div class="wcb-header">
           <span class="wcb-icon">⚡</span>
-          <strong>Wykryto serie z bieżącego weekendu (uwzględniono w modelu):</strong>
+          <strong>{{ t('pred.weekendTitle') }}</strong>
         </div>
         <div class="wcb-tags">
           <span
@@ -1076,7 +1095,7 @@ onMounted(async () => {
             class="wcb-tag"
             :class="'tag-' + ws.type.toLowerCase()"
           >
-            {{ ws.title }} ({{ ws.date }} {{ ws.time || '' }}) &bull; {{ ws.jumpers_count }} skoczków
+            {{ ws.title }} ({{ ws.date }} {{ ws.time || '' }}) &bull; {{ formatJumpersCount(ws.jumpers_count) }}
           </span>
         </div>
       </div>
@@ -1089,7 +1108,7 @@ onMounted(async () => {
       <!-- LOADER PODCZAS GENEROWANIA -->
       <div v-if="isPredicting" class="loader-box">
         <SkiLoader>
-          Obliczanie prognozy dla {{ selectedFisCodes.length }} skoczków na podstawie formy, skoczni i pogody...
+          {{ t('pred.predictingLoader', { count: selectedFisCodes.length }) }}
         </SkiLoader>
       </div>
 
@@ -1097,7 +1116,7 @@ onMounted(async () => {
       <section v-if="!isPredicting && predictions.length > 0" class="results-section">
         <!-- SHOWCASE PODIUM (TOP 3) -->
         <div class="podium-section">
-          <h2 class="section-title">🏆 Przewidywane Podium</h2>
+          <h2 class="section-title">{{ t('pred.podiumTitle') }}</h2>
           <div class="podium-grid">
             <!-- 2. MIEJSCE (SREBRO) -->
             <div class="podium-card silver" v-if="podiumAthletes[1]">
@@ -1110,15 +1129,15 @@ onMounted(async () => {
               <div class="p-metrics">
                 <div class="metric-dist">
                   <span class="m-val">{{ podiumAthletes[1].predicted_distance.toFixed(1) }} m</span>
-                  <span class="m-label">Przewidywana odległość</span>
+                  <span class="m-label">{{ t('pred.mobileDist') }}</span>
                 </div>
                 <div class="metric-pts">
-                  <span class="m-val">{{ podiumAthletes[1].predicted_points.toFixed(1) }} pkt</span>
-                  <span class="m-label">Punkty łączna nota</span>
+                  <span class="m-val">{{ podiumAthletes[1].predicted_points.toFixed(1) }} {{ t('common.pts') }}</span>
+                  <span class="m-label">{{ t('pred.mobileTotal') }}</span>
                 </div>
               </div>
               <div class="p-badge">
-                Podium: <strong>{{ podiumAthletes[1].podium_probability ?? 0 }}%</strong> | Top 30: <strong>{{ podiumAthletes[1].top30_probability ?? 0 }}%</strong>
+                {{ t('pred.podiumLabel') }} <strong>{{ podiumAthletes[1].podium_probability ?? 0 }}%</strong> | Top 30: <strong>{{ podiumAthletes[1].top30_probability ?? 0 }}%</strong>
               </div>
             </div>
 
@@ -1134,15 +1153,15 @@ onMounted(async () => {
               <div class="p-metrics">
                 <div class="metric-dist">
                   <span class="m-val">{{ podiumAthletes[0].predicted_distance.toFixed(1) }} m</span>
-                  <span class="m-label">Przewidywana odległość</span>
+                  <span class="m-label">{{ t('pred.mobileDist') }}</span>
                 </div>
                 <div class="metric-pts">
-                  <span class="m-val">{{ podiumAthletes[0].predicted_points.toFixed(1) }} pkt</span>
-                  <span class="m-label">Punkty łączna nota</span>
+                  <span class="m-val">{{ podiumAthletes[0].predicted_points.toFixed(1) }} {{ t('common.pts') }}</span>
+                  <span class="m-label">{{ t('pred.mobileTotal') }}</span>
                 </div>
               </div>
               <div class="p-badge win-badge">
-                Wygrana: <strong>{{ podiumAthletes[0].win_probability ?? 0 }}%</strong> | Podium: <strong>{{ podiumAthletes[0].podium_probability ?? 0 }}%</strong> | Top 30: <strong>{{ podiumAthletes[0].top30_probability ?? 0 }}%</strong>
+                {{ t('pred.winLabel') }} <strong>{{ podiumAthletes[0].win_probability ?? 0 }}%</strong> | {{ t('pred.podiumLabel') }} <strong>{{ podiumAthletes[0].podium_probability ?? 0 }}%</strong> | Top 30: <strong>{{ podiumAthletes[0].top30_probability ?? 0 }}%</strong>
               </div>
             </div>
 
@@ -1157,15 +1176,15 @@ onMounted(async () => {
               <div class="p-metrics">
                 <div class="metric-dist">
                   <span class="m-val">{{ podiumAthletes[2].predicted_distance.toFixed(1) }} m</span>
-                  <span class="m-label">Przewidywana odległość</span>
+                  <span class="m-label">{{ t('pred.mobileDist') }}</span>
                 </div>
                 <div class="metric-pts">
-                  <span class="m-val">{{ podiumAthletes[2].predicted_points.toFixed(1) }} pkt</span>
-                  <span class="m-label">Punkty łączna nota</span>
+                  <span class="m-val">{{ podiumAthletes[2].predicted_points.toFixed(1) }} {{ t('common.pts') }}</span>
+                  <span class="m-label">{{ t('pred.mobileTotal') }}</span>
                 </div>
               </div>
               <div class="p-badge">
-                Podium: <strong>{{ podiumAthletes[2].podium_probability ?? 0 }}%</strong> | Top 30: <strong>{{ podiumAthletes[2].top30_probability ?? 0 }}%</strong>
+                {{ t('pred.podiumLabel') }} <strong>{{ podiumAthletes[2].podium_probability ?? 0 }}%</strong> | Top 30: <strong>{{ podiumAthletes[2].top30_probability ?? 0 }}%</strong>
               </div>
             </div>
           </div>
@@ -1178,19 +1197,19 @@ onMounted(async () => {
               class="corridor-pill"
               :class="`risk-${weatherCorridor.lottery_risk_level.toLowerCase()}`"
             >
-              <span v-if="weatherCorridor.lottery_risk_level === 'HIGH'">🌪️ Loteria wiatrowa (Wysoka zmienność)</span>
-              <span v-else-if="weatherCorridor.lottery_risk_level === 'MODERATE'">💨 Umiarkowana zmienność wiatru</span>
-              <span v-else>🟢 Stabilne warunki laminarne</span>
+              <span v-if="weatherCorridor.lottery_risk_level === 'HIGH'">{{ t('pred.riskHigh') }}</span>
+              <span v-else-if="weatherCorridor.lottery_risk_level === 'MODERATE'">{{ t('pred.riskModerate') }}</span>
+              <span v-else>{{ t('pred.riskLow') }}</span>
             </span>
             <div class="csc-metrics">
-              <span>Porywistość: <strong>{{ weatherCorridor.wind_volatility_index }}</strong></span>
-              <span>Trend okna: <strong>{{ weatherCorridor.wind_trend_slope >= 0 ? '+' : '' }}{{ weatherCorridor.wind_trend_slope }} m/s</strong></span>
-              <span>Drift temp.: <strong>{{ weatherCorridor.temperature_drift }} °C</strong></span>
+              <span>{{ t('pred.gustiness') }} <strong>{{ weatherCorridor.wind_volatility_index }}</strong></span>
+              <span>{{ t('pred.windowTrend') }} <strong>{{ weatherCorridor.wind_trend_slope >= 0 ? '+' : '' }}{{ weatherCorridor.wind_trend_slope }} m/s</strong></span>
+              <span>{{ t('pred.tempDrift') }} <strong>{{ weatherCorridor.temperature_drift }} °C</strong></span>
             </div>
           </div>
           <div class="csc-right">
             <span class="corridor-note">
-              Model przypisał dynamiczne warunki wyjścia na belkę do każdego zawodnika według kolejności startowej (niezależnie od numeru bib).
+              {{ t('pred.corridorNote') }}
             </span>
           </div>
         </div>
@@ -1200,9 +1219,9 @@ onMounted(async () => {
           <div class="table-toolbar">
             <div class="toolbar-left">
               <div class="title-with-legend">
-                <h3>Klasyfikacja Końcowa ({{ filteredPredictions.length }} skoczków)</h3>
+                <h3>{{ t('pred.tableTitle', { count: filteredPredictions.length }) }}</h3>
                 <button class="legend-btn" @click="showLegendModal = !showLegendModal">
-                  📖 Słownik Profili & Parametrów
+                  {{ t('pred.legendBtn') }}
                 </button>
               </div>
               <div class="filter-pills">
@@ -1211,35 +1230,35 @@ onMounted(async () => {
                   :class="{ active: filterMode === 'all' }"
                   @click="filterMode = 'all'"
                 >
-                  Wszyscy
+                  {{ t('pred.pillAll') }}
                 </button>
                 <button
                   class="pill-btn"
                   :class="{ active: filterMode === 'top30' }"
                   @click="filterMode = 'top30'"
                 >
-                  TOP 30 (Awans)
+                  {{ t('pred.pillTop30') }}
                 </button>
                 <button
                   class="pill-btn"
                   :class="{ active: filterMode === 'pol' }"
                   @click="filterMode = 'pol'"
                 >
-                  🇵🇱 Tylko Polacy
+                  {{ t('pred.pillPol') }}
                 </button>
                 <button
                   class="pill-btn"
                   :class="{ active: filterMode === 'podium' }"
                   @click="filterMode = 'podium'"
                 >
-                  Kandydaci do podium (≥10%)
+                  {{ t('pred.pillPodium') }}
                 </button>
                 <button
                   class="pill-btn"
                   :class="{ active: filterMode === 'clutch' }"
                   @click="filterMode = 'clutch'"
                 >
-                  🔥 Zwierzęta konkursowe
+                  {{ t('pred.pillClutch') }}
                 </button>
               </div>
             </div>
@@ -1249,7 +1268,7 @@ onMounted(async () => {
                 v-model="tableSearch"
                 type="text"
                 class="search-input"
-                placeholder="Szukaj skoczka..."
+                :placeholder="t('pred.searchPh')"
               />
             </div>
           </div>
@@ -1257,83 +1276,83 @@ onMounted(async () => {
           <!-- SŁOWNIK POJĘĆ, WSKAŹNIKÓW I PROFILI -->
           <div v-if="showLegendModal" class="legend-panel">
             <div class="legend-header-bar">
-              <h4>📖 Słownik pojęć, wskaźników i profili zawodników</h4>
-              <button class="legend-close-btn" @click="showLegendModal = false">✕ Zamknij</button>
+              <h4>{{ t('pred.legendTitle') }}</h4>
+              <button class="legend-close-btn" @click="showLegendModal = false">✕ {{ t('common.close') }}</button>
             </div>
 
             <!-- SEKCJA 1: STATUSY ZAWODNIKA -->
             <div class="legend-section">
-              <h5 class="legend-subheading">🏷️ Statusy i oznaczenia zawodnika</h5>
+              <h5 class="legend-subheading">{{ t('pred.legendSec1') }}</h5>
               <div class="legend-grid">
                 <div class="legend-item">
-                  <span class="debutant-pill">DEBIUTANT</span>
-                  <p><strong>Debiutant w Pucharze Świata:</strong> Oznaczany wyłącznie, gdy skoczek ma <strong>0 startów w konkursie głównym Pucharu Świata</strong> (I seria po kwalifikacjach). Udział w kwalifikacjach lub treningach <strong>NIE znosi</strong> statusu debiutanta! Status znika dopiero po awansie i oddaniu skoku w I serii konkursu głównego PŚ / IO / MŚ.</p>
+                  <span class="debutant-pill">{{ t('pred.debBadge') }}</span>
+                  <p>{{ t('pred.legendDebDesc') }}</p>
                 </div>
                 <div class="legend-item">
-                  <span class="badge-item badge-scored">⚡ Punktował w sezonie</span>
-                  <p>Zawodnik zajął miejsce w czołowej trzydziestce (Top 30) przynajmniej w jednym konkursie Pucharu Świata w <strong>trwającym sezonie zimowym</strong>.</p>
+                  <span class="badge-item badge-scored">{{ t('pred.scoredBadge') }}</span>
+                  <p>{{ t('pred.legendScoredDesc') }}</p>
                 </div>
                 <div class="legend-item">
-                  <span class="badge-item badge-active">❄️ Aktywność zimowa</span>
-                  <p>Weryfikacja realnych startów na śniegu w trwającym sezonie. Skoczkowie powracający po kontuzji lub bez powołań (0 startów zimowych) podlegają korekcie niepewności.</p>
+                  <span class="badge-item badge-active">{{ t('pred.activeWinterBadge') }}</span>
+                  <p>{{ t('pred.legendActiveDesc') }}</p>
                 </div>
                 <div class="legend-item">
-                  <span class="badge-item badge-esm">💰 Cena ESM (Fantasy)</span>
-                  <p>Wycena zawodnika w grze Ekstra Skoki Menadżer. Jest to <strong>wyłącznie informacja pomocnicza dla graczy</strong> — cena <strong>nie ma absolutnie żadnego wpływu na wyliczenia sztucznej inteligencji</strong>.</p>
+                  <span class="badge-item badge-esm">{{ t('pred.esmPriceBadge') }}</span>
+                  <p>{{ t('pred.legendEsmDesc') }}</p>
                 </div>
               </div>
             </div>
 
             <!-- SEKCJA 2: WSKAŹNIKI ANALIZY AI I FORM -->
             <div class="legend-section">
-              <h5 class="legend-subheading">📊 Wskaźniki analizy AI i symulacji</h5>
+              <h5 class="legend-subheading">{{ t('pred.legendSec2') }}</h5>
               <div class="legend-grid">
                 <div class="legend-item">
-                  <span class="badge-item badge-top30">Awans Top 30 (%)</span>
-                  <p>Prawdopodobieństwo awansu do II serii (miejsca 1–30) wyliczone metodą <strong>Monte Carlo (300 symulacji konkursu)</strong> przy uwzględnieniu losowości wiatru i dyspozycji.</p>
+                  <span class="badge-item badge-top30">{{ t('pred.top30Badge') }}</span>
+                  <p>{{ t('pred.legendTop30Desc') }}</p>
                 </div>
                 <div class="legend-item">
-                  <span class="badge-item badge-podium">Szansa Podium (%)</span>
-                  <p>Prawdopodobieństwo ukończenia zawodów w pierwszej trójce (miejsca 1–3) wyznaczone w symulacji wielowariantowej.</p>
+                  <span class="badge-item badge-podium">{{ t('pred.podiumBadge') }}</span>
+                  <p>{{ t('pred.legendPodiumDesc') }}</p>
                 </div>
                 <div class="legend-item">
-                  <span class="badge-item badge-form">Forma bieżąca (28 dni / ▲▼)</span>
-                  <p>Dyspozycja skoczka z ostatnich 4 tygodni w relacji do średniej wielotygodniowej. Strzałka <strong>▲</strong> oznacza zwyżkę formy i wysoki trend punktowy.</p>
+                  <span class="badge-item badge-form">{{ t('pred.formBadge') }}</span>
+                  <p>{{ t('pred.legendFormDesc') }}</p>
                 </div>
                 <div class="legend-item">
-                  <span class="badge-item badge-venue">Afinitet do skoczni (Historia)</span>
-                  <p>Model analizuje <strong>historyczną dyspozycję zawodnika na tej konkretnej skoczni i w tej miejscowości</strong> (np. Ruka HS142) oraz dopasowanie do profilu obiektu (skocznia normalna/duża/mamucia).</p>
+                  <span class="badge-item badge-venue">{{ t('pred.venueBadge') }}</span>
+                  <p>{{ t('pred.legendVenueDesc') }}</p>
                 </div>
               </div>
             </div>
 
             <!-- SEKCJA 3: PROFILE STYLU I PSYCHIKI -->
             <div class="legend-section">
-              <h5 class="legend-subheading">🧠 Psychologia i profile sportowe</h5>
+              <h5 class="legend-subheading">{{ t('pred.legendSec3') }}</h5>
               <div class="legend-grid">
                 <div class="legend-item">
-                  <span class="badge-item badge-clutch">🔥 Zwierzę konkursowe</span>
-                  <p>Zyskuje statystycznie ≥ 2,5 pozycji w konkursie w porównaniu do treningów i kwalifikacji. Doskonale radzi sobie z presją.</p>
+                  <span class="badge-item badge-clutch">{{ t('pred.profClutch') }}</span>
+                  <p>{{ t('pred.legendClutchDesc') }}</p>
                 </div>
                 <div class="legend-item">
-                  <span class="badge-item badge-choker">📉 Syndrom treningów</span>
-                  <p>W seriach próbnych osiąga wyższe lokaty niż w konkursie głównym (średni spadek o ≥ 3 pozycje pod presją).</p>
+                  <span class="badge-item badge-choker">{{ t('pred.profChoker') }}</span>
+                  <p>{{ t('pred.legendChokerDesc') }}</p>
                 </div>
                 <div class="legend-item">
-                  <span class="badge-item badge-metronome">🎯 Metronom</span>
-                  <p>Wysoka powtarzalność prób (&gt; 80%). Minimalna różnica odległości między seriami treningowymi i konkursowymi.</p>
+                  <span class="badge-item badge-metronome">{{ t('pred.profMetronome') }}</span>
+                  <p>{{ t('pred.legendMetronomeDesc') }}</p>
                 </div>
                 <div class="legend-item">
-                  <span class="badge-item badge-volatile">🎲 Chwiejny</span>
-                  <p>Duży rozrzut skoków i wysoka amplituda punktowa. Skoczek podatny na dyspozycję chwili i podmuchy wiatru.</p>
+                  <span class="badge-item badge-volatile">{{ t('pred.profVolatile') }}</span>
+                  <p>{{ t('pred.legendVolatileDesc') }}</p>
                 </div>
                 <div class="legend-item">
-                  <span class="badge-item badge-flying">🦅 Lotnik</span>
-                  <p>Specjalista od skoczni mamucich (HS 200+). Osiąga na nich wyraźnie większe odległości niż na obiektach tradycyjnych.</p>
+                  <span class="badge-item badge-flying">{{ t('pred.profFlying') }}</span>
+                  <p>{{ t('pred.legendFlyingDesc') }}</p>
                 </div>
                 <div class="legend-item">
-                  <span class="badge-item badge-balanced">⚖️ Równy poziom</span>
-                  <p>Skacze na zbliżonym poziomie w seriach próbnych, kwalifikacyjnych i konkursowych bez wahań psychicznych.</p>
+                  <span class="badge-item badge-balanced">{{ t('pred.profBalanced') }}</span>
+                  <p>{{ t('pred.legendBalancedDesc') }}</p>
                 </div>
               </div>
             </div>
@@ -1342,7 +1361,7 @@ onMounted(async () => {
           <!-- PASEK SORTOWANIA I TRYBU WIDOKU NA MOBILCE -->
           <div class="mobile-pred-controls mobile-only">
             <div class="mpc-sort-group">
-              <label for="predMobileSort">Sortuj:</label>
+              <label for="predMobileSort">{{ t('analytics.sortLabel') }}</label>
               <select
                 id="predMobileSort"
                 :value="sortKey"
@@ -1357,9 +1376,9 @@ onMounted(async () => {
                 type="button"
                 class="mpc-order-btn"
                 @click="toggleSortOrder"
-                :title="sortOrder === 'asc' ? 'Rosnąco' : 'Malejąco'"
+                :title="sortOrder === 'asc' ? t('pred.ascTitle') : t('pred.descTitle')"
               >
-                {{ sortOrder === 'asc' ? '▲ Rosn.' : '▼ Mal.' }}
+                {{ sortOrder === 'asc' ? t('analytics.orderAsc') : t('analytics.orderDesc') }}
               </button>
             </div>
             <div class="mpc-view-switch">
@@ -1369,7 +1388,7 @@ onMounted(async () => {
                 :class="{ active: mobileViewMode === 'cards' }"
                 @click="mobileViewMode = 'cards'"
               >
-                🪪 Karty
+                {{ t('sessionDetail.modeCards') }}
               </button>
               <button
                 type="button"
@@ -1377,13 +1396,13 @@ onMounted(async () => {
                 :class="{ active: mobileViewMode === 'table' }"
                 @click="mobileViewMode = 'table'"
               >
-                📋 Tabela
+                {{ t('sessionDetail.modeTable') }}
               </button>
             </div>
           </div>
 
           <div class="mobile-desktop-hint mobile-only">
-            💻 Pełną, wielokolumnową tabelę prognoz i detali zobaczysz na większym ekranie (komputerze).
+            {{ t('common.desktopHint') }}
           </div>
 
           <!-- CZYTELNE KARTY PROGNOZ NA MOBILCE (<= 768px) -->
@@ -1415,7 +1434,7 @@ onMounted(async () => {
                         v-if="ath.is_tier_debutant && selectedCompetitionType === 'WC'"
                         class="debutant-pill pmc-debut"
                       >
-                        DEBIUTANT
+                        {{ t('pred.debBadge') }}
                       </span>
                     </div>
                   </div>
@@ -1427,7 +1446,7 @@ onMounted(async () => {
                   <button
                     class="btn-row-remove pmc-remove"
                     @click="removeAthlete(ath.fis_code)"
-                    title="Usuń z listy startowej"
+                    :title="t('pred.removeTitle')"
                   >
                     ✕
                   </button>
@@ -1436,7 +1455,7 @@ onMounted(async () => {
 
               <div class="pmc-metrics-grid">
                 <div class="pmc-metric">
-                  <span class="pmc-m-label">Dystans</span>
+                  <span class="pmc-m-label">{{ t('pred.thDist') }}</span>
                   <div class="pmc-dist-val">
                     <strong class="dist-num">{{ ath.predicted_distance.toFixed(1) }} m</strong>
                     <span
@@ -1450,8 +1469,8 @@ onMounted(async () => {
                 </div>
 
                 <div class="pmc-metric">
-                  <span class="pmc-m-label">Punkty</span>
-                  <strong class="pts-bold">{{ ath.predicted_points.toFixed(1) }} <small class="pts-unit">pkt</small></strong>
+                  <span class="pmc-m-label">{{ t('pred.thPts') }}</span>
+                  <strong class="pts-bold">{{ ath.predicted_points.toFixed(1) }} <small class="pts-unit">{{ t('common.pts') }}</small></strong>
                 </div>
 
                 <div class="pmc-metric">
@@ -1469,7 +1488,7 @@ onMounted(async () => {
                 </div>
 
                 <div class="pmc-metric">
-                  <span class="pmc-m-label">Podium</span>
+                  <span class="pmc-m-label">{{ t('pred.podiumLabel').replace(':', '') }}</span>
                   <strong class="chance-val" v-if="ath.podium_probability != null && ath.podium_probability > 0">
                     {{ ath.podium_probability }}%
                   </strong>
@@ -1479,7 +1498,7 @@ onMounted(async () => {
 
               <div class="pmc-footer">
                 <div class="pmc-form-stab">
-                  <span class="pmc-mini-label">Forma:</span>
+                  <span class="pmc-mini-label">{{ t('pred.thForm') }}:</span>
                   <span
                     class="form-pill"
                     :class="{
@@ -1498,7 +1517,7 @@ onMounted(async () => {
                     {{ ath.recent_form_score >= ath.form_score ? '▲' : '▼' }}{{ ath.recent_form_score }}%
                   </span>
                   <span class="pmc-sep">&bull;</span>
-                  <span class="pmc-mini-label">Stabilność:</span>
+                  <span class="pmc-mini-label">{{ t('pred.mobileStab') }}</span>
                   <span class="repeat-box">
                     <span
                       class="repeat-circle"
@@ -1516,9 +1535,9 @@ onMounted(async () => {
                     :key="prof.code"
                     class="profile-tag"
                     :class="prof.tag_class"
-                    :title="prof.description"
+                    :title="formatProfileDesc(prof)"
                   >
-                    {{ prof.icon }} {{ prof.label }}
+                    {{ formatProfileTag(prof) }}
                   </span>
                 </div>
               </div>
@@ -1533,9 +1552,9 @@ onMounted(async () => {
                     class="th-rank sortable-th"
                     :class="{ 'sorted-th': sortKey === 'predicted_rank' }"
                     @click="sortBy('predicted_rank')"
-                    title="Sortuj po przewidywanej pozycji"
+                    :title="t('pred.sortRankTitle')"
                   >
-                    Msc
+                    {{ t('pred.thPos') }}
                     <span v-if="sortKey === 'predicted_rank'" class="sort-indicator">
                       {{ sortOrder === 'asc' ? '▲' : '▼' }}
                     </span>
@@ -1544,9 +1563,9 @@ onMounted(async () => {
                     class="th-athlete sortable-th"
                     :class="{ 'sorted-th': sortKey === 'name' }"
                     @click="sortBy('name')"
-                    title="Sortuj alfabetycznie po nazwisku"
+                    :title="t('analytics.sortNameTitle')"
                   >
-                    Skoczek
+                    {{ t('pred.thJumper') }}
                     <span v-if="sortKey === 'name'" class="sort-indicator">
                       {{ sortOrder === 'asc' ? '▲' : '▼' }}
                     </span>
@@ -1555,9 +1574,9 @@ onMounted(async () => {
                     class="th-price sortable-th"
                     :class="{ 'sorted-th': sortKey === 'price' }"
                     @click="sortBy('price')"
-                    title="Sortuj po cenie w Fantasy"
+                    :title="t('pred.sortPriceTitle')"
                   >
-                    Cena
+                    {{ t('common.price') }}
                     <span v-if="sortKey === 'price'" class="sort-indicator">
                       {{ sortOrder === 'asc' ? '▲' : '▼' }}
                     </span>
@@ -1566,9 +1585,9 @@ onMounted(async () => {
                     class="th-dist sortable-th"
                     :class="{ 'sorted-th': sortKey === 'predicted_distance' }"
                     @click="sortBy('predicted_distance')"
-                    title="Sortuj po prognozowanym dystansie"
+                    :title="t('pred.sortDistTitle')"
                   >
-                    Dystans
+                    {{ t('pred.thDist') }}
                     <span v-if="sortKey === 'predicted_distance'" class="sort-indicator">
                       {{ sortOrder === 'asc' ? '▲' : '▼' }}
                     </span>
@@ -1577,9 +1596,9 @@ onMounted(async () => {
                     class="th-pts sortable-th"
                     :class="{ 'sorted-th': sortKey === 'predicted_points' }"
                     @click="sortBy('predicted_points')"
-                    title="Sortuj po sumarycznych punktach"
+                    :title="t('pred.sortPtsTitle')"
                   >
-                    Punkty
+                    {{ t('pred.thPts') }}
                     <span v-if="sortKey === 'predicted_points'" class="sort-indicator">
                       {{ sortOrder === 'asc' ? '▲' : '▼' }}
                     </span>
@@ -1588,7 +1607,7 @@ onMounted(async () => {
                     class="th-top30 sortable-th"
                     :class="{ 'sorted-th': sortKey === 'top30_probability' }"
                     @click="sortBy('top30_probability')"
-                    title="Sortuj po szansie na awans do II serii"
+                    :title="t('pred.sortTop30Title')"
                   >
                     Top 30
                     <span v-if="sortKey === 'top30_probability'" class="sort-indicator">
@@ -1599,9 +1618,9 @@ onMounted(async () => {
                     class="th-chance sortable-th"
                     :class="{ 'sorted-th': sortKey === 'podium_probability' }"
                     @click="sortBy('podium_probability')"
-                    title="Sortuj po szansie na podium"
+                    :title="t('pred.sortPodiumTitle')"
                   >
-                    Podium
+                    {{ t('pred.podiumLabel').replace(':', '') }}
                     <span v-if="sortKey === 'podium_probability'" class="sort-indicator">
                       {{ sortOrder === 'asc' ? '▲' : '▼' }}
                     </span>
@@ -1610,21 +1629,21 @@ onMounted(async () => {
                     class="th-form sortable-th"
                     :class="{ 'sorted-th': sortKey === 'form_score' }"
                     @click="sortBy('form_score')"
-                    title="Sortuj po wskaźniku formy"
+                    :title="t('pred.sortFormTitle')"
                   >
-                    Forma
+                    {{ t('pred.thForm') }}
                     <span v-if="sortKey === 'form_score'" class="sort-indicator">
                       {{ sortOrder === 'asc' ? '▲' : '▼' }}
                     </span>
                   </th>
-                  <th class="th-profiles">Profil</th>
+                  <th class="th-profiles">{{ t('pred.thProfile') }}</th>
                   <th
                     class="th-repeat sortable-th"
                     :class="{ 'sorted-th': sortKey === 'consistency_score' }"
                     @click="sortBy('consistency_score')"
-                    title="Sortuj po wskaźniku powtarzalności prób"
+                    :title="t('pred.sortStabTitle')"
                   >
-                    Stabilność
+                    {{ t('pred.thStab') }}
                     <span v-if="sortKey === 'consistency_score'" class="sort-indicator">
                       {{ sortOrder === 'asc' ? '▲' : '▼' }}
                     </span>
@@ -1662,9 +1681,9 @@ onMounted(async () => {
                       <span
                         v-if="ath.is_tier_debutant && selectedCompetitionType === 'WC'"
                         class="debutant-pill"
-                        title="Debiutant w Pucharze Świata (0 dotychczasowych startów w PŚ)"
+                        :title="t('pred.debTitle')"
                       >
-                        DEBIUTANT
+                        {{ t('pred.debBadge') }}
                       </span>
                     </div>
                   </td>
@@ -1686,7 +1705,7 @@ onMounted(async () => {
                           v-if="ath.effective_headwind !== undefined"
                           class="wind-micro-badge"
                           :class="ath.effective_headwind >= 0 ? 'wind-head' : 'wind-tail'"
-                          :title="`Zinterpolowany wiatr w momencie skoku: ${ath.effective_headwind >= 0 ? '+' : ''}${ath.effective_headwind} m/s`"
+                          :title="t('pred.windTooltip', { wind: `${ath.effective_headwind >= 0 ? '+' : ''}${ath.effective_headwind}` })"
                         >
                           {{ ath.effective_headwind >= 0 ? '↗' : '↘' }}{{ ath.effective_headwind >= 0 ? '+' : '' }}{{ ath.effective_headwind }}
                         </span>
@@ -1708,7 +1727,7 @@ onMounted(async () => {
 
                   <!-- PUNKTY -->
                   <td class="td-pts">
-                    <strong class="pts-bold">{{ ath.predicted_points.toFixed(1) }}</strong> <small class="pts-unit">pkt</small>
+                    <strong class="pts-bold">{{ ath.predicted_points.toFixed(1) }}</strong> <small class="pts-unit">{{ t('common.pts') }}</small>
                   </td>
 
                   <!-- SZANSA NA TOP 30 (AWANS DO II SERII) -->
@@ -1738,7 +1757,7 @@ onMounted(async () => {
 
                   <!-- FORMA -->
                   <td class="td-form">
-                    <div class="form-cell-wrapper" :title="ath.recent_form_score ? `Bieżąca dyspozycja (21 dni): ${ath.recent_form_score}% | Średnia ważona: ${ath.form_score}%` : `Forma: ${ath.form_score}%`">
+                    <div class="form-cell-wrapper" :title="ath.recent_form_score ? t('pred.formTooltipRecent', { recent: ath.recent_form_score, weighted: ath.form_score }) : t('pred.formTooltip', { score: ath.form_score })">
                       <span
                         class="form-pill"
                         :class="{
@@ -1767,16 +1786,16 @@ onMounted(async () => {
                         :key="prof.code"
                         class="profile-tag"
                         :class="prof.tag_class"
-                        :title="prof.description"
+                        :title="formatProfileDesc(prof)"
                       >
-                        {{ prof.icon }} {{ prof.label }}
+                        {{ formatProfileTag(prof) }}
                       </span>
                     </div>
                   </td>
 
                   <!-- POWTARZALNOŚĆ -->
                   <td class="td-repeat">
-                    <div class="repeat-box" :title="'Wskaźnik stabilności powtarzalnych prób: ' + ath.consistency_score + '%'">
+                    <div class="repeat-box" :title="t('pred.stabTooltip', { score: ath.consistency_score })">
                       <div class="repeat-circle" :style="{
                         background: ath.consistency_score >= 80 ? '#10b981' : ath.consistency_score >= 50 ? '#3b82f6' : '#f59e0b'
                       }"></div>
@@ -1789,7 +1808,7 @@ onMounted(async () => {
                     <button
                       class="btn-row-remove"
                       @click="removeAthlete(ath.fis_code)"
-                      title="Usuń z listy startowej"
+                      :title="t('pred.removeTitle')"
                     >
                       ✕
                     </button>
@@ -1803,32 +1822,32 @@ onMounted(async () => {
     </div>
 
     <!-- MODAL WYBORU ZAWODÓW Z KALENDARZA FIS -->
-    <div v-if="showCalendarModal" class="cal-modal-overlay" role="dialog" aria-modal="true" aria-label="Wybierz zawody z kalendarza FIS" @click.self="showCalendarModal = false">
+    <div v-if="showCalendarModal" class="cal-modal-overlay" role="dialog" aria-modal="true" :aria-label="t('pred.calModalTitle')" @click.self="showCalendarModal = false">
       <div class="cal-modal">
         <div class="cal-modal-header">
-          <h3>📅 Wybierz zawody z kalendarza FIS</h3>
+          <h3>{{ t('pred.calModalTitle') }}</h3>
           <button type="button" class="cal-close-btn" @click="showCalendarModal = false">✕</button>
         </div>
 
         <div class="cal-modal-filters">
           <select v-model="calendarSeason" class="custom-select" @change="fetchCalendarForModal">
-            <option value="2027">Sezon 2026/2027</option>
-            <option value="2026">Sezon 2025/2026</option>
-            <option value="2025">Sezon 2024/2025</option>
+            <option value="2027">{{ t('common.season') }} 2026/2027</option>
+            <option value="2026">{{ t('common.season') }} 2025/2026</option>
+            <option value="2025">{{ t('common.season') }} 2024/2025</option>
           </select>
           <select v-model="calendarCategory" class="custom-select" @change="fetchCalendarForModal">
-            <option value="WC">Puchar Świata (WC)</option>
-            <option value="GP">Letnie Grand Prix (GP)</option>
-            <option value="WSC">Mistrzostwa Świata (WSC)</option>
-            <option value="OWG">Igrzyska Olimpijskie (OWG)</option>
-            <option value="SFWC">MŚ w Lotach (SFWC)</option>
+            <option value="WC">{{ formatCategory('WC') }} (WC)</option>
+            <option value="GP">{{ formatCategory('GP') }} (GP)</option>
+            <option value="WSC">{{ formatCategory('WSC') }} (WSC)</option>
+            <option value="OWG">{{ formatCategory('OWG') }} (OWG)</option>
+            <option value="SFWC">{{ formatCategory('SFWC') }} (SFWC)</option>
           </select>
         </div>
 
         <div class="cal-modal-body">
-          <div v-if="isLoadingCalendar" class="cal-status-box">Pobieranie kalendarza FIS...</div>
+          <div v-if="isLoadingCalendar" class="cal-status-box">{{ t('pred.calLoading') }}</div>
           <div v-else-if="calendarError" class="cal-status-box error">{{ calendarError }}</div>
-          <div v-else-if="calendarEvents.length === 0" class="cal-status-box">Brak przystanków w tym cyklu.</div>
+          <div v-else-if="calendarEvents.length === 0" class="cal-status-box">{{ t('pred.calEmpty') }}</div>
           <div v-else class="cal-events-list">
             <button
               v-for="ev in calendarEvents"
@@ -1848,12 +1867,12 @@ onMounted(async () => {
               <span class="cal-ev-status" :class="`st-${(ev.status || '').toLowerCase()}`">
                 {{
                   ev.status === 'COMPLETED'
-                    ? 'Rozegrane'
+                    ? t('pred.calEvDone')
                     : ev.status === 'IN_PROGRESS'
-                      ? 'Trwa'
+                      ? t('pred.calEvProgress')
                       : ev.status === 'CANCELLED'
-                        ? 'Odwołane'
-                        : 'Zaplanowane'
+                        ? t('pred.calEvCancelled')
+                        : t('pred.calEvPlanned')
                 }}
               </span>
             </button>

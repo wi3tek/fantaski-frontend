@@ -5,10 +5,12 @@ import SkiLoader from '@/components/SkiLoader.vue'
 import CountryFlag from '@/components/CountryFlag.vue'
 import { api } from '@/api/client'
 import { useAuth } from '@/stores/auth'
+import { useI18n } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
+const { t, formatSessionType, formatHillType, formatJumpersCount } = useI18n()
 const sessionId = route.params.id
 
 const session = ref<any>(null)
@@ -180,7 +182,7 @@ const toggleAthlete = (name: string) => {
     selectedAthletes.value.splice(idx, 1)
   } else {
     if (selectedAthletes.value.length >= 8) {
-      alert('Możesz zaznaczyć maksymalnie 8 zawodników w jednym składzie!')
+      alert(t('sessionDetail.max8Alert'))
       return
     }
     selectedAthletes.value.push(name)
@@ -199,12 +201,12 @@ const clearSelection = () => {
 const saveCurrentPackage = () => {
   if (!auth.isPro.value) return
   if (selectedAthletes.value.length === 0) {
-    alert('Zaznacz przynajmniej jednego zawodnika w tabeli!')
+    alert(t('sessionDetail.selectOneAlert'))
     return
   }
 
   const customCount = customSavedPackages.value.length
-  const name = newPackageName.value.trim() || `Skład #${customCount + 1} (${selectedAthletes.value.length} skoczków)`
+  const name = newPackageName.value.trim() || `${t('sessionDetail.defaultPkgName', { n: customCount + 1 })} (${formatJumpersCount(selectedAthletes.value.length)})`
 
   const newPkg: AthletePackage = {
     id: 'pkg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -235,7 +237,7 @@ const fetchDetails = async () => {
     session.value = await api.get(`/stats/sessions/${sessionId}`)
   } catch (e) {
     console.error('Błąd:', e)
-    alert('Nie znaleziono sesji.')
+    alert(t('sessionDetail.notFoundAlert'))
     router.push('/sessions')
   } finally {
     loading.value = false
@@ -347,8 +349,8 @@ const allComparisonSquads = computed(() => {
     if (myAth.length > 0) {
       cards.push({
         id: `esm_my_${esmStatus.value.my_team.team_id}`,
-        name: esmStatus.value.my_team.team_name || 'Mój skład ESM',
-        badge: '⭐ Mój ESM',
+        name: esmStatus.value.my_team.team_name || t('sessionDetail.myEsmFallback'),
+        badge: t('sessionDetail.badgeMyEsm'),
         athletes: myAth,
         removable: false,
       })
@@ -360,8 +362,8 @@ const allComparisonSquads = computed(() => {
     if (fAth.length > 0) {
       cards.push({
         id: `esm_friend_${fr.team_id || fr.id}`,
-        name: fr.display_name || fr.team_name || 'Znajomy',
-        badge: '👥 Znajomy',
+        name: fr.display_name || fr.team_name || t('sessionDetail.friendFallback'),
+        badge: t('sessionDetail.badgeFriend'),
         athletes: fAth,
         removable: false,
       })
@@ -372,7 +374,7 @@ const allComparisonSquads = computed(() => {
     cards.push({
       id: pkg.id,
       name: pkg.name,
-      badge: '💾 Własny',
+      badge: t('sessionDetail.badgeCustom'),
       athletes: pkg.athletes,
       removable: true,
     })
@@ -397,12 +399,12 @@ const syncEsmInline = async () => {
   try {
     const res = await api.post('/esm/sync', {})
     esmStatus.value = res
-    esmActionMessage.value = 'Odświeżono składy z esmManager.'
+    esmActionMessage.value = t('sessionDetail.okEsmSync')
     setTimeout(() => {
       esmActionMessage.value = ''
     }, 3500)
   } catch (e: any) {
-    esmActionMessage.value = e?.message || 'Nie udało się odświeżyć składów z ESM.'
+    esmActionMessage.value = e?.message || t('sessionDetail.errEsmSync')
   } finally {
     isSyncingEsmInline.value = false
   }
@@ -423,38 +425,16 @@ const mobileViewMode = ref<'cards' | 'table'>('cards')
 const expandedSessionRow = ref<string | null>(null)
 const isTableFullScreen = ref(false)
 
-const formatSessionTypeLabel = (raw?: string | null) => {
-  const code = String(raw || '').toUpperCase()
-  const map: Record<string, string> = {
-    COMPETITION: 'Konkurs Główny',
-    QUA: 'Kwalifikacje',
-    QUALIFICATION: 'Kwalifikacje',
-    TRAINING: 'Trening',
-    TRIAL: 'Seria próbna',
-  }
-  return map[code] || raw || 'Sesja'
-}
+const formatSessionTypeLabel = (raw?: string | null) => formatSessionType(raw)
 
-const formatHillTypeLabel = (raw?: string | null, size?: number | null) => {
-  const s = Number(size || 0)
-  if (s > 0 && s < 85) return 'Średnia'
-  const code = String(raw || '').toUpperCase()
-  const map: Record<string, string> = {
-    FLYING: 'Mamucia',
-    LARGE: 'Duża',
-    NORMAL: 'Normalna',
-    MEDIUM: 'Średnia',
-    SMALL: 'Mała',
-  }
-  return map[code] || raw || 'Normalna / Duża'
-}
+const formatHillTypeLabel = (raw?: string | null, size?: number | null) => formatHillType(raw, size)
 
 const getResultsHeading = (raw?: string | null) => {
   const code = String(raw || '').toUpperCase()
-  if (code === 'TRAINING') return 'Wyniki Treningu'
-  if (code === 'QUA' || code === 'QUALIFICATION') return 'Wyniki Kwalifikacji'
-  if (code === 'TRIAL') return 'Wyniki Serii Próbnej'
-  return 'Oficjalne Wyniki Konkursu'
+  if (code === 'TRAINING') return t('sessionDetail.headingTraining')
+  if (code === 'QUA' || code === 'QUALIFICATION') return t('sessionDetail.headingQuali')
+  if (code === 'TRIAL') return t('sessionDetail.headingTrial')
+  return t('sessionDetail.headingCompetition')
 }
 
 const showCompetitionPointsCol = computed(() => {
@@ -478,12 +458,12 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <SkiLoader v-if="loading">Ładowanie szczegółów zawodów...</SkiLoader>
+    <SkiLoader v-if="loading">{{ t('sessionDetail.loading') }}</SkiLoader>
 
     <div v-else-if="session" class="session-container">
       <!-- HEADER ZAWODÓW -->
       <div class="header">
-        <button @click="router.back()" class="btn-back">← Powrót</button>
+        <button @click="router.back()" class="btn-back">{{ t('common.back') }}</button>
         <div class="title-section">
           <div class="place-row">
             <h2>{{ session.event_place }}</h2>
@@ -494,8 +474,8 @@ onMounted(() => {
         <div class="badges">
           <span class="badge blue">{{ session.category_code }}</span>
           <span class="badge gray">{{ formatSessionTypeLabel(session.session_type) }}</span>
-          <a v-if="session.raceUrl" :href="session.raceUrl" target="_blank" rel="noopener noreferrer" class="btn-fis" title="Oficjalny protokół FIS">
-            Wyniki FIS ↗
+          <a v-if="session.raceUrl" :href="session.raceUrl" target="_blank" rel="noopener noreferrer" class="btn-fis" :title="t('sessionDetail.fisProtocolTitle')">
+            {{ t('sessionDetail.fisProtocol') }}
           </a>
         </div>
       </div>
@@ -505,23 +485,23 @@ onMounted(() => {
         <div class="info-card">
           <div class="card-icon">📅</div>
           <div class="card-text">
-            <span class="card-label">Termin</span>
+            <span class="card-label">{{ t('common.term') }}</span>
             <strong>{{ session.date }}</strong>
-            <small class="time-dim">{{ session.time || 'Godz. b/d' }}</small>
+            <small class="time-dim">{{ session.time || t('common.noTime') }}</small>
           </div>
         </div>
         <div class="info-card">
           <div class="card-icon">🏔️</div>
           <div class="card-text">
-            <span class="card-label">Skocznia</span>
+            <span class="card-label">{{ t('common.hill') }}</span>
             <strong>{{ formatHillTypeLabel(session.hillType, session.hillSize) }}</strong>
-            <small class="time-dim">HS: {{ session.hillSize || 'Brak danych' }}</small>
+            <small class="time-dim">HS: {{ session.hillSize || t('common.noData') }}</small>
           </div>
         </div>
         <div class="info-card" v-if="session.documents && session.documents.length > 0">
           <div class="card-icon">📄</div>
           <div class="card-text">
-            <span class="card-label">Protokoły PDF</span>
+            <span class="card-label">{{ t('sessionDetail.pdfs') }}</span>
             <div class="doc-links">
               <a v-for="doc in session.documents.slice(0, 2)" :key="doc.url" :href="doc.url" target="_blank" rel="noopener noreferrer" class="doc-link">
                 {{ doc.type }} ↗
@@ -540,7 +520,7 @@ onMounted(() => {
           <div class="hub-left">
             <div class="hub-title">
               <span class="ski-icon">🎿</span>
-              <strong>Porównywarka Składów</strong>
+              <strong>{{ t('sessionDetail.squadCompTitle') }}</strong>
             </div>
             <div class="selection-pill" :class="{ active: selectedAthletes.length > 0, full: selectedAthletes.length >= 8 }">
               <span class="dots-meter">
@@ -557,14 +537,14 @@ onMounted(() => {
 
           <div class="hub-center">
             <div class="active-score" v-if="selectedAthletes.length > 0">
-              <span class="score-caption">Suma Pkt PŚ:</span>
+              <span class="score-caption">{{ t('sessionDetail.sumWcPts') }}</span>
               <span class="score-val">+{{ currentSelectionPoints }}</span>
               <span v-if="currentSelectionPrice > 0" class="score-price">
-                (Koszt: {{ currentSelectionPrice.toFixed(1) }})
+                ({{ t('common.cost') }}: {{ currentSelectionPrice.toFixed(1) }})
               </span>
             </div>
             <span v-else class="hub-hint">
-              Kliknij skoczków na liście poniżej, aby złożyć testowy skład (max 8)
+              {{ t('sessionDetail.hintPick') }}
             </span>
           </div>
 
@@ -575,24 +555,24 @@ onMounted(() => {
               class="btn-toggle-drawer"
               :class="{ open: showPackageDrawer }"
             >
-              ⚖️ Porównaj składy ({{ allComparisonSquads.length }})
+              {{ t('sessionDetail.compareBtn', { count: allComparisonSquads.length }) }}
               <span class="arrow-icon">{{ showPackageDrawer ? '▴' : '▾' }}</span>
             </button>
             <RouterLink
               v-else-if="auth.isAuthenticated.value && !esmStatus?.connected"
               to="/profile"
               class="btn-esm-connect-link"
-              title="Sprawdź status esmManager i znajomych w swoim profilu"
+              :title="t('sessionDetail.esmInProfileTitle')"
             >
-              🏆 Składy ESM w Profilu
+              {{ t('sessionDetail.esmInProfile') }}
             </RouterLink>
             <button
               v-if="selectedAthletes.length > 0"
               @click="clearSelection"
               class="btn-clear-micro"
-              title="Wyczyść bieżące zaznaczenie"
+              :title="t('sessionDetail.clearSelTitle')"
             >
-              ✕ Wyczyść
+              ✕ {{ t('common.clear') }}
             </button>
           </div>
         </div>
@@ -613,7 +593,7 @@ onMounted(() => {
               <button
                 @click="toggleAthlete(athName)"
                 class="chip-x"
-                title="Usuń ze składu"
+                :title="t('sessionDetail.removeFromSquad')"
               >
                 ✕
               </button>
@@ -624,12 +604,12 @@ onMounted(() => {
             <input
               type="text"
               v-model="newPackageName"
-              placeholder="Nazwa składu (np. Skład A)..."
+              :placeholder="t('sessionDetail.squadNamePh')"
               class="save-input-compact"
               @keyup.enter="saveCurrentPackage"
             />
             <button @click="saveCurrentPackage" class="btn-save-compact">
-              💾 Zapisz jako skład
+              {{ t('sessionDetail.saveAsSquad') }}
             </button>
           </div>
         </div>
@@ -639,21 +619,21 @@ onMounted(() => {
           <div class="drawer-header drawer-header-flex">
             <div>
               <span class="drawer-title">
-                📊 Porównanie składów w tym konkursie ({{ session.event_place }})
+                {{ t('sessionDetail.drawerTitle', { place: session.event_place || '' }) }}
               </span>
               <small class="drawer-subtitle">
-                Twój skład ESM, składy znajomych oraz zapisane zestawy w jednym miejscu.
+                {{ t('sessionDetail.drawerSub') }}
               </small>
             </div>
             <div v-if="hasEsmTeams" class="drawer-esm-controls">
-              <div class="esm-scope-switch" title="Zakres zawodników w kartach esmManager">
+              <div class="esm-scope-switch" :title="t('sessionDetail.scopeTitle')">
                 <button
                   type="button"
                   class="scope-btn"
                   :class="{ active: esmSquadScope === 'starters' }"
                   @click="setEsmSquadScope('starters')"
                 >
-                  Podst. 4
+                  {{ t('sessionDetail.starters4') }}
                 </button>
                 <button
                   type="button"
@@ -661,7 +641,7 @@ onMounted(() => {
                   :class="{ active: esmSquadScope === 'all' }"
                   @click="setEsmSquadScope('all')"
                 >
-                  Cały 8
+                  {{ t('sessionDetail.all8') }}
                 </button>
               </div>
               <button
@@ -670,7 +650,7 @@ onMounted(() => {
                 :disabled="isSyncingEsmInline"
                 class="btn-esm-action"
               >
-                {{ isSyncingEsmInline ? '⏳ Odświeżanie...' : '🔄 Odśwież ESM' }}
+                {{ isSyncingEsmInline ? `⏳ ${t('common.refreshing')}` : t('sessionDetail.refreshEsm') }}
               </button>
             </div>
           </div>
@@ -694,15 +674,15 @@ onMounted(() => {
                   <button
                     @click="applyPackageToSelection(sq.athletes)"
                     class="btn-apply-micro"
-                    title="Zaznacz tych skoczków w tabeli poniżej"
+                    :title="t('sessionDetail.showInTableTitle')"
                   >
-                    Pokaż w tabeli
+                    {{ t('sessionDetail.showInTable') }}
                   </button>
                   <button
                     v-if="sq.removable"
                     @click="deletePackage(sq.id)"
                     class="btn-delete-micro"
-                    title="Usuń zapisany skład"
+                    :title="t('sessionDetail.delSquadTitle')"
                   >
                     🗑️
                   </button>
@@ -712,24 +692,24 @@ onMounted(() => {
               <div class="card-score-row">
                 <div class="score-cluster">
                   <span class="pts-big">+{{ calcPackagePoints(sq.athletes) }}</span>
-                  <span class="pts-unit">pkt PŚ</span>
+                  <span class="pts-unit">{{ t('common.ptsWc') }}</span>
                 </div>
                 <div class="score-meta">
                   <span
                     v-if="calcPackagePoints(sq.athletes) === bestPackagePoints && bestPackagePoints > 0"
                     class="leader-badge"
                   >
-                    👑 Lider
+                    {{ t('sessionDetail.leader') }}
                   </span>
                   <span
                     v-else-if="bestPackagePoints > calcPackagePoints(sq.athletes)"
                     class="delta-badge"
                   >
-                    {{ calcPackagePoints(sq.athletes) - bestPackagePoints }} pkt
+                    {{ calcPackagePoints(sq.athletes) - bestPackagePoints }} {{ t('common.pts') }}
                   </span>
-                  <span class="count-tag">{{ sq.athletes.length }} skoczków</span>
+                  <span class="count-tag">{{ formatJumpersCount(sq.athletes.length) }}</span>
                   <span v-if="calcPackagePrice(sq.athletes) > 0" class="price-tag">
-                    Koszt: {{ calcPackagePrice(sq.athletes).toFixed(1) }}
+                    {{ t('common.cost') }}: {{ calcPackagePrice(sq.athletes).toFixed(1) }}
                   </span>
                 </div>
               </div>
@@ -762,12 +742,12 @@ onMounted(() => {
           <div class="toolbar-left">
             <h3>{{ getResultsHeading(session.session_type) }}</h3>
             <span class="results-count" v-if="session.results_data?.results">
-              {{ session.results_data.results.length }} skoczków
+              {{ formatJumpersCount(session.results_data.results.length) }}
             </span>
           </div>
           <div class="toolbar-right-mobile">
             <span class="table-tip">
-              💡 Kliknij wiersz lub pole 📦 aby dodać skoczka do testowego składu
+              {{ t('sessionDetail.tableTip') }}
             </span>
             <div class="s-view-switch mobile-only">
               <button
@@ -776,7 +756,7 @@ onMounted(() => {
                 :class="{ active: mobileViewMode === 'cards' }"
                 @click="mobileViewMode = 'cards'"
               >
-                🪪 Karty
+                {{ t('sessionDetail.modeCards') }}
               </button>
               <button
                 type="button"
@@ -784,18 +764,18 @@ onMounted(() => {
                 :class="{ active: mobileViewMode === 'table' }"
                 @click="mobileViewMode = 'table'"
               >
-                📋 Tabela
+                {{ t('sessionDetail.modeTable') }}
               </button>
             </div>
           </div>
         </div>
 
         <div class="mobile-desktop-hint mobile-only">
-          💻 Pełną tabelę wyników wszystkich serii i szczegółów zobaczysz na większym ekranie (komputerze).
+          {{ t('common.desktopHint') }}
         </div>
 
         <p v-if="session.results_data?.is_cancelled" class="cancelled-alert">
-          ⚠️ Uwaga: Ta sesja została oficjalnie odwołana lub przerwana.
+          {{ t('sessionDetail.cancelledBanner') }}
         </p>
 
         <!-- CZYTELNE KARTY MOBILNE WYNIKÓW SESJI (<= 768px) -->
@@ -826,7 +806,7 @@ onMounted(() => {
                   @click.stop
                   :disabled="!isAthleteSelected(athlete.name) && selectedAthletes.length >= 8"
                   class="smart-checkbox"
-                  :aria-label="'Wybierz ' + athlete.name"
+                  :aria-label="t('sessionDetail.pickAria', { name: athlete.name })"
                 />
                 <span v-if="athlete.rank === 1" class="rank-badge gold">🥇 1</span>
                 <span v-else-if="athlete.rank === 2" class="rank-badge silver">🥈 2</span>
@@ -845,12 +825,12 @@ onMounted(() => {
                   </RouterLink>
                   <span v-else class="athlete-name-plain smr-name">{{ athlete.name }}</span>
                   <div class="smr-tags">
-                    <span v-if="athlete.bib" class="bib-tag">Bib {{ athlete.bib }}</span>
+                    <span v-if="athlete.bib" class="bib-tag">{{ t('sessionDetail.thBib') }} {{ athlete.bib }}</span>
                     <span v-if="athlete.status && athlete.status !== 'Classified'" class="status-dns">
                       {{ athlete.status }}
                     </span>
-                    <span v-if="isEsmStarter(athlete)" class="esm-badge esm-starter">⭐ ESM</span>
-                    <span v-else-if="isEsmBench(athlete)" class="esm-badge esm-bench">🪑 ESM (R)</span>
+                    <span v-if="isEsmStarter(athlete)" class="esm-badge esm-starter">{{ t('sessionDetail.esmShort') }}</span>
+                    <span v-else-if="isEsmBench(athlete)" class="esm-badge esm-bench">{{ t('sessionDetail.esmBenchShort') }}</span>
                   </div>
                 </div>
               </div>
@@ -863,7 +843,7 @@ onMounted(() => {
                   v-if="athlete.competition_points > 0"
                   class="comp-pts-chip active"
                 >
-                  +{{ athlete.competition_points }} PŚ
+                  +{{ athlete.competition_points }} {{ t('sessionDetail.thWcPts') }}
                 </span>
               </div>
             </div>
@@ -875,12 +855,12 @@ onMounted(() => {
                 class="smr-jump-box"
               >
                 <span class="smr-j-label">
-                  {{ (session.session_type === 'TRAINING' || session.session_type === 'TRIAL') ? `Skok ${rNum}` : `Seria ${rNum}` }}
+                  {{ (session.session_type === 'TRAINING' || session.session_type === 'TRIAL') ? `${t('common.jump')} ${rNum}` : `${t('common.round')} ${rNum}` }}
                 </span>
                 <template v-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].distance">
                   <strong class="distance-main font-mono">{{ athlete.jumps[rNum - 1].distance }} m</strong>
                   <small class="jump-sub">
-                    <template v-if="athlete.jumps[rNum - 1].points != null">{{ athlete.jumps[rNum - 1].points }} pkt</template>
+                    <template v-if="athlete.jumps[rNum - 1].points != null">{{ athlete.jumps[rNum - 1].points }} {{ t('common.pts') }}</template>
                     <template v-if="athlete.jumps[rNum - 1].rank != null"> ({{ athlete.jumps[rNum - 1].rank }}.)</template>
                   </small>
                 </template>
@@ -891,7 +871,7 @@ onMounted(() => {
               </div>
 
               <div class="smr-jump-box smr-total-box">
-                <span class="smr-j-label">Nota łączna</span>
+                <span class="smr-j-label">{{ t('sessionDetail.thTotalNote') }}</span>
                 <strong class="font-mono smr-total-val">
                   {{ athlete.total_points != null ? athlete.total_points : '-' }}
                 </strong>
@@ -908,17 +888,17 @@ onMounted(() => {
           <table class="results-table">
             <thead>
               <tr>
-                <th class="th-pkg" title="Dodaj do składu">📦</th>
-                <th class="th-rank">Poz.</th>
-                <th class="th-bib">Bib</th>
-                <th class="th-name">Zawodnik</th>
-                <th class="th-price">Cena</th>
-                <th class="th-country">Kraj</th>
+                <th class="th-pkg" :title="t('sessionDetail.thPkgTitle')">📦</th>
+                <th class="th-rank">{{ t('sessionDetail.thRank') }}</th>
+                <th class="th-bib">{{ t('sessionDetail.thBib') }}</th>
+                <th class="th-name">{{ t('sessionDetail.thName') }}</th>
+                <th class="th-price">{{ t('common.price') }}</th>
+                <th class="th-country">{{ t('common.country') }}</th>
                 <th v-for="rNum in maxRoundsCount" :key="rNum" class="th-jump">
-                  {{ (session.session_type === 'TRAINING' || session.session_type === 'TRIAL') ? `Skok ${rNum}` : `Seria ${rNum}` }}
+                  {{ (session.session_type === 'TRAINING' || session.session_type === 'TRIAL') ? `${t('common.jump')} ${rNum}` : `${t('common.round')} ${rNum}` }}
                 </th>
-                <th class="th-total">Łączna nota</th>
-                <th v-if="showCompetitionPointsCol" class="th-points">Pkt PŚ</th>
+                <th class="th-total">{{ t('sessionDetail.thTotalNote') }}</th>
+                <th v-if="showCompetitionPointsCol" class="th-points">{{ t('sessionDetail.thWcPts') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -943,15 +923,15 @@ onMounted(() => {
                     @change="toggleAthlete(athlete.name)"
                     :disabled="!isAthleteSelected(athlete.name) && selectedAthletes.length >= 8"
                     class="smart-checkbox"
-                    :aria-label="'Wybierz ' + athlete.name"
+                    :aria-label="t('sessionDetail.pickAria', { name: athlete.name })"
                   />
                 </td>
 
                 <!-- Pozycja z odznakami podium -->
                 <td class="td-rank">
-                  <span v-if="athlete.rank === 1" class="rank-badge gold" title="1. Miejsce">🥇 1</span>
-                  <span v-else-if="athlete.rank === 2" class="rank-badge silver" title="2. Miejsce">🥈 2</span>
-                  <span v-else-if="athlete.rank === 3" class="rank-badge bronze" title="3. Miejsce">🥉 3</span>
+                  <span v-if="athlete.rank === 1" class="rank-badge gold" :title="t('sessionDetail.rankTopTitle', { n: 1 })">🥇 1</span>
+                  <span v-else-if="athlete.rank === 2" class="rank-badge silver" :title="t('sessionDetail.rankTopTitle', { n: 2 })">🥈 2</span>
+                  <span v-else-if="athlete.rank === 3" class="rank-badge bronze" :title="t('sessionDetail.rankTopTitle', { n: 3 })">🥉 3</span>
                   <strong v-else class="rank-normal">{{ athlete.rank || '-' }}</strong>
                 </td>
 
@@ -977,16 +957,16 @@ onMounted(() => {
                   <span
                     v-if="isEsmStarter(athlete)"
                     class="esm-badge esm-starter"
-                    title="W Twoim podstawowym składzie esmManager"
+                    :title="t('sessionDetail.esmStarterTitle')"
                   >
-                    ⭐ ESM
+                    {{ t('sessionDetail.esmShort') }}
                   </span>
                   <span
                     v-else-if="isEsmBench(athlete)"
                     class="esm-badge esm-bench"
-                    title="Na ławce rezerwowych w esmManager"
+                    :title="t('sessionDetail.esmBenchTitle')"
                   >
-                    🪑 ESM (R)
+                    {{ t('sessionDetail.esmBenchShort') }}
                   </span>
                 </td>
 
@@ -1009,7 +989,7 @@ onMounted(() => {
                   <div v-if="athlete.jumps && athlete.jumps[rNum - 1] && athlete.jumps[rNum - 1].distance" class="jump-block">
                     <span class="distance-main font-mono">{{ athlete.jumps[rNum - 1].distance }} m</span>
                     <span class="jump-sub">
-                      <template v-if="athlete.jumps[rNum - 1].points != null">{{ athlete.jumps[rNum - 1].points }} pkt</template>
+                      <template v-if="athlete.jumps[rNum - 1].points != null">{{ athlete.jumps[rNum - 1].points }} {{ t('common.pts') }}</template>
                       <template v-if="athlete.jumps[rNum - 1].rank != null"> ({{ athlete.jumps[rNum - 1].rank }}.)</template>
                     </span>
                   </div>

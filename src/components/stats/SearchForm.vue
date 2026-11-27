@@ -2,9 +2,11 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth } from '@/stores/auth'
 import { useNotice } from '@/stores/notice'
+import { useI18n } from '@/i18n'
 
 const auth = useAuth()
 const notice = useNotice()
+const { t, formatHillType, formatCategory, formatSessionType } = useI18n()
 
 const props = defineProps<{
   searchForm: any
@@ -37,9 +39,12 @@ const isCollapsed = computed({
 
 const selectedNamesPreview = computed(() => {
   if (localPriceMode.value && localNames.value.length === 0) {
-    return `Przedział cenowy ${Number(localPriceMin.value).toFixed(1)}–${Number(localPriceMax.value).toFixed(1)}`
+    return t('searchForm.previewPriceRange', {
+      min: Number(localPriceMin.value).toFixed(1),
+      max: Number(localPriceMax.value).toFixed(1),
+    })
   }
-  if (localNames.value.length === 0) return 'Brak wybranych skoczków'
+  if (localNames.value.length === 0) return t('searchForm.previewNone')
   const firstTwo = localNames.value.slice(0, 2).join(', ')
   const extra = localNames.value.length - 2
   return extra > 0 ? `${firstTwo} (+${extra})` : firstTwo
@@ -96,9 +101,9 @@ const addName = (name: string) => {
     nameInput.value = ''
     showDropdown.value = false
     notice.showNotice({
-      title: 'Limit konta darmowego',
-      message: 'Darmowe konto pozwala na jednoczesne porównanie maksymalnie 2 zawodników. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków.',
-      badge: 'FREE: MAX 2',
+      title: t('search.freeLimitTitle'),
+      message: t('searchForm.errFreeMsg'),
+      badge: t('search.freeBadgeMax2'),
     })
     return
   }
@@ -203,7 +208,10 @@ const activeFiltersList = computed(() => {
   if (localPriceMode.value) {
     chips.push({
       key: 'price',
-      label: `Cena: ${Number(localPriceMin.value).toFixed(1)} - ${Number(localPriceMax.value).toFixed(1)}`,
+      label: t('searchForm.chipPrice', {
+        min: Number(localPriceMin.value).toFixed(1),
+        max: Number(localPriceMax.value).toFixed(1),
+      }),
       clear: () => {
         localPriceMode.value = false
       },
@@ -213,7 +221,7 @@ const activeFiltersList = computed(() => {
   if (localForm.value.place) {
     chips.push({
       key: 'place',
-      label: `Miejsce: ${localForm.value.place}`,
+      label: t('searchForm.chipPlace', { place: localForm.value.place }),
       clear: () => {
         localForm.value.place = ''
       },
@@ -221,11 +229,10 @@ const activeFiltersList = computed(() => {
   }
 
   if (localForm.value.hill_type) {
-    const hillName =
-      props.dictionaries?.hills?.[localForm.value.hill_type]?.pl || localForm.value.hill_type
+    const hillName = formatHillType(String(localForm.value.hill_type), undefined, true)
     chips.push({
       key: 'hill_type',
-      label: `Skocznia: ${hillName}`,
+      label: t('searchForm.chipHill', { hill: hillName }),
       clear: () => {
         localForm.value.hill_type = ''
       },
@@ -234,11 +241,11 @@ const activeFiltersList = computed(() => {
 
   if (localForm.value.category && localForm.value.category.length > 0) {
     const catLabels = localForm.value.category
-      .map((c: string) => props.dictionaries?.categories?.[c]?.pl || c)
+      .map((c: string) => formatCategory(String(c)))
       .join(', ')
     chips.push({
       key: 'category',
-      label: `Cykl: ${catLabels}`,
+      label: t('searchForm.chipCycle', { cycle: catLabels }),
       clear: () => {
         localForm.value.category = []
       },
@@ -246,11 +253,10 @@ const activeFiltersList = computed(() => {
   }
 
   if (localForm.value.session_type) {
-    const sessName =
-      props.dictionaries?.sessions?.[localForm.value.session_type]?.pl || localForm.value.session_type
+    const sessName = formatSessionType(String(localForm.value.session_type))
     chips.push({
       key: 'session_type',
-      label: `Sesja: ${sessName}`,
+      label: t('searchForm.chipSession', { session: sessName }),
       clear: () => {
         localForm.value.session_type = ''
       },
@@ -260,7 +266,10 @@ const activeFiltersList = computed(() => {
   if (localForm.value.date_from || localForm.value.date_to) {
     chips.push({
       key: 'dates',
-      label: `Daty: ${localForm.value.date_from || '...'} do ${localForm.value.date_to || '...'}`,
+      label: t('searchForm.chipDates', {
+        from: localForm.value.date_from || '...',
+        to: localForm.value.date_to || '...',
+      }),
       clear: () => {
         localForm.value.date_from = ''
         localForm.value.date_to = ''
@@ -271,7 +280,7 @@ const activeFiltersList = computed(() => {
   if (localForm.value.limit && localForm.value.limit !== 10) {
     chips.push({
       key: 'limit',
-      label: `Limit skoków: ${localForm.value.limit}`,
+      label: t('searchForm.chipLimit', { limit: localForm.value.limit }),
       clear: () => {
         localForm.value.limit = 10
       },
@@ -329,18 +338,18 @@ const submitSearch = () => {
         : inRange.map((a) => a.name)
     if (finalNames.length === 0) {
       notice.showNotice({
-        title: 'Brak wyników cenowych',
-        message: 'Żaden zawodnik nie mieści się w wybranym przedziale cenowym. Rozszerz zakres suwaków.',
-        badge: 'FILTR CENOWY',
+        title: t('searchForm.errPriceTitle'),
+        message: t('searchForm.errPriceMsg'),
+        badge: t('searchForm.errPriceBadge'),
       })
       return
     }
   } else {
     if (localNames.value.length === 0) {
       notice.showNotice({
-        title: 'Wybierz zawodników',
-        message: 'Dodaj co najmniej jednego skoczka do listy, aby pobrać i porównać statystyki.',
-        badge: 'WYMAGANY SKOCZEK',
+        title: t('searchForm.errPickTitle'),
+        message: t('searchForm.errPickMsg'),
+        badge: t('searchForm.errPickBadge'),
       })
       return
     }
@@ -349,9 +358,9 @@ const submitSearch = () => {
 
   if (!auth.isPro.value && finalNames.length > 2) {
     notice.showNotice({
-      title: 'Limit konta darmowego',
-      message: 'Darmowe konto pozwala na jednoczesne porównanie maksymalnie 2 zawodników. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków.',
-      badge: 'FREE: MAX 2',
+      title: t('search.freeLimitTitle'),
+      message: t('searchForm.errFreeMsg'),
+      badge: t('search.freeBadgeMax2'),
     })
     return
   }
@@ -371,12 +380,12 @@ const submitSearch = () => {
     <div class="scb-info">
       <span class="scb-title">🔍 {{ selectedNamesPreview }}</span>
       <span v-if="activeFiltersList.length > 0" class="scb-meta">
-        · {{ activeFiltersList.length }} aktywnych filtrów
+        {{ t('searchForm.activeCountMeta', { count: activeFiltersList.length }) }}
       </span>
     </div>
     <div class="scb-actions">
       <button type="button" class="btn-scb-edit" @click="isCollapsed = false">
-        ⚙️ Edytuj filtry
+        {{ t('searchForm.editBtn') }}
       </button>
     </div>
   </div>
@@ -384,9 +393,9 @@ const submitSearch = () => {
   <div v-show="!isCollapsed" class="card search-card">
     <div class="card-header header-flex-row">
       <div>
-        <h3>🔍 Kryteria Wyszukiwania i Porównywarki</h3>
+        <h3>{{ t('searchForm.title') }}</h3>
         <p class="subtitle">
-          Wybierz skoczków{{ auth.isPro.value ? ' (lub zapisany skład)' : '' }} i pobierz wyniki historyczne.
+          {{ auth.isPro.value ? t('searchForm.subPro') : t('searchForm.subFree') }}
         </p>
       </div>
       <div style="display: flex; gap: 6px; flex-wrap: wrap;">
@@ -396,10 +405,10 @@ const submitSearch = () => {
           class="preset-chip mobile-only-inline"
           @click="isCollapsed = true"
         >
-          ▲ Zwiń filtry
+          {{ t('searchForm.collapseBtn') }}
         </button>
         <button type="button" class="preset-chip reset-chip" @click="clearFilters">
-          🔄 Wyczyść wszystko
+          🔄 {{ t('common.clearAll') }}
         </button>
       </div>
     </div>
@@ -407,14 +416,14 @@ const submitSearch = () => {
     <form @submit.prevent="submitSearch" class="search-form">
       <!-- SZYBKIE PRESETY 1-CLICK + ANALIZA CEN -->
       <div class="quick-presets-bar">
-        <span class="presets-intro">⚡ Szybkie filtry:</span>
+        <span class="presets-intro">{{ t('searchForm.quickIntro') }}</span>
         <button
           type="button"
           class="preset-chip"
           :class="{ active: localForm.category.length === 1 && localForm.category[0] === 'WC' }"
           @click="applyQuickPreset('wc')"
         >
-          🏆 Puchar Świata
+          {{ t('searchForm.presetWc') }}
         </button>
         <button
           type="button"
@@ -422,7 +431,7 @@ const submitSearch = () => {
           :class="{ active: localForm.hill_type === 'FLYING' }"
           @click="applyQuickPreset('flying')"
         >
-          🦅 Mamuty
+          {{ t('searchForm.presetFlying') }}
         </button>
         <button
           type="button"
@@ -430,7 +439,7 @@ const submitSearch = () => {
           :class="{ active: localForm.session_type === 'INDIVIDUAL' }"
           @click="applyQuickPreset('individual')"
         >
-          🎯 Konkursy
+          {{ t('searchForm.presetComp') }}
         </button>
         <button
           type="button"
@@ -438,31 +447,31 @@ const submitSearch = () => {
           :class="{ active: localForm.limit === 5 }"
           @click="applyQuickPreset('recent')"
         >
-          ⏱️ Ostatnie 5 prób
+          {{ t('searchForm.presetRecent5') }}
         </button>
         <label
           v-if="auth.isPro.value"
           class="toggle-label toggle-esm"
           style="margin-left: auto"
-          title="Włącza filtrowanie po cenie z Fantasy i pobiera automatycznie wszystkich zawodników z przedziału."
+          :title="t('searchForm.priceModeTitle')"
         >
           <input v-model="localPriceMode" type="checkbox" />
-          <span style="font-weight: 600">🎯 Analiza cen</span>
+          <span style="font-weight: 600">{{ t('searchForm.priceMode') }}</span>
         </label>
         <span
           v-else
           class="toggle-label toggle-esm"
           style="margin-left: auto; opacity: 0.65; cursor: not-allowed"
-          title="Analiza cen zawodników Fantasy jest dostępna w planie FantaSKI PRO."
+          :title="t('searchForm.priceModeLockedTitle')"
         >
-          <span style="font-weight: 600">🔒 Analiza cen (PRO)</span>
+          <span style="font-weight: 600">{{ t('searchForm.priceModeLocked') }}</span>
         </span>
       </div>
 
       <div v-if="localPriceMode" class="price-sliders-container" style="margin-bottom: 20px">
         <div class="slider-group">
           <div class="slider-header">
-            <label>Minimalna cena (od):</label>
+            <label>{{ t('searchForm.priceMin') }}</label>
             <span class="price-badge">{{ Number(localPriceMin).toFixed(1) }}</span>
           </div>
           <input
@@ -477,7 +486,7 @@ const submitSearch = () => {
 
         <div class="slider-group">
           <div class="slider-header">
-            <label>Maksymalna cena (do):</label>
+            <label>{{ t('searchForm.priceMax') }}</label>
             <span class="price-badge">{{ Number(localPriceMax).toFixed(1) }}</span>
           </div>
           <input
@@ -492,8 +501,8 @@ const submitSearch = () => {
       </div>
 
       <div class="multi-select-container" ref="athleteContainerRef">
-        <label v-if="localPriceMode">Ogranicz zawężonych skoczków (opcjonalnie):</label>
-        <label v-else>Wybierz skoczków do porównania:</label>
+        <label v-if="localPriceMode">{{ t('searchForm.pickLimit') }}</label>
+        <label v-else>{{ t('searchForm.pickAthletes') }}</label>
 
         <div class="chips-box">
           <span v-for="name in localNames" :key="name" class="chip">
@@ -509,7 +518,7 @@ const submitSearch = () => {
               @keydown="handleKeydown"
               type="text"
               :placeholder="
-                localPriceMode ? 'Wybierz ulubieńców z przedziału...' : 'Wpisz nazwisko...'
+                localPriceMode ? t('searchForm.phPickPrice') : t('searchForm.phPickName')
               "
             />
             <ul v-if="showDropdown && filteredNames.length > 0" class="autocomplete-list">
@@ -529,13 +538,13 @@ const submitSearch = () => {
 
           <div v-if="auth.isPro.value" class="saved-sets-toolbar">
             <div v-if="Object.keys(savedSets).length > 0" class="saved-sets-pills">
-              <span class="sets-label">Zapisane składy:</span>
+              <span class="sets-label">{{ t('searchForm.savedSets') }}</span>
               <span v-for="(_, sName) in savedSets" :key="sName" class="saved-set-pill">
                 <button
                   type="button"
                   class="btn-load-set"
                   @click="loadSet(String(sName))"
-                  title="Wczytaj ten zapisany skład"
+                  :title="t('searchForm.loadSetTitle')"
                 >
                   📋 {{ sName }}
                 </button>
@@ -543,7 +552,7 @@ const submitSearch = () => {
                   type="button"
                   class="btn-del-set"
                   @click="deleteSavedSet(String(sName))"
-                  title="Usuń zapisany skład"
+                  :title="t('searchForm.delSetTitle')"
                 >
                   ✕
                 </button>
@@ -554,22 +563,22 @@ const submitSearch = () => {
               type="button"
               @click="showSaveModal = true"
               class="btn-save-set"
-              title="Zapisz bieżącą listę zawodników"
+              :title="t('searchForm.saveBtnTitle')"
             >
-              💾 Zapisz ten skład
+              {{ t('searchForm.saveSetBtn') }}
             </button>
             <div v-if="showSaveModal" class="save-set-inline-modal">
               <input
                 v-model="newSetName"
                 type="text"
-                placeholder="Nazwa składu..."
+                :placeholder="t('searchForm.saveSetPh')"
                 @keyup.enter="saveCurrentSet"
               />
               <button type="button" @click="saveCurrentSet" class="btn-confirm-save">
-                Zatwierdź
+                {{ t('searchForm.saveConfirm') }}
               </button>
               <button type="button" @click="showSaveModal = false" class="btn-cancel-save">
-                Anuluj
+                {{ t('common.cancel') }}
               </button>
             </div>
           </div>
@@ -579,20 +588,20 @@ const submitSearch = () => {
       <!-- ZWIJANY PANEL KRYTERIÓW ZAAWANSOWANYCH -->
       <div class="advanced-filters-toggle" @click="showAdvancedFilters = !showAdvancedFilters">
         <span class="toggle-text">
-          ⚙️ Dodatkowe filtry (miejsce, skocznia, cykl, daty, limit)
-          <span v-if="activeCriteriaCount > 0" class="criteria-counter">{{ activeCriteriaCount }} aktywne</span>
+          {{ t('searchForm.advToggle') }}
+          <span v-if="activeCriteriaCount > 0" class="criteria-counter">{{ t('searchForm.advActive', { count: activeCriteriaCount }) }}</span>
         </span>
-        <span class="toggle-icon">{{ showAdvancedFilters ? 'Zwiń ▲' : 'Rozwiń ▼' }}</span>
+        <span class="toggle-icon">{{ showAdvancedFilters ? `${t('common.collapse')} ▲` : `${t('common.expand')} ▼` }}</span>
       </div>
 
       <div v-show="showAdvancedFilters" class="form-grid mt-4">
         <div class="filter-group autocomplete-container" ref="placeContainerRef">
-          <label>Miejsce</label>
+          <label>{{ t('common.place') }}</label>
           <input
             type="text"
             v-model="localForm.place"
             @focus="showPlaceDropdown = true"
-            placeholder="np. Zakopane"
+            :placeholder="t('searchForm.placePh')"
           />
           <ul
             v-if="showPlaceDropdown && filteredPlaces.length > 0"
@@ -605,20 +614,20 @@ const submitSearch = () => {
         </div>
 
         <div class="filter-group">
-          <label>Rozmiar skoczni</label>
+          <label>{{ t('searchForm.hillSize') }}</label>
           <select v-model="localForm.hill_type">
-            <option value="">Wszystkie</option>
-            <option v-for="(info, code) in dictionaries?.hills || {}" :key="code" :value="code">
-              {{ info.pl }}
+            <option value="">{{ t('common.all') }}</option>
+            <option v-for="(_, code) in dictionaries?.hills || {}" :key="code" :value="code">
+              {{ formatHillType(String(code), undefined, true) }}
             </option>
           </select>
         </div>
 
         <div class="filter-group" style="position: relative">
-          <label>Kategoria / Cykl</label>
+          <label>{{ t('searchForm.catCycle') }}</label>
           <div class="dropdown-trigger" @click="showCategoryDropdown = !showCategoryDropdown">
             <span>{{
-              localForm.category.length > 0 ? `Wybrano (${localForm.category.length})` : 'Wszystkie'
+              localForm.category.length > 0 ? t('common.selectedCount', { count: localForm.category.length }) : t('common.all')
             }}</span>
             <span style="font-size: 0.8em; color: #94a3b8">{{
               showCategoryDropdown ? '▲' : '▼'
@@ -626,41 +635,41 @@ const submitSearch = () => {
           </div>
           <div v-if="showCategoryDropdown" class="checkbox-list-container custom-dropdown">
             <label
-              v-for="(info, code) in dictionaries?.categories || {}"
+              v-for="(_, code) in dictionaries?.categories || {}"
               :key="code"
               class="toggle-label list-checkbox"
             >
               <input type="checkbox" :value="code" v-model="localForm.category" />
-              <span>{{ info.pl }}</span>
+              <span>{{ formatCategory(String(code)) }}</span>
             </label>
           </div>
         </div>
 
         <div class="filter-group">
-          <label>Typ sesji</label>
+          <label>{{ t('searchForm.sessionType') }}</label>
           <select v-model="localForm.session_type">
-            <option value="">Wszystkie</option>
-            <option v-for="(info, code) in dictionaries?.sessions || {}" :key="code" :value="code">
-              {{ info.pl }}
+            <option value="">{{ t('common.all') }}</option>
+            <option v-for="(_, code) in dictionaries?.sessions || {}" :key="code" :value="code">
+              {{ formatSessionType(String(code)) }}
             </option>
           </select>
         </div>
 
         <div class="filter-group">
-          <label>Data od</label>
+          <label>{{ t('searchForm.dateFrom') }}</label>
           <input type="date" v-model="localForm.date_from" />
         </div>
 
         <div class="filter-group">
-          <label>Data do</label>
+          <label>{{ t('searchForm.dateTo') }}</label>
           <input type="date" v-model="localForm.date_to" />
         </div>
 
         <div class="filter-group slider-group">
           <div class="slider-header" style="margin-bottom: 5px">
             <label>
-              Ostatnie skoki (Limit)
-              <small v-if="!auth.isPro.value" style="color: #64748b; font-weight: 500">(Free: max 10)</small>:
+              {{ t('searchForm.lastJumpsLimit') }}
+              <small v-if="!auth.isPro.value" style="color: #64748b; font-weight: 500">{{ t('searchForm.freeMax10') }}</small>:
             </label>
             <span class="price-badge">{{ localForm.limit }}</span>
           </div>
@@ -677,21 +686,21 @@ const submitSearch = () => {
 
       <!-- AKTYWNE FILTRY (ACTIVE CHIPS BAR) -->
       <div v-if="activeFiltersList.length > 0" class="active-filters-container">
-        <span class="active-label">Aktywne filtry:</span>
+        <span class="active-label">{{ t('searchForm.activeFilters') }}</span>
         <div class="active-chips-wrap">
           <span v-for="af in activeFiltersList" :key="af.key" class="active-filter-badge">
             {{ af.label }}
             <button type="button" class="btn-remove-chip" @click="af.clear()">&times;</button>
           </span>
           <button type="button" class="btn-clear-all-link" @click="clearFilters">
-            Wyczyść wszystkie
+            {{ t('common.clearAll') }}
           </button>
         </div>
       </div>
 
       <div class="form-actions">
         <button type="submit" class="btn-submit" :disabled="loading">
-          {{ loading ? 'Pobieranie Danych...' : '🔍 Wyszukaj Wyniki' }}
+          {{ loading ? t('searchForm.submittingBtn') : t('searchForm.submitBtn') }}
         </button>
       </div>
     </form>

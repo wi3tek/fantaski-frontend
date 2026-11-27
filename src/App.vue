@@ -188,7 +188,7 @@ const openSupportComposer = (contextTitle?: string) => {
     auth.isAuthModalOpen.value = true
     return
   }
-  supportContext.value = contextTitle ? `Dotyczy: ${contextTitle}` : ''
+  supportContext.value = contextTitle ? `${t('support.ctxPrefix')}: ${contextTitle}` : ''
   supportMessageText.value = ''
   supportSendError.value = ''
   supportSendSuccess.value = false
@@ -198,7 +198,7 @@ const openSupportComposer = (contextTitle?: string) => {
 const submitSupportMessage = async () => {
   const clean = supportMessageText.value.trim()
   if (!clean) {
-    supportSendError.value = 'Wpisz treść wiadomości przed wysłaniem.'
+    supportSendError.value = t('support.emptyErr')
     return
   }
   isSendingSupport.value = true
@@ -211,7 +211,7 @@ const submitSupportMessage = async () => {
     supportSendSuccess.value = true
     supportMessageText.value = ''
   } catch (e: any) {
-    supportSendError.value = e?.message || 'Nie udało się wysłać wiadomości.'
+    supportSendError.value = e?.message || t('support.sendErr')
   } finally {
     isSendingSupport.value = false
   }
@@ -237,7 +237,7 @@ const initGoogleSignIn = () => {
           try {
             await auth.loginWithGoogle(response.credential)
           } catch (err: any) {
-            alert('Błąd logowania przez Google: ' + (err.message || 'Nieznany błąd'))
+            alert(`${t('auth.googleError')}: ` + (err.message || ''))
           }
         }
       },
@@ -272,7 +272,7 @@ const handleDevLogin = async () => {
   try {
     await auth.devLogin(devEmail.value, devName.value)
   } catch (e: any) {
-    devError.value = e.message || 'Błąd logowania testowego'
+    devError.value = e.message || t('auth.loginError')
   }
 }
 
@@ -331,7 +331,7 @@ onUnmounted(() => {
           <div class="logo">
             <img src="/logo.png" alt="FantaSKI Logo" class="brand-logo-img" />
             <span class="logo-text">Fanta<strong>SKI</strong></span>
-            <span v-if="envName === 'TEST'" class="env-pill-test" title="Aktywne środowisko testowe (baza: FIS_DATA_DB_TEST)">TEST</span>
+            <span v-if="envName === 'TEST'" class="env-pill-test" :title="t('nav.envTestTitle')">TEST</span>
           </div>
         </RouterLink>
 
@@ -341,7 +341,7 @@ onUnmounted(() => {
               <img src="/logo.png" alt="FantaSKI" class="drawer-logo-img" />
               <span>Fanta<strong>SKI</strong></span>
             </div>
-            <button class="drawer-close-btn" @click="closeNavigation" aria-label="Zamknij menu">&times;</button>
+            <button class="drawer-close-btn" @click="closeNavigation" :aria-label="t('nav.closeMenu')">&times;</button>
           </div>
 
           <div v-if="auth.isAuthenticated.value" class="drawer-user-card-mobile">
@@ -354,7 +354,7 @@ onUnmounted(() => {
             <span v-else class="user-avatar-fallback">👤</span>
             <div class="drawer-user-meta">
               <div class="drawer-user-name">{{ auth.user.value?.name }}</div>
-              <div class="drawer-user-plan">Plan: <strong>{{ getRoleBadgeLabel(auth.user.value?.role) }}</strong></div>
+              <div class="drawer-user-plan">{{ t('nav.planLabel') }}: <strong>{{ getRoleBadgeLabel(auth.user.value?.role) }}</strong></div>
             </div>
           </div>
           <div v-else class="drawer-guest-card-mobile">
@@ -373,8 +373,17 @@ onUnmounted(() => {
           <RouterLink to="/hills" @click="closeNavigation">{{ t('nav.hills') }}</RouterLink>
 
           <div class="drawer-section-label">{{ t('nav.eventsSection') }}</div>
-          <RouterLink to="/standings" @click="closeNavigation" title="Oficjalne klasyfikacje FIS">
+          <RouterLink to="/standings" @click="closeNavigation" :title="t('nav.titleStandings')">
             {{ t('nav.standings') }}
+          </RouterLink>
+          <RouterLink
+            to="/draft"
+            @click="closeNavigation"
+            :class="{ 'nav-locked': !auth.isAuthenticated.value }"
+            :title="!auth.isAuthenticated.value ? t('nav.titleStatsLocked') : t('nav.titleDraft')"
+          >
+            {{ t('nav.draft') }}
+            <span v-if="!auth.isAuthenticated.value" class="lock-icon">🔒</span>
           </RouterLink>
 
           <div class="drawer-section-label">{{ t('nav.toolsSection') }}</div>
@@ -393,25 +402,16 @@ onUnmounted(() => {
                 to="/stats"
                 @click="closeNavigation"
                 :class="{ 'nav-locked': !auth.isAuthenticated.value }"
-                :title="!auth.isAuthenticated.value ? '🔒 Dostępne po darmowym zalogowaniu' : 'Porównywarka zawodników'"
+                :title="!auth.isAuthenticated.value ? t('nav.titleStatsLocked') : t('nav.titleStats')"
               >
                 {{ t('nav.stats') }}
-                <span v-if="!auth.isAuthenticated.value" class="lock-icon">🔒</span>
-              </RouterLink>
-              <RouterLink
-                to="/draft"
-                @click="closeNavigation"
-                :class="{ 'nav-locked': !auth.isAuthenticated.value }"
-                :title="!auth.isAuthenticated.value ? '🔒 Dostępne po darmowym zalogowaniu' : 'Ligi Drafta Fantasy'"
-              >
-                {{ t('nav.draft') }}
                 <span v-if="!auth.isAuthenticated.value" class="lock-icon">🔒</span>
               </RouterLink>
               <RouterLink
                 to="/predictions"
                 @click="closeNavigation"
                 :class="{ 'nav-locked': !auth.isPro.value }"
-                :title="!auth.isPro.value ? '🔒 Dostępne wyłącznie w pakiecie PRO' : 'Prognozy'"
+                :title="!auth.isPro.value ? t('nav.titlePredLocked') : t('nav.predictions')"
               >
                 {{ t('nav.predictions') }}
                 <span v-if="!auth.isPro.value" class="lock-icon">🔒</span>
@@ -544,25 +544,25 @@ onUnmounted(() => {
               type="button"
               class="notif-bell-btn"
               @click.stop="isNotifDropdownOpen = !isNotifDropdownOpen; if (isNotifDropdownOpen) fetchNotifications()"
-              title="Powiadomienia (Draft)"
+              :title="t('nav.notificationsTooltip')"
             >
               🔔
               <span v-if="unreadCount > 0" class="notif-badge">{{ unreadCount }}</span>
             </button>
             <div v-if="isNotifDropdownOpen" class="notif-popover">
               <div class="notif-dropdown-header">
-                <strong>Powiadomienia ({{ unreadCount }})</strong>
+                <strong>{{ t('nav.notifications') }} ({{ unreadCount }})</strong>
                 <button
                   v-if="unreadCount > 0"
                   type="button"
                   class="notif-read-all-btn"
                   @click.stop="markAllAsRead"
                 >
-                  Oznacz wszystkie
+                  {{ t('nav.markAllRead') }}
                 </button>
               </div>
               <div v-if="unreadNotifications.length === 0" class="notif-empty">
-                Brak nieprzeczytanych powiadomień.
+                {{ t('nav.noUnread') }}
               </div>
               <div v-else class="notif-items-scroll">
                 <button
@@ -580,7 +580,7 @@ onUnmounted(() => {
                 </button>
               </div>
               <RouterLink to="/profile?tab=notifications" class="notif-history-link" @click="closeNavigation">
-                📜 Historia powiadomień w Profilu →
+                {{ t('nav.notifHistory') }}
               </RouterLink>
             </div>
           </div>
@@ -602,7 +602,7 @@ onUnmounted(() => {
       <div class="live-toast-body">
         <strong>🔔 {{ activeToast.title }}</strong>
         <span>{{ activeToast.message }}</span>
-        <small>Kliknij, aby otworzyć Draft →</small>
+        <small>{{ t('nav.toastHint') }}</small>
       </div>
       <button type="button" class="live-toast-close" @click.stop="dismissToast">&times;</button>
     </div>
@@ -623,40 +623,40 @@ onUnmounted(() => {
         <button class="auth-close-btn" @click="auth.isAuthModalOpen.value = false">&times;</button>
         <div class="auth-modal-header">
           <img src="/logo.png" alt="FantaSKI" class="auth-modal-logo" />
-          <h3>Logowanie do FantaSKI</h3>
-          <p>Zaloguj się, aby uzyskać dostęp do pełnych klasyfikacji i narzędzi analitycznych.</p>
+          <h3>{{ t('auth.modalTitle') }}</h3>
+          <p>{{ t('auth.modalSub') }}</p>
         </div>
 
         <div class="auth-modal-body">
           <!-- Google Sign-In -->
           <div class="google-login-section">
-            <label class="section-label">Logowanie kontem Google</label>
+            <label class="section-label">{{ t('auth.googleLabel') }}</label>
             <div id="google-btn-container" class="google-btn-wrapper"></div>
-            <p class="gsi-hint">Bezpieczne logowanie OAuth 2.0 przez konto Google</p>
+            <p class="gsi-hint">{{ t('auth.googleHint') }}</p>
           </div>
 
           <template v-if="showDevLogin">
             <div class="auth-separator">
-              <span>lub szybkie logowanie e-mail</span>
+              <span>{{ t('auth.emailSep') }}</span>
             </div>
 
             <!-- Dev / Quick Login -->
             <div class="dev-login-section">
               <div class="form-group">
-                <label>Adres e-mail</label>
+                <label>{{ t('auth.emailLabel') }}</label>
                 <input
                   type="email"
                   v-model="devEmail"
-                  placeholder="twoj-email@domena.pl"
+                  :placeholder="t('auth.emailPh')"
                   class="auth-input"
                 />
               </div>
               <div class="form-group">
-                <label>Imię i nazwisko (opcjonalnie)</label>
+                <label>{{ t('auth.nameLabel') }}</label>
                 <input
                   type="text"
                   v-model="devName"
-                  placeholder="Twoje imię"
+                  :placeholder="t('auth.namePh')"
                   class="auth-input"
                 />
               </div>
@@ -665,7 +665,7 @@ onUnmounted(() => {
                 :disabled="auth.isLoading.value"
                 @click="handleDevLogin"
               >
-                {{ auth.isLoading.value ? 'Logowanie...' : 'Zaloguj się' }}
+                {{ auth.isLoading.value ? t('auth.loggingIn') : t('auth.submitBtn') }}
               </button>
               <div v-if="devError" class="auth-error-msg">{{ devError }}</div>
             </div>
@@ -673,17 +673,17 @@ onUnmounted(() => {
 
           <!-- Informacja o planach -->
           <div class="roles-explanation">
-            <h4>Dostępne plany FantaSKI:</h4>
+            <h4>{{ t('auth.plansTitle') }}</h4>
             <ul>
-              <li><strong>Konto darmowe (po zalogowaniu):</strong> Bazy FIS, klasyfikacje generalne, Porównywarka (max 2 skoczków i 10 skoków) oraz 1 liga Drafta.</li>
-              <li><strong>FantaSKI PRO:</strong> Nielimitowana Porównywarka &amp; ESM, nieograniczone ligi Drafta, wyceny Fantasy oraz Prognozy AI.</li>
+              <li><strong>FREE:</strong> {{ t('auth.planFreeDesc') }}</li>
+              <li><strong>FantaSKI PRO:</strong> {{ t('auth.planProDesc') }}</li>
             </ul>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- CUSTOMOWY MODAL BRAKU DOSTĘPU / POWIADOMIENIA (ZAMIAST BRZYDKIEGO ALERT) -->
+    <!-- CUSTOMOWY MODAL BRAKU DOSTĘPU / POWIADOMIENIA -->
     <div
       v-if="notice.isOpen.value"
       class="auth-modal-overlay"
@@ -708,17 +708,17 @@ onUnmounted(() => {
             class="btn-notice-action"
             @click="notice.closeNotice(); auth.isAuthModalOpen.value = true"
           >
-            🔑 Zaloguj się do FantaSKI
+            {{ t('notice.loginCta') }}
           </button>
           <button
             v-else
             class="btn-notice-action"
             @click="openSupportComposer(notice.noticeData.value.title)"
           >
-            ✨ Skontaktuj się z administratorem
+            {{ t('notice.contactAdmin') }}
           </button>
           <button class="btn-notice-close" @click="notice.closeNotice()">
-            Zamknij
+            {{ t('common.close') }}
           </button>
         </div>
       </div>
@@ -736,27 +736,27 @@ onUnmounted(() => {
           <div class="notice-icon-box">
             <span>💬</span>
           </div>
-          <span class="notice-badge">KONTAKT Z ADMINISTRATOREM</span>
-          <h3>Napisz wiadomość</h3>
+          <span class="notice-badge">{{ t('support.badge') }}</span>
+          <h3>{{ t('support.title') }}</h3>
           <p class="notice-desc">
-            Twoje zapytanie trafi prosto do panelu administratora. Gdy admin odpisze, dostaniesz powiadomienie tutaj w aplikacji.
+            {{ t('support.desc') }}
           </p>
         </div>
 
         <div v-if="supportContext" class="support-ctx-pill">{{ supportContext }}</div>
 
         <div v-if="supportSendSuccess" class="support-success-box">
-          <p>✅ Wiadomość została wysłana do administratora!</p>
+          <p>{{ t('support.sent') }}</p>
           <div class="notice-modal-actions" style="margin-top: 10px;">
             <button
               type="button"
               class="btn-notice-action"
               @click="showSupportModal = false; router.push('/profile?tab=messages')"
             >
-              💬 Przejdź do moich wiadomości
+              {{ t('support.goMessages') }}
             </button>
             <button type="button" class="btn-notice-close" @click="showSupportModal = false">
-              Zamknij
+              {{ t('common.close') }}
             </button>
           </div>
         </div>
@@ -767,22 +767,22 @@ onUnmounted(() => {
             rows="4"
             maxlength="1500"
             class="support-textarea"
-            placeholder="Opisz krótko pytanie lub poproś o aktywację dostępu..."
+            :placeholder="t('support.ph')"
           ></textarea>
           <div v-if="supportSendError" class="auth-error-msg">{{ supportSendError }}</div>
           <div class="notice-modal-actions" style="margin-top: 10px;">
             <button type="submit" class="btn-notice-action" :disabled="isSendingSupport">
-              {{ isSendingSupport ? 'Wysyłanie...' : '📩 Wyślij wiadomość' }}
+              {{ isSendingSupport ? t('common.sending') : t('support.sendBtn') }}
             </button>
             <button type="button" class="btn-notice-close" @click="showSupportModal = false">
-              Anuluj
+              {{ t('common.cancel') }}
             </button>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- INSTRUKCJA INSTALACJI PWA (gdy przeglądarka wymaga ręcznego dodania, np. iOS Safari) -->
+    <!-- INSTRUKCJA INSTALACJI PWA -->
     <div
       v-if="showInstallGuideModal"
       class="auth-modal-overlay"
@@ -794,32 +794,28 @@ onUnmounted(() => {
           <div class="notice-icon-box">
             <img src="/pwa-192x192.png" alt="FantaSKI" style="width: 34px; height: 34px; object-fit: contain;" />
           </div>
-          <span class="notice-badge">APLIKACJA NA TELEFON</span>
-          <h3>Zainstaluj FantaSKI na ekranie</h3>
+          <span class="notice-badge">{{ t('pwa.badge') }}</span>
+          <h3>{{ t('pwa.title') }}</h3>
           <p class="notice-desc">
-            <template v-if="isIosDevice">
-              W przeglądarce <strong>Safari (iPhone / iPad)</strong> dodasz aplikację w 2 krokach:
-            </template>
-            <template v-else>
-              Dodaj ikonę FantaSKI bezpośrednio do pulpitu telefonu bez pobierania ze sklepu:
-            </template>
+            <template v-if="isIosDevice">{{ t('pwa.iosIntro') }}</template>
+            <template v-else>{{ t('pwa.otherIntro') }}</template>
           </p>
         </div>
 
         <ol class="install-steps-list">
           <template v-if="isIosDevice">
-            <li>Dotknij ikony <strong>Udostępnij</strong> (kwadrat ze strzałką w górę na dole ekranu).</li>
-            <li>Wybierz opcję <strong>„Do ekranu głównego”</strong> i zatwierdź przyciskiem <strong>Dodaj</strong>.</li>
+            <li>{{ t('pwa.iosStep1') }}</li>
+            <li>{{ t('pwa.iosStep2') }}</li>
           </template>
           <template v-else>
-            <li>Otwórz menu przeglądarki (ikona <strong>⋮</strong> w prawym górnym rogu).</li>
-            <li>Wybierz <strong>„Zainstaluj aplikację”</strong> lub <strong>„Dodaj do ekranu głównego”</strong>.</li>
+            <li>{{ t('pwa.otherStep1') }}</li>
+            <li>{{ t('pwa.otherStep2') }}</li>
           </template>
         </ol>
 
         <div class="notice-modal-actions">
           <button class="btn-notice-close" @click="showInstallGuideModal = false">
-            Rozumiem
+            {{ t('pwa.gotIt') }}
           </button>
         </div>
       </div>
@@ -923,9 +919,9 @@ onUnmounted(() => {
 
 .nav-links {
   display: flex;
-  gap: 3px;
+  gap: 2px;
   align-items: center;
-  margin-left: auto;
+  margin-left: 10px;
   flex: 1 1 auto;
   justify-content: flex-end;
   min-width: 0;
@@ -934,9 +930,9 @@ onUnmounted(() => {
 .nav-links a {
   color: #cbd5e1;
   text-decoration: none;
-  font-size: 0.82em;
+  font-size: 0.8em;
   font-weight: 500;
-  padding: 6px 7px;
+  padding: 6px 6px;
   border-radius: 6px;
   transition: all 0.2s;
   display: inline-flex;

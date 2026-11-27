@@ -4,7 +4,17 @@ import { useAuth } from '@/stores/auth'
 
 export interface DraftNotification {
   id: string
-  type: 'DRAFT_TURN' | 'DRAFT_INVITE' | 'DRAFT_COMPLETED' | 'LEAGUE_STARTED' | string
+  type:
+    | 'DRAFT_TURN'
+    | 'DRAFT_INVITE'
+    | 'DRAFT_INVITE_ACCEPTED'
+    | 'DRAFT_JOINED'
+    | 'DRAFT_STARTED'
+    | 'DRAFT_COMPLETED'
+    | 'LEAGUE_STARTED'
+    | 'SEASON_STARTED'
+    | 'DRAFT_LEFT'
+    | string
   title: string
   message: string
   league_id?: string | null

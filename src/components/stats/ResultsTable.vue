@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useI18n } from '@/i18n'
+
+const { t, formatCategory, formatSessionType } = useI18n()
 
 const props = defineProps<{
   groupedRows: any[]
@@ -125,8 +128,8 @@ const getHighlightClass = (rank: number | null | undefined) => {
   return 'jump-outside-points'
 }
 
-const getCategoryName = (code: string) => props.dictionaries?.categories?.[code]?.pl || code
-const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.pl || code
+const getCategoryName = (code: string) => formatCategory(code)
+const getSessionName = (code: string) => formatSessionType(code)
 </script>
 
 <template>
@@ -134,9 +137,9 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
     <div class="card view-filters-card" style="margin-bottom: 16px">
       <div class="card-header vf-header-row">
         <div>
-          <h3>⚡ Filtry Widoku</h3>
+          <h3>{{ t('results.filtersTitle') }}</h3>
           <p class="subtitle">
-            Modyfikują tabelę na żywo (Top {{ localHighlightTopN }}{{ localHideEmpty ? ', ukryj puste' : '' }}{{ localOnlyCommon ? ', tylko wspólne' : '' }}).
+            {{ t('results.filtersSub', { topN: localHighlightTopN }) }}{{ localHideEmpty ? `, ${t('results.hideEmptyInline')}` : '' }}{{ localOnlyCommon ? `, ${t('results.onlyCommonInline')}` : '' }}.
           </p>
         </div>
         <button
@@ -144,29 +147,29 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
           class="vf-mobile-toggle"
           @click="showViewFiltersMobile = !showViewFiltersMobile"
         >
-          {{ showViewFiltersMobile ? 'Zwiń ▲' : 'Opcje ▼' }}
+          {{ showViewFiltersMobile ? `${t('common.collapse')} ▲` : t('results.optionsBtn') }}
         </button>
       </div>
 
       <div class="frontend-filters-row" :class="{ 'vf-collapsed-mobile': !showViewFiltersMobile }">
         <div class="filter-group filter-topn-group">
-          <label>Wyróżnij miejsca do (Top X)</label>
+          <label>{{ t('results.topNLabel') }}</label>
           <input type="number" v-model="localHighlightTopN" min="1" max="100" />
         </div>
         <div class="checkbox-filters">
           <label
             class="toggle-label frontend-toggle"
-            title="Odznacza i ukrywa kolumny skoczków, którzy nie posiadają żadnych danych w wyszukanych zawodach."
+            :title="t('results.hideEmptyTitle')"
           >
             <input v-model="localHideEmpty" type="checkbox" />
-            <span>Ukryj skoczków bez skoków</span>
+            <span>{{ t('results.hideEmpty') }}</span>
           </label>
           <label
             class="toggle-label frontend-toggle"
-            title="Pokaże tylko te serie, w których wszyscy aktualnie widoczni zawodnicy oddali skok"
+            :title="t('results.onlyCommonTitle')"
           >
             <input v-model="localOnlyCommon" type="checkbox" />
-            <span>Wyświetlaj tylko wspólne zawody</span>
+            <span>{{ t('results.onlyCommon') }}</span>
           </label>
         </div>
       </div>
@@ -174,28 +177,28 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
 
     <div v-if="groupedRows.length > 0" class="results-container">
       <div class="mobile-desktop-hint mobile-only-block">
-        💻 Na większym ekranie (komputerze) zobaczysz pełną macierz porównawczą w jednej tabeli.
+        {{ t('results.desktopHint') }}
       </div>
 
       <div class="nav-horizontal">
         <div class="nav-info-group" style="display: flex; gap: 30px; flex-wrap: wrap">
           <span class="nav-label"
-          >Wiersze (Zawody):
+          >{{ t('results.rowsLabel') }}
             <strong
             >{{ Math.min(rowStart + 1, groupedRows.length) }} -
-              {{ Math.min(rowStart + rowsWindowSize, groupedRows.length) }} z
+              {{ Math.min(rowStart + rowsWindowSize, groupedRows.length) }} {{ t('results.of') }}
               {{ groupedRows.length }}</strong
             ></span
           >
           <span class="nav-label desktop-only"
-          >Kolumny (Skoczkowie):
+          >{{ t('results.colsLabel') }}
             <strong
             >{{
                 filteredVisibleAthletes.length > 0
                   ? Math.min(colStart + 1, filteredVisibleAthletes.length)
                   : 0
               }}
-              - {{ Math.min(colStart + athletesWindowSize, filteredVisibleAthletes.length) }} z
+              - {{ Math.min(colStart + athletesWindowSize, filteredVisibleAthletes.length) }} {{ t('results.of') }}
               {{ filteredVisibleAthletes.length }}</strong
             ></span
           >
@@ -205,11 +208,11 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
             class="nav-btn"
             @click="moveRow(-10)"
             :disabled="rowStart === 0"
-            title="-10 Wierszy"
+            :title="t('results.rowsMinus10Title')"
           >
             ⏫ 10
           </button>
-          <button class="nav-btn" @click="moveRow(-1)" :disabled="rowStart === 0" title="-1 Wiersz">
+          <button class="nav-btn" @click="moveRow(-1)" :disabled="rowStart === 0" :title="t('results.rowsMinus1Title')">
             ▲ 1
           </button>
         </div>
@@ -222,15 +225,15 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
               class="nav-btn"
               @click="moveCol(-athletesWindowSize)"
               :disabled="colStart === 0"
-              title="Cofa widok o cały ekran"
+              :title="t('results.colPrevPageTitle')"
             >
-              ⏪ Str.
+              {{ t('results.colPrevPageBtn') }}
             </button>
             <button
               class="nav-btn"
               @click="moveCol(-1)"
               :disabled="colStart === 0"
-              title="-1 Skoczek"
+              :title="t('results.colPrev1Title')"
             >
               ◀ 1
             </button>
@@ -241,13 +244,13 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
           <table class="results-table">
             <thead>
             <tr>
-              <th class="sticky-col sticky-col-1">Data</th>
-              <th class="sticky-col sticky-col-2">Miejsce i Sesja</th>
+              <th class="sticky-col sticky-col-1">{{ t('common.date') }}</th>
+              <th class="sticky-col sticky-col-2">{{ t('results.thPlaceSession') }}</th>
               <th v-for="athlete in displayedAthletes" :key="athlete.name" class="athlete-col">
                 <button
                   @click="excludeAthlete(athlete.name)"
                   class="btn-close"
-                  title="Ukryj z porównania"
+                  :title="t('results.hideAthleteTitle')"
                 >
                   ✖
                 </button>
@@ -269,9 +272,9 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
               <td class="meta-cell sticky-col sticky-col-2">
                 <strong>{{ row.meta.place || '?' }} HS{{ row.meta.hill_size || '?' }}</strong>
                 <span style="color: #64748b"> • {{ getSessionName(row.meta.session_type) }}</span>
-                <RouterLink :to="`/sessions/${row.meta.session_id}`" class="session-link" style="margin-left: 6px">LINK</RouterLink>
+                <RouterLink :to="`/sessions/${row.meta.session_id}`" class="session-link" style="margin-left: 6px">{{ t('common.details') }} ↗</RouterLink>
                 <br />
-                <small>{{ getCategoryName(row.meta.category) }} | Seria: {{ row.meta.round }}</small>
+                <small>{{ getCategoryName(row.meta.category) }} | {{ t('common.round') }}: {{ row.meta.round }}</small>
               </td>
               <td v-for="athlete in displayedAthletes" :key="athlete.name" class="athlete-cell">
                 <div
@@ -283,14 +286,14 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
                         getStatClass(row.athletes[athlete.name].jump_rank, row.minRank, row.maxRank)
                       "
                     >
-                      Poz: <strong>{{ row.athletes[athlete.name].jump_rank }}</strong>
+                      {{ t('results.rankLabel') }} <strong>{{ row.athletes[athlete.name].jump_rank }}</strong>
                     </span>
                   <span
                     :class="
                         getStatClass(row.athletes[athlete.name].distance, row.maxDist, row.minDist)
                       "
                   >
-                      Odl: <strong>{{ row.athletes[athlete.name].distance }}m</strong>
+                      {{ t('results.distLabel') }} <strong>{{ row.athletes[athlete.name].distance }}m</strong>
                     </span>
                   <span
                     :class="
@@ -301,7 +304,7 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
                         )
                       "
                   >
-                      Nota: <strong>{{ row.athletes[athlete.name].points }}</strong>
+                      {{ t('results.ptsLabel') }} <strong>{{ row.athletes[athlete.name].points }}</strong>
                     </span>
                 </div>
                 <div v-else class="no-jump">---</div>
@@ -317,7 +320,7 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
               class="nav-btn"
               @click="moveCol(1)"
               :disabled="colStart >= filteredVisibleAthletes.length - athletesWindowSize"
-              title="+1 Skoczek"
+              :title="t('results.colNext1Title')"
             >
               1 ▶
             </button>
@@ -325,9 +328,9 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
               class="nav-btn"
               @click="moveCol(athletesWindowSize)"
               :disabled="colStart >= filteredVisibleAthletes.length - athletesWindowSize"
-              title="Cały ekran"
+              :title="t('results.fullScreenTitle')"
             >
-              Str. ⏩
+              {{ t('results.colNextPageBtn') }}
             </button>
           </div>
         </div>
@@ -339,21 +342,21 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
           <div class="m-card-header">
             <div class="m-date-row">
               <span class="m-date">{{ row.meta.date }} <small v-if="row.meta.time" class="m-time">· {{ row.meta.time }}</small></span>
-              <RouterLink :to="`/sessions/${row.meta.session_id}`" class="m-link">Szczegóły ↗</RouterLink>
+              <RouterLink :to="`/sessions/${row.meta.session_id}`" class="m-link">{{ t('common.details') }} ↗</RouterLink>
             </div>
             <div class="m-title">
               {{ row.meta.place }} HS{{ row.meta.hill_size || '?' }}
               <span class="m-sep">|</span> {{ getSessionName(row.meta.session_type) }}
             </div>
             <div class="m-subtitle">
-              {{ getCategoryName(row.meta.category) }} · Seria {{ row.meta.round }}
+              {{ getCategoryName(row.meta.category) }} · {{ t('common.round') }} {{ row.meta.round }}
             </div>
           </div>
 
           <div class="m-card-body">
             <div class="m-athlete-row" v-for="athlete in displayedAthletes" :key="athlete.name">
               <div class="m-ath-info">
-                <button @click="excludeAthlete(athlete.name)" class="m-btn-close" title="Ukryj">✕</button>
+                <button @click="excludeAthlete(athlete.name)" class="m-btn-close" :title="t('results.hideShort')">✕</button>
                 <span v-if="athlete.price" class="badge price-header-badge">{{ Number(athlete.price).toFixed(1) }}</span>
                 <span class="m-ath-name">{{ athlete.name }}</span>
               </div>
@@ -362,17 +365,17 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
                 <template v-if="row.athletes[athlete.name]">
                   <div :class="['m-jump-data', getHighlightClass(row.athletes[athlete.name].jump_rank)]">
                     <div class="m-stat" :class="getStatClass(row.athletes[athlete.name].jump_rank, row.minRank, row.maxRank)">
-                      Miejsce: <strong>{{ row.athletes[athlete.name].jump_rank }}.</strong>
+                      {{ t('results.mobileRank') }} <strong>{{ row.athletes[athlete.name].jump_rank }}.</strong>
                     </div>
                     <div class="m-stat" :class="getStatClass(row.athletes[athlete.name].distance, row.maxDist, row.minDist)">
-                      Odległość: <strong>{{ row.athletes[athlete.name].distance }} m</strong>
+                      {{ t('results.mobileDist') }} <strong>{{ row.athletes[athlete.name].distance }} m</strong>
                     </div>
                     <div class="m-stat" :class="getStatClass(row.athletes[athlete.name].points, row.maxPoints, row.minPoints)">
-                      Nota: <strong>{{ row.athletes[athlete.name].points }}</strong>
+                      {{ t('results.ptsLabel') }} <strong>{{ row.athletes[athlete.name].points }}</strong>
                     </div>
                   </div>
                 </template>
-                <div v-else class="m-no-jump">Brak startu w tej serii</div>
+                <div v-else class="m-no-jump">{{ t('results.mobileNoJump') }}</div>
               </div>
             </div>
           </div>
@@ -385,7 +388,7 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
             class="nav-btn"
             @click="moveRow(1)"
             :disabled="rowStart >= groupedRows.length - rowsWindowSize"
-            title="+1 Wiersz"
+            :title="t('results.rowsPlus1Title')"
           >
             1 ▼
           </button>
@@ -393,7 +396,7 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
             class="nav-btn"
             @click="moveRow(10)"
             :disabled="rowStart >= groupedRows.length - rowsWindowSize"
-            title="+10 Wierszy"
+            :title="t('results.rowsPlus10Title')"
           >
             10 ⏬
           </button>
@@ -408,8 +411,8 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
     >
       <div style="font-size: 2.5rem; margin-bottom: 10px">🔍</div>
       <p style="margin: 0 0 14px 0; font-size: 0.95rem; line-height: 1.5">
-        Brak zawodów spełniających kryteria <strong>filtrów widoku</strong>.<br />
-        Wybrani skoczkowie mogli nie startować razem w tej samej serii lub włączono filtr wspólnych zawodów.
+        {{ t('results.emptyAfterFilter1') }}<br />
+        {{ t('results.emptyAfterFilter2') }}
       </p>
       <div v-if="localOnlyCommon">
         <button
@@ -417,7 +420,7 @@ const getSessionName = (code: string) => props.dictionaries?.sessions?.[code]?.p
           class="btn-reset-common"
           @click="localOnlyCommon = false"
         >
-          ✕ Wyłącz filtr "Tylko wspólne zawody"
+          {{ t('results.disableOnlyCommon') }}
         </button>
       </div>
     </div>

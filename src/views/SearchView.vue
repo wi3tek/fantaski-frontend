@@ -164,9 +164,9 @@ watch(
 const performSearch = async (payload: any, finalNames: string[]) => {
   if (!auth.isPro.value && finalNames.length > 2) {
     notice.showNotice({
-      title: 'Limit konta darmowego',
-      message: 'Darmowe konto pozwala na jednoczesne porównanie maksymalnie 2 zawodników i 10 skoków. Przejdź na pakiet PRO, aby analizować dowolną liczbę skoczków i pełną historię.',
-      badge: 'FREE: MAX 2',
+      title: t('search.freeLimitTitle'),
+      message: t('search.freeLimitSearchMsg'),
+      badge: t('search.freeBadgeMax2'),
     })
     return
   }
@@ -187,9 +187,9 @@ const performSearch = async (payload: any, finalNames: string[]) => {
     }
   } catch (e: any) {
     notice.showNotice({
-      title: 'Błąd pobierania danych',
-      message: e.message || 'Wystąpił nieoczekiwany błąd podczas pobierania danych z serwera.',
-      badge: 'BŁĄD',
+      title: t('search.fetchErrTitle'),
+      message: e.message || t('common.serverError'),
+      badge: t('search.fetchErrBadge'),
     })
     console.error('Błąd sieci', e)
   } finally {
@@ -314,7 +314,7 @@ onMounted(async () => {
     <h2>{{ t('nav.stats') }} {{ auth.isPro.value ? '(FantaSKI PRO)' : '(Free)' }}</h2>
 
     <div v-if="!auth.isPro.value" class="lite-notice-banner">
-      <span>ℹ️ <strong>Konto darmowe:</strong> Możesz porównywać do <strong>2 zawodników</strong> i maksymalnie <strong>10 ostatnich skoków</strong>. Przejdź na <strong>FantaSKI PRO</strong>, aby zdjąć limity.</span>
+      <span>{{ t('search.freeBanner') }}</span>
     </div>
 
     <SearchForm
@@ -358,16 +358,16 @@ onMounted(async () => {
       class="card empty-state-card"
     >
       <div class="empty-icon">🏔️</div>
-      <h3>Brak wyników dla wybranych kryteriów</h3>
+      <h3>{{ t('search.emptyTitle') }}</h3>
       <p class="empty-desc">
-        Baza danych nie odnalazła skoków dla wskazanych filtrów. Możliwe, że wybrani skoczkowie nie startowali w wytypowanych zawodach lub ustawiono zbyt wąskie kryteria.
+        {{ t('search.emptyDesc') }}
       </p>
       <div class="empty-actions">
         <button type="button" class="btn-preset-action" @click="resetToWorldCup">
-          🏆 Pokaż cały Puchar Świata
+          {{ t('search.resetWc') }}
         </button>
         <button type="button" class="btn-reset-action" @click="clearAllCriteriaAndRetry">
-          🔄 Zresetuj kryteria wyszukiwania
+          {{ t('search.resetCriteria') }}
         </button>
       </div>
     </div>
