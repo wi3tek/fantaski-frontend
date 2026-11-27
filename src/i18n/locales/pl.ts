@@ -1626,6 +1626,7 @@ export const pl = {
   'draft.subTabGrid': '📋 Tablica Drafta (Matrix)',
   'draft.subTabSquads': '👥 Składy ({count})',
   'draft.poolHidePicked': 'Ukryj wybranych',
+  'draft.poolShowPicked': 'Pokaż wybranych',
   'draft.poolSortWcPoints': 'Punkty PŚ (sezon) ↓',
   'draft.poolSortPrice': 'Cena ESM ↓',
   'draft.poolSortName': 'Nazwisko A–Z',

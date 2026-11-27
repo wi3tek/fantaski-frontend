@@ -79,7 +79,7 @@ const availableCountries = ref<Array<{ code: string; count: number }>>([])
 const showCountryDropdown = ref(false)
 const countrySearchQuery = ref('')
 const countryDropdownRef = ref<HTMLElement | null>(null)
-const hidePickedAthletes = ref(false)
+const showPickedAthletes = ref(false)
 const athleteSortBy = ref<'wc_points' | 'price' | 'name'>('wc_points')
 const activeAthletes = ref<any[]>([])
 const isLoadingAthletes = ref(false)
@@ -208,7 +208,7 @@ const filteredDropdownCountries = computed(() => {
 
 const displayedPoolAthletes = computed(() => {
   let list = [...activeAthletes.value]
-  if (hidePickedAthletes.value) {
+  if (!showPickedAthletes.value) {
     list = list.filter((a) => !isAthleteAlreadyPicked(a.fis_code))
   }
   if (athleteSortBy.value === 'name') {
@@ -1305,8 +1305,8 @@ onUnmounted(() => {
                   <h3>{{ t('draft.poolTitle') }}</h3>
                   <div class="pool-right-controls">
                     <label class="hide-picked-toggle">
-                      <input type="checkbox" v-model="hidePickedAthletes" />
-                      <span>{{ t('draft.poolHidePicked') }}</span>
+                      <input type="checkbox" v-model="showPickedAthletes" />
+                      <span>{{ t('draft.poolShowPicked') }}</span>
                     </label>
                     <select v-model="athleteSortBy" class="form-select sort-select-sm" @change="fetchActiveAthletes">
                       <option value="wc_points">{{ t('draft.poolSortWcPoints') }}</option>
@@ -1422,7 +1422,7 @@ onUnmounted(() => {
                   </div>
                   <div class="ath-action-col">
                     <span v-if="isAthleteAlreadyPicked(ath.fis_code)" class="picked-by-tag">
-                      {{ t('draft.pickedBy', { name: isAthleteAlreadyPicked(ath.fis_code) || '' }) }}
+                      {{ isAthleteAlreadyPicked(ath.fis_code) }}
                     </span>
                     <button
                       v-else
@@ -2443,6 +2443,14 @@ onUnmounted(() => {
 }
 @media (max-width: 640px) {
   .form-row-2, .rules-summary-grid, .pool-filters-row { grid-template-columns: 1fr; }
+  .pool-header-stack .flex-between { flex-wrap: wrap; gap: 8px; }
+  .pool-right-controls { width: 100%; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .pool-athlete-row { padding: 8px 10px; gap: 8px; }
+  .ath-meta { gap: 7px; overflow: hidden; }
+  .ath-text-col strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.9rem; }
+  .ath-action-col { flex-shrink: 0; }
+  .picked-by-tag { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; padding: 4px 8px; font-size: 0.72rem; }
+  .btn-pick { padding: 6px 11px; font-size: 0.78rem; }
   .country-dd-trigger { width: 100%; max-width: none; }
   .country-dd-menu { left: 0; right: auto; width: 100%; }
   .league-masthead { padding: 14px 14px 0; }

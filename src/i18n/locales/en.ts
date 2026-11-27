@@ -1612,6 +1612,7 @@ const en: Record<I18nKey, string> = {
   'draft.subTabGrid': '📋 Draft Board (Matrix)',
   'draft.subTabSquads': '👥 Squads ({count})',
   'draft.poolHidePicked': 'Hide drafted',
+  'draft.poolShowPicked': 'Show drafted',
   'draft.poolSortWcPoints': 'WC Points (season) ↓',
   'draft.poolSortPrice': 'ESM Price ↓',
   'draft.poolSortName': 'Name A–Z',
